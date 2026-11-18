@@ -2,12 +2,19 @@
 [![Rank](https://make.fun/badge/gta6-01/knownmyface/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
 [![Reward](https://make.fun/badge/gta6-01/knownmyface/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-# CORAL HEAT v2 — 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves in a sunset marina city
+# CORAL HEAT v2.1 — 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves in a sunset marina city
 
 An original 3D open-world crime game for the [make.fun GTA 6 bounty](https://make.fun/bounty/gta6-01).
 You are **Mara Voss**, a courier in **Coral Bay** — a sunset marina city of palms,
 beachfront, boats and a Ferris wheel — running twelve fares for Dutch Calloway
 while the Coral Bay Police, their roadblocks and their helicopter try to stop you.
+
+v2.1 fixes the three gaps the v2 screenshots showed: the police helicopter is now
+police-white with a flashing light bar and reads against the sunset (it was dark
+navy and hidden behind the towers), glass towers wear a dense lit-window grid
+with rooftop crowns, fins and neon signs (no more flat mint slab), and the rifle
+viewmodel points down-range with a camera fill light and a live muzzle flash
+(no more dark blob).
 
 ## What is in the game
 
@@ -74,12 +81,13 @@ under `game/` or generated at runtime. three.js is vendored under
 Four real renders of the game itself, in `screenshots/` (cover first):
 
 1. `1-chase.jpg` — 5-star chase down a Downtown avenue into the sunset: sports car,
-   three police cars, helicopter, roadblock ahead, dense HUD
+   three police cars, white police helicopter overhead with its searchlight,
+   roadblock ahead, dense HUD
 2. `2-foot.jpg` — the carjacking: Mara on foot beside the red Comet GT, pistol in hand,
    muzzle flash
 3. `3-marina.jpg` — beachfront drive past the Coral Wheel and the boats
 4. `4-mission.jpg` — Mission 5, Loud Night: the shootout at the Docks, rifle viewmodel
-   and muzzle flash
+   (barrel, handguard, magazine, stock) and muzzle flash
 
 ## License
 

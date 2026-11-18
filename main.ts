@@ -1,4 +1,4 @@
-// CORAL HEAT v2 — a 3D open-world crime game in a sunset marina city.
+// CORAL HEAT v2.1 — a 3D open-world crime game in a sunset marina city.
 // This program hands the entry in: it copies game/ and screenshots/ from
 // beside this file to /output and writes /output/dossier.json with the
 // vendored make.fun library, exactly as the kit's starter does. Outside the
@@ -51,4 +51,11 @@ const gameBytes = dirBytes(join(out, 'game'));
 const shots = existsSync(join(out, 'screenshots')) ? readdirSync(join(out, 'screenshots')) : [];
 console.log(`dossier.json ${dossierBytes} bytes (cap 1,572,864)`);
 console.log(`game/ ${gameBytes} bytes (cap 50,331,648)`);
-for (const s of shots) console.log(`screenshot ${s} ${statSync(join(out, 'screenshots', s)).size} bytes (cap 262,144)`);
+let shotsBytes = 0;
+for (const s of shots) {
+  const b = statSync(join(out, 'screenshots', s)).size;
+  shotsBytes += b;
+  console.log(`screenshot ${s} ${b} bytes (cap 262,144)`);
+}
+// v2.1: the whole output shares the platform's 64 MiB cap — print it too
+console.log(`output total ${dossierBytes + gameBytes + shotsBytes} bytes (cap 67,108,864)`);

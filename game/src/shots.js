@@ -73,8 +73,11 @@ function chaseCam(ctx, side, height, dist, lookY = 2.2) {
   cam.lookAt(car.x + bx * 14, lookY, car.z + bz * 14);
 }
 
-// Pin the police helicopter into the frame: ahead of the player, high enough
-// to read against the sky, its searchlight pool landing by the player's car.
+// Pin the police helicopter into the frame: over the road ahead of the
+// player, high enough to read against the sky gap between the building rows.
+// v2.1: the v2 placement (28 ahead, 22 to the side) put it behind the
+// Downtown towers — occluded, and dark navy on a red sky besides. Now it
+// sits nearly centred over the road, white against the sunset.
 function frameHeli(ctx, ahead, side, alt) {
   const heli = ctx.world.police.heli;
   if (!heli) return;
@@ -85,7 +88,19 @@ function frameHeli(ctx, ahead, side, alt) {
   const hz = c.z + bz * ahead + rz * side;
   heli.mesh.position.set(hx, alt, hz);
   heli.mesh.rotation.y = Math.atan2(c.x - hx, c.z - hz);
-  heli.mesh.userData.spot.position.set(0, -(alt - 0.5), 0);
+  // v2.1: fit the searchlight beam to the staged altitude — narrow at the
+  // heli, wide at the ground, exactly reaching the road (the v2 cone was
+  // upside down and 42 long at 18 altitude, a lampshade over the whole frame)
+  const cone = heli.mesh.userData.cone;
+  if (cone) {
+    cone.scale.set(0.55, alt / 42, 0.55);
+    cone.position.y = -alt / 2;
+  }
+  const spot = heli.mesh.userData.spot;
+  if (spot) {
+    spot.scale.setScalar(0.6);
+    spot.position.set(0, -(alt - 0.5), 0);
+  }
 }
 
 // Mara's muzzle world position, for staged flashes.
@@ -125,7 +140,8 @@ const SHOTS = {
       // dead-centre behind the car, higher and further back than v2's first
       // pass: a side offset put a glass building face right against the lens
       chaseCam(ctx, 0, 4.6, 11, 4);
-      frameHeli(ctx, 28, -22, 13);
+      // v2.1: helicopter over the road, in the sky gap — unmistakable
+      frameHeli(ctx, 26, -3, 16);
     };
     ctx.hud.setObjective('MISSION 7 — MARINA GETAWAY: outrun the 5-star chase');
   },
@@ -206,7 +222,7 @@ const SHOTS = {
     // stage a persistent muzzle flash + tracer from Mara toward a rival
     const m = muzzlePos(ctx);
     const rival = ctx.missions.hostiles.find((h) => !h.dead);
-    if (rival) ctx.combat.stageFlash(m, { x: rival.x, y: 1.3, z: rival.z });
+    if (rival) ctx.combat.stageFlash(m, { x: rival.x, y: 1.3, z: rival.z }, 1.4);
     // the beacon would block the fight — hide it for this still
     ctx.missions.beacon.visible = false;
     // police car closing in from behind the fight, on the same road
@@ -220,6 +236,10 @@ const SHOTS = {
       const cam = ctx.camera;
       cam.position.set(2, 3.0, 128);
       cam.lookAt(2, 1.3, 165);
+      // v2.1: re-fire the viewmodel flash every frame — a one-off flash fired
+      // at staging is long gone by the shutter, which is why v2's rifle had
+      // no flash and read as a dark blob
+      ctx.viewmodel.fire();
     };
     ctx.hud.setObjective('MISSION 5 — LOUD NIGHT: 1/4 rivals down');
   },

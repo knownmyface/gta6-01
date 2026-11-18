@@ -263,7 +263,7 @@ export class Viewmodel {
   constructor(camera) {
     this.camera = camera;
     this.group = new THREE.Group();
-    this.group.position.set(0.42, -0.36, -0.72);
+    this.group.position.set(0.42, -0.36, -0.95);
     this.group.rotation.set(0.06, -0.12, 0);
     this.camera.add(this.group);
     this.current = null;
@@ -276,6 +276,11 @@ export class Viewmodel {
     this.recoil = 0;
     this.bobPhase = 0;
     this.basePos = this.group.position.clone();
+    // v2.1: a warm fill light rides with the camera so the viewmodel gun is
+    // never a black blob — the dusk scene leaves it unlit otherwise
+    this.fill = new THREE.PointLight(0xffe0b0, 3, 4, 1.5);
+    this.fill.position.set(0.25, 0.15, -0.4);
+    this.camera.add(this.fill);
   }
 
   setWeapon(type) {
@@ -285,9 +290,12 @@ export class Viewmodel {
     // viewmodel scale: big enough to read, small enough to not block the road
     const s = type === 'pistol' ? 1.5 : type === 'smg' ? 1.25 : 1.1;
     this.gun.group.scale.setScalar(s);
-    this.gun.group.rotation.set(0, 0, 0);
-    // the flash sits at the barrel tip, not in the middle of the gun
-    this.flash.position.set(0, this.gun.muzzle.position.y * s, this.gun.muzzle.position.z * s);
+    // v2.1: the gun is built pointing +Z (toward the camera) — v2 showed the
+    // stock as a dark blob. Turn it around so the muzzle points down-range
+    // and the rifle reads as a rifle: barrel, handguard, magazine, stock.
+    this.gun.group.rotation.set(0.04, Math.PI - 0.18, 0.02);
+    // the flash sits at the barrel tip — flipped with the gun, so -Z now
+    this.flash.position.set(0, this.gun.muzzle.position.y * s, -this.gun.muzzle.position.z * s);
     this.group.add(this.gun.group);
     this.current = type;
   }

@@ -1,9 +1,10 @@
 // The story of CORAL HEAT: 12 missions for Mara Voss, from her first fare for
 // Dutch Calloway to the last run out of Coral Bay. Each mission names its
 // giver, its objective and its payout; the manager moves the gold beacon,
-// spawns pickups and hostiles, and pays out on completion.
+// spawns pickups and hostiles, and pays out on completion. v2.1: rivals wear
+// varied jackets, so the crew is not clones.
 import * as THREE from 'three';
-import { createRng, pick, range } from './rng.js';
+import { createRng, pick, pickN, range } from './rng.js';
 import { buildCarMesh, driveCar } from './vehicles.js';
 import { buildGunMesh } from './weapons.js';
 
@@ -107,11 +108,12 @@ export class MissionManager {
   }
 
   spawnHostiles(n, center) {
-    // armed rivals: dark jackets, they stand their ground and shoot back
+    // armed rivals: varied jackets, they stand their ground and shoot back
+    const jackets = pickN(this.rng, [0x3a1a2a, 0x2a3a1a, 0x1a2a3a, 0x4a2a1a], n);
     const geo = new THREE.BoxGeometry(1, 1, 1);
     for (let i = 0; i < n; i++) {
       const g = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x3a1a2a, roughness: 0.9 }));
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.4), new THREE.MeshStandardMaterial({ color: jackets[i], roughness: 0.9 }));
       body.position.y = 1.0; g.add(body);
       const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), new THREE.MeshStandardMaterial({ color: 0xc98a5a, roughness: 0.8 }));
       head.position.y = 1.75; g.add(head);

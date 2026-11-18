@@ -5,3 +5,4 @@ out/
 Thumbs.db
 # Local scratch logs from playtests
 *.log
+# v2.1 — the dossier build in out/ is local-only, never committed

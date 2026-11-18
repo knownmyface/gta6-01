@@ -1,6 +1,6 @@
 // Seeded RNG (mulberry32) + helpers shared by every system of CORAL HEAT.
 // Every world layout decision flows through one seeded stream so a screenshot
-// seed reproduces the same city, traffic and pedestrians.
+// seed reproduces the same city, traffic and pedestrians. v2.1 adds pickN.
 export function createRng(seed) {
   let a = seed >>> 0;
   return function next() {
@@ -12,6 +12,14 @@ export function createRng(seed) {
 }
 
 export function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+
+// Pick n distinct items, in random order — used for hostile jacket variety.
+export function pickN(rng, arr, n) {
+  const pool = arr.slice();
+  const out = [];
+  while (pool.length && out.length < n) out.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+  return out;
+}
 
 export function shuffle(rng, arr) {
   const a = arr.slice();

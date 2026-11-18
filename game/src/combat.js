@@ -21,8 +21,9 @@ export class Combat {
   }
 
   // A persistent muzzle flash + tracer for staged screenshots: never fades.
-  stageFlash(from, to) {
-    const flash = makeFlashSprite(0.9);
+  // scale lets a shot size the flash to the weapon (rifle > pistol).
+  stageFlash(from, to, scale = 0.9) {
+    const flash = makeFlashSprite(scale);
     flash.position.set(from.x, from.y, from.z);
     flash.visible = true;
     this.scene.add(flash);

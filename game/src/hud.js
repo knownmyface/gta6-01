@@ -186,10 +186,16 @@ export class Hud {
       g.beginPath(); g.arc(px(c.x), pz(c.z), 3.5, 0, Math.PI * 2); g.fill();
     }
     if (world.police.heli) {
+      // v2.1: the helicopter gets a pulsing ring + HELI label on the minimap,
+      // so the player can see the air threat coming, not just a red dot
+      const hx = px(world.police.heli.x), hz = pz(world.police.heli.z);
+      const ring = 8 + Math.sin(performance.now() / 200) * 3;
       g.fillStyle = '#ff3030';
-      g.beginPath(); g.arc(px(world.police.heli.x), pz(world.police.heli.z), 4.5, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#ff3030'; g.lineWidth = 1;
-      g.beginPath(); g.arc(px(world.police.heli.x), pz(world.police.heli.z), 7, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.arc(hx, hz, 4.5, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(255,48,48,0.8)'; g.lineWidth = 1.5;
+      g.beginPath(); g.arc(hx, hz, ring, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = '#ff6a6a'; g.font = 'bold 9px sans-serif'; g.textAlign = 'left';
+      g.fillText('HELI', hx + ring + 2, hz + 3);
     }
     // player arrow (white, heading)
     const p = player.pos;

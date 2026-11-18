@@ -331,26 +331,53 @@ export class Police {
   spawnHeli() {
     if (this.heli) return;
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 5.2), new THREE.MeshStandardMaterial({ color: 0x1a2a4a, roughness: 0.4, metalness: 0.5 }));
+    // v2.1: the v2 helicopter was dark navy on a red sky — invisible in the
+    // cover. Police-white body with a navy belly stripe, a flashing red/blue
+    // light bar and a pale rotor disc, so it reads against the sunset.
+    // The white body carries an emissive lift: its east face is in shadow at
+    // sunset and went black in v2.1's first retake.
+    const white = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.35, metalness: 0.25, emissive: 0x555555 });
+    const navy = new THREE.MeshStandardMaterial({ color: 0x1a2a4a, roughness: 0.4, metalness: 0.5 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 5.2), white);
     body.position.y = 0; g.add(body);
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(2.24, 0.5, 5.24), navy);
+    belly.position.y = -0.55; g.add(belly);
     const glass = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.9, 1.6), new THREE.MeshStandardMaterial({ color: 0x0a1420, roughness: 0.1, metalness: 0.8 }));
     glass.position.set(0, 0.2, 2.0); g.add(glass);
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 4.5), new THREE.MeshStandardMaterial({ color: 0x1a2a4a, roughness: 0.4 }));
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 4.5), white);
     tail.position.set(0, 0.3, -4.2); g.add(tail);
-    const rotor = new THREE.Mesh(new THREE.BoxGeometry(11, 0.12, 0.7), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+    const tailStripe = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.16, 4.5), navy);
+    tailStripe.position.set(0, 0.3, -4.2); g.add(tailStripe);
+    const rotor = new THREE.Mesh(new THREE.BoxGeometry(11, 0.12, 0.7), new THREE.MeshStandardMaterial({ color: 0x666666 }));
     rotor.position.y = 1.1; g.add(rotor);
-    const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.4, 0.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+    // rotor blur disc: a spinning blade alone is a thin line; the disc sells motion
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(5.5, 24), new THREE.MeshBasicMaterial({ color: 0xd8d8d8, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
+    disc.rotation.x = -Math.PI / 2; disc.position.y = 1.12; g.add(disc);
+    const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.4, 0.5), new THREE.MeshStandardMaterial({ color: 0x666666 }));
     tailRotor.position.set(0.4, 0.4, -6.2); g.add(tailRotor);
     const skids = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.18, 3.6), new THREE.MeshStandardMaterial({ color: 0x333333 }));
     skids.position.y = -1.1; g.add(skids);
-    const coneGeo = new THREE.ConeGeometry(7, 42, 16, 1, true);
-    const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
-    cone.rotation.x = Math.PI; cone.position.y = -22; g.add(cone);
-    const spot = new THREE.Mesh(new THREE.CircleGeometry(6.5, 20), new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.3, depthWrite: false }));
+    // flashing light bar on the roof, like the pursuit cars
+    const barRed = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.7), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
+    barRed.position.set(-0.55, 0.95, 0.4); g.add(barRed);
+    const barBlue = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.7), new THREE.MeshBasicMaterial({ color: 0x2040ff }));
+    barBlue.position.set(0.55, 0.95, 0.4); g.add(barBlue);
+    // red navigation light on the tail tip
+    const nav = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
+    nav.position.set(0, 0.3, -6.5); g.add(nav);
+    // searchlight: narrow at the heli, wide at the ground — the cone's apex
+    // sits at the heli and its base at the ground with no flip (v2.1's first
+    // retake had it upside down, a lampshade over the whole frame)
+    const coneGeo = new THREE.ConeGeometry(9, 42, 16, 1, true);
+    const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
+    cone.position.y = -22; g.add(cone);
+    const spot = new THREE.Mesh(new THREE.CircleGeometry(8, 20), new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.5, depthWrite: false }));
     spot.rotation.x = -Math.PI / 2; spot.position.y = -41.5; g.add(spot);
     g.userData.rotor = rotor;
     g.userData.tailRotor = tailRotor;
+    g.userData.cone = cone;
     g.userData.spot = spot;
+    g.userData.lightBar = { red: barRed, blue: barBlue };
     this.scene.add(g);
     this.heli = { mesh: g, angle: 0, x: 0, z: 0 };
   }
@@ -410,6 +437,13 @@ export class Police {
       h.mesh.rotation.y = Math.atan2(p.x - h.x, p.z - h.z);
       h.mesh.userData.rotor.rotation.y += dt * 22;
       h.mesh.userData.tailRotor.rotation.x += dt * 30;
+      // v2.1: light bar flashes red/blue, in step with the pursuit cars
+      const lb = h.mesh.userData.lightBar;
+      if (lb) {
+        const phase = Math.floor(performance.now() / 180) % 2 === 0;
+        lb.red.material.color.setHex(phase ? 0xff2020 : 0x550000);
+        lb.blue.material.color.setHex(phase ? 0x101040 : 0x2040ff);
+      }
       h.mesh.userData.spot.position.set(p.x - h.x, -41.5, p.z - h.z);
     }
   }

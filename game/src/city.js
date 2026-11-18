@@ -129,14 +129,45 @@ function facadeTexture(rng, hue, brick) {
       for (let y = 0; y < h; y += 16) g.fillRect(0, y, w, 2);
       speckle(g, w, h, 160, ['rgba(0,0,0,0.2)', 'rgba(255,255,255,0.12)'], 2);
     }
-    for (let y = 6; y < 122; y += 14) {
-      for (let x = 6; x < 118; x += 12) {
+    // v2.1: dense window grid — v2's sparse grid left whole face slices with
+    // no window at all (the cover's left tower was one flat mint slab), and
+    // the texture repeats so any slice of a close face still shows windows
+    for (let y = 4; y < 124; y += 10) {
+      for (let x = 4; x < 124; x += 8) {
         const lit = rng() < 0.42;
         g.fillStyle = lit ? (rng() < 0.7 ? '#ffd98a' : '#9fd8ff') : '#20242e';
-        g.fillRect(x, y, 7, 9);
+        g.fillRect(x, y, 4, 6);
       }
     }
-  });
+  }, [2, 2]);
+}
+
+// glass tower facade: dark teal gradient, dense small windows (most of them
+// lit warm), strong vertical mullions and floor bands. v2's flat glass slab
+// read as a featureless mint card in the cover; this one reads as a building
+// at dusk. Drawn from its own seeded stream so the city layout stays put.
+function glassTowerTexture(rng) {
+  return makeTex(128, 128, (g, w, h) => {
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#2a4a6a');
+    grad.addColorStop(0.6, '#1a3248');
+    grad.addColorStop(1, '#0e1e30');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    // floor bands
+    g.fillStyle = 'rgba(0,0,0,0.35)';
+    for (let y = 0; y < h; y += 16) g.fillRect(0, y, w, 2);
+    // windows: small, dense, mostly lit warm
+    for (let y = 4; y < h - 4; y += 10) {
+      for (let x = 4; x < w - 4; x += 9) {
+        const lit = rng() < 0.55;
+        g.fillStyle = lit ? (rng() < 0.75 ? '#ffd98a' : '#ffb347') : '#0a141e';
+        g.fillRect(x, y, 5, 6);
+      }
+    }
+    // vertical mullions
+    g.fillStyle = 'rgba(200,225,255,0.55)';
+    for (let x = 0; x < w; x += 9) g.fillRect(x, 0, 1.5, h);
+  }, [2, 4]);
 }
 
 // ground-floor storefront: glass panes + door + striped awning + sign band
@@ -277,10 +308,12 @@ export function buildCity(scene, seed) {
   const sunLight = new THREE.DirectionalLight(0xffb36b, 2.4);
   sunLight.position.set(-300, 180, -60);
   scene.add(sunLight);
-  const fillLight = new THREE.DirectionalLight(0xff9a6a, 0.9);
+  // v2.1: stronger fill + hemisphere — v2's shadowed facades (the cover's
+  // left tower) went flat mint with no readable windows
+  const fillLight = new THREE.DirectionalLight(0xff9a6a, 1.2);
   fillLight.position.set(300, 120, -80);
   scene.add(fillLight);
-  scene.add(new THREE.HemisphereLight(0x8a5a8a, 0x3a2a1a, 1.15));
+  scene.add(new THREE.HemisphereLight(0x8a5a8a, 0x3a2a1a, 1.45));
   scene.fog = new THREE.Fog(0xe0703f, 260, 820);
 
   // --- ground: city slab, sand strip, ocean ---
@@ -361,7 +394,12 @@ export function buildCity(scene, seed) {
   ];
   const facadeMats = facadeHues.map(({ hue, brick }) =>
     new THREE.MeshStandardMaterial({ map: facadeTexture(rng, hue, brick), roughness: 0.85 }));
-  const glassMat = new THREE.MeshStandardMaterial({ map: facadeTexture(rng, '#3a5a7a', false), roughness: 0.25, metalness: 0.5 });
+  // v2.1: glass towers get their own dense, warm-lit texture (not the flat
+  // facade one) — the old slab read as a featureless mint card in the cover
+  const glassMat = new THREE.MeshStandardMaterial({ map: glassTowerTexture(createRng(20261118)), roughness: 0.35, metalness: 0.15 });
+  const finMat = new THREE.MeshStandardMaterial({ color: 0xd8d8e0, roughness: 0.4, metalness: 0.5 });
+  const TOWER_SIGNS = ['HOTEL CORAL', 'CORAL TOWER', 'MARINA SUITES', 'SUNSET PLAZA'];
+  let towerIdx = 0;
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 1 });
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   const parks = new Set(['-1,2', '2,-2', '1,1']);
@@ -397,6 +435,30 @@ export function buildCity(scene, seed) {
         roof.scale.set(w + 0.6, 0.8, d + 0.6);
         roof.position.set(x, h + 0.4, z);
         scene.add(roof);
+        // glass towers: rooftop crown + corner fins + a lit sign, so the slab
+        // reads as a tower, not a flat card (v2.1 cover fix)
+        if (mat === glassMat) {
+          const crown = new THREE.Mesh(boxGeo, roofMat);
+          crown.scale.set(w * 0.6, 2.4, d * 0.6);
+          crown.position.set(x, h + 2, z);
+          scene.add(crown);
+          for (const s of [-1, 1]) {
+            const fin = new THREE.Mesh(boxGeo, finMat);
+            fin.scale.set(0.5, h * 0.9, 0.5);
+            fin.position.set(x + w / 2 + 0.3, h * 0.45, z + s * (d / 2 + 0.3));
+            scene.add(fin);
+          }
+          if (h > 24) {
+            const sign = new THREE.Mesh(
+              new THREE.PlaneGeometry(12, 3),
+              new THREE.MeshBasicMaterial({ map: neonSignTexture(TOWER_SIGNS[towerIdx % TOWER_SIGNS.length], '#ff9a3d'), transparent: true }),
+            );
+            towerIdx += 1;
+            sign.position.set(x + w / 2 + 0.12, h * 0.62, z);
+            sign.rotation.y = Math.PI / 2;
+            scene.add(sign);
+          }
+        }
         // ground-floor storefront + neon sign on Strip-facing buildings
         if (isStrip && h < 30 && shopIdx < SHOP_SIGNS.length * 2) {
           const sign = SHOP_SIGNS[shopIdx % SHOP_SIGNS.length];

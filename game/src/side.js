@@ -1,7 +1,8 @@
-// Side activities for CORAL HEAT v2 — the stuff that makes Coral Bay a game
+// Side activities for CORAL HEAT v2.1 — the stuff that makes Coral Bay a game
 // you keep playing after the story missions: taxi fares, 12 hidden Coral
 // Coins, and the GUNSMITH weapon shop. All three run alongside the mission
-// manager, pay cash, and feed the stats on the start screen.
+// manager, pay cash, and feed the stats on the start screen. v2.1: two more
+// taxi destinations (Coral Wheel, Palm Heights) so fares cross the whole map.
 import * as THREE from 'three';
 import { createRng, pick, range } from './rng.js';
 
@@ -149,6 +150,7 @@ export class SideActivities {
         const spots = [
           { x: -160, z: -160 }, { x: 160, z: 160 }, { x: 0, z: -160 }, { x: -120, z: 120 },
           { x: 120, z: -120 }, { x: -160, z: 160 }, { x: 40, z: 40 },
+          { x: -196, z: 150 }, { x: 160, z: -160 },
         ];
         f.dest = pick(this.rng, spots);
         f.payout = 150 + Math.floor(Math.hypot(f.dest.x - f.x, f.dest.z - f.z) * 1.2);

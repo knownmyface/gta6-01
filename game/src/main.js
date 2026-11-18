@@ -1,8 +1,9 @@
-// CORAL HEAT v2 — main bootstrap and game loop. Wires the city, traffic,
+// CORAL HEAT v2.1 — main bootstrap and game loop. Wires the city, traffic,
 // pedestrians, police, missions, combat, arsenal + viewmodel, side
 // activities (taxi fares, Coral Coins, gun shop), HUD, radio and saves
 // together and runs the game in desktop Chrome from static files, no
-// network requests.
+// network requests. v2.1: visible police helicopter in the cover, detailed
+// glass towers, and a rifle viewmodel that reads as a rifle.
 import * as THREE from 'three';
 import { createRng, clamp } from './rng.js';
 import { buildCity, districtAt } from './city.js';
@@ -36,7 +37,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.12; // v2.1: a touch brighter — v2's shadowed streets read muddy in the mission shot
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2000);

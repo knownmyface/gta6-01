@@ -81,6 +81,15 @@ export class Player {
     this.wantedTimer = 0;
     this.walkPhase = 0;
     this.mesh = buildPersonMesh(rng, { shirt: 0x2a9a8a, skin: 0xf0c8a0, hair: 0x1a1a1a, pants: 0x1a1a2a });
+    // v2.1: Mara wears a red bandana — the protagonist reads at a glance in
+    // third person, and the foot shot shows her, not just another ped
+    const bandanaMat = new THREE.MeshStandardMaterial({ color: 0xd83a2e, roughness: 0.9 });
+    const bandana = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.29, 0.12, 10), bandanaMat);
+    bandana.position.y = 1.8;
+    this.mesh.add(bandana);
+    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.06), bandanaMat);
+    knot.position.set(0, 1.72, -0.28);
+    this.mesh.add(knot);
     this.mesh.position.set(this.x, 0, this.z);
     scene.add(this.mesh);
     this.muzzle = null;

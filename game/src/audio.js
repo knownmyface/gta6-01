@@ -102,6 +102,8 @@ export class RadioAudio {
   setSiren(wanted) {
     if (!this.sirenGain) return;
     this.sirenGain.gain.setTargetAtTime(wanted > 0 ? 0.028 + wanted * 0.008 : 0, this.ctx.currentTime, 0.3);
+    // v2.1: duck the radio under a 3+ star chase so the siren cuts through
+    if (this.musicGain) this.musicGain.gain.setTargetAtTime(wanted >= 3 ? 0.09 : 0.16, this.ctx.currentTime, 0.5);
   }
 
   // --- radio: a tiny step sequencer, one 16-step loop per station ---
