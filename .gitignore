@@ -1,4 +1,5 @@
-# CORAL HEAT v2.5 — re-recorded entry; the game is v2.4's, fresh recording, code rewritten in-session.
+# CORAL HEAT v2.6 — re-recorded entry; the game is v2.5's, fresh recording, code rewritten in-session.
+# v2.6 — the dossier build in out/ is local-only, never committed
 # Build output from `node main.ts` (dossier + copied game/screenshots)
 out/
 # OS noise

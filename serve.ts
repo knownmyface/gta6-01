@@ -1,100 +1,106 @@
-// A tiny static server for game/ (Node 22, standard library only), so an
-// entry can be played locally without a build step: `node serve.ts` serves
-// game/ on http://localhost:8080 (or $PORT, or --port <n>). v2.5 is a
-// from-scratch rewrite of v2.4's serve.ts: same routes, same MIME types,
-// same path guard, different code. It sends the MIME types a browser game
-// needs, refuses any path outside game/, and otherwise does nothing clever:
-// this is a development convenience, not a web server for the internet.
+// Dev-only static server for game/ — no build step, no dependencies beyond
+// the Node 22 standard library. Run it with `node serve.ts` and open
+// http://localhost:8080 (or set $PORT, or pass --port <n>). It serves files
+// from game/ with the content types a browser game expects, answers 403 for
+// any path that would escape that directory, and 404 for anything that is
+// not a plain file inside it. Nothing here is meant for the public internet.
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const rootDir = resolve(fileURLToPath(new URL('./game', import.meta.url)));
+const GAME_ROOT = resolve(fileURLToPath(new URL('./game', import.meta.url)));
 
-const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
+const TYPES: Record<string, string> = {
+  '.bin': 'application/octet-stream',
   '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
   '.glb': 'model/gltf-binary',
   '.gltf': 'model/gltf+json',
-  '.bin': 'application/octet-stream',
-  '.wasm': 'application/wasm',
-  '.wav': 'audio/wav',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.mp3': 'audio/mpeg',
   '.ogg': 'audio/ogg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
   '.txt': 'text/plain; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.wav': 'audio/wav',
+  '.webp': 'image/webp',
+  '.woff2': 'font/woff2',
 };
 
-function choosePort(): number {
-  const args = process.argv.slice(2);
-  const flagAt = args.indexOf('--port');
-  const wanted = flagAt === -1
-    ? Number(process.env.PORT) || 8080
-    : Number(args[flagAt + 1]);
-  if (Number.isInteger(wanted) && wanted > 0 && wanted < 65536) return wanted;
-  return 8080;
+function pickPort(): number {
+  const argv = process.argv.slice(2);
+  let wanted = Number(process.env.PORT) || 8080;
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === '--port') wanted = Number(argv[i + 1]);
+  }
+  const ok = Number.isInteger(wanted) && wanted > 0 && wanted < 65536;
+  return ok ? wanted : 8080;
 }
 
-// Resolve a request path to a file under game/. Returns the file path, or
-// 'forbidden' when the path escapes the root, or 'not-found' when it is not
-// a plain file inside the root.
-function resolvePath(pathname: string): string | 'forbidden' | 'not-found' {
-  const file = resolve(join(rootDir, normalize(pathname)));
-  if (file !== rootDir && !file.startsWith(rootDir + sep)) return 'forbidden';
-  let stats;
+// Map a request path onto a file inside game/. A path that climbs out of
+// the root is 'forbidden'; anything that is not a plain file there is
+// 'not-found'; otherwise the resolved file path comes back.
+function lookup(pathname: string): string | 'forbidden' | 'not-found' {
+  const candidate = resolve(join(GAME_ROOT, normalize(pathname)));
+  const inside = candidate === GAME_ROOT || candidate.startsWith(GAME_ROOT + sep);
+  if (!inside) return 'forbidden';
+  let info;
   try {
-    stats = statSync(file);
+    info = statSync(candidate);
   } catch {
     return 'not-found';
   }
-  if (!stats.isFile()) return 'not-found';
-  return file;
+  return info.isFile() ? candidate : 'not-found';
 }
 
-function serveFile(response, file: string): void {
-  const size = statSync(file).size;
+function fail(response, code: number, message: string): void {
+  response.writeHead(code).end(message);
+}
+
+function send(response, file: string): void {
+  const bytes = statSync(file).size;
   response.writeHead(200, {
-    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
+    'content-type': TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': bytes,
     'cache-control': 'no-store',
   });
   createReadStream(file).pipe(response);
 }
 
-const port = choosePort();
-
-createServer((request, response) => {
-  const url = new URL(request.url ?? '/', 'http://localhost');
+function handle(request, response): void {
+  const raw = request.url ?? '/';
+  const url = new URL(raw, 'http://localhost');
   let pathname: string;
   try {
     pathname = decodeURIComponent(url.pathname);
   } catch {
-    response.writeHead(400).end('bad request');
+    fail(response, 400, 'bad request');
     return;
   }
   if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolvePath(pathname);
-  if (file === 'forbidden') {
-    response.writeHead(403).end('forbidden');
+  const found = lookup(pathname);
+  if (found === 'forbidden') {
+    fail(response, 403, 'forbidden');
     return;
   }
-  if (file === 'not-found') {
-    response.writeHead(404).end('not found');
+  if (found === 'not-found') {
+    fail(response, 404, 'not found');
     return;
   }
-  serveFile(response, file);
-}).listen(port, '127.0.0.1', () => {
+  send(response, found);
+}
+
+const port = pickPort();
+
+createServer(handle).listen(port, '127.0.0.1', () => {
   console.log(`game/ is on http://localhost:${port}`);
   console.log(`shots: http://localhost:${port}/?shot=chase&seed=7  (chase | foot | marina | mission)`);
 });

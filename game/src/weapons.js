@@ -1,36 +1,117 @@
-// Weapons for CORAL HEAT v2.5: four buyable guns with REAL silhouettes —
+// Weapons for CORAL HEAT v2.6: four buyable guns with REAL silhouettes —
 // a pistol, an SMG, a rifle and a pump shotgun, each assembled from boxes
 // and cylinders so its shape reads at a glance. One mesh builder serves
 // three places: the first-person viewmodel on the camera, the gun in Mara's
 // hand in third person, and the guns hostiles and police officers carry.
 // No model files, no network — pure procedural geometry.
-// v2.5 rewrites v2.4's weapons.js from scratch a second time: same guns,
-// same stats, same meshes, written as new code. Each gun is a table of named
-// part objects now (size, material, position, tilt), and the arsenal is
-// written as small state transitions around one ammo-state helper.
-// The part dimensions are the v2.4 ones — the silhouettes are unchanged.
+// v2.6 rewrites v2.5's weapons.js from scratch: same guns, same stats,
+// same meshes, written as new code. Each gun is a list of named part
+// records now (size, material, position, tilt), and the arsenal is written
+// as small state transitions around one ammo-state helper.
+// The part dimensions are the v2.5 ones — the silhouettes are unchanged.
 import * as THREE from 'three';
 
 // The catalogue. Every number here is gameplay: price, damage, magazine,
 // reserve, rate of fire, spread, auto, pellets, range and kick all feed the
-// combat code and the HUD, so they must match v2.4 exactly.
+// combat code and the HUD, so they must match v2.5 exactly.
 export const WEAPONS = {
-  pistol: { id: 'pistol', key: '1', icon: '🔫', name: 'PISTOL', price: 0, damage: 1, mag: 12, reserve: -1, rof: 0.26, spread: 0.012, auto: false, pellets: 1, range: 42, kick: 0.05, desc: 'Standard sidearm. Infinite reserve, quick draw.' },
-  smg: { id: 'smg', key: '2', icon: '🔫', name: 'SMG', price: 800, damage: 1, mag: 32, reserve: 160, rof: 0.085, spread: 0.03, auto: true, pellets: 1, range: 38, kick: 0.03, desc: 'Full-auto spray. Burns ammo, wins close fights.' },
-  rifle: { id: 'rifle', key: '3', icon: '🎯', name: 'RIFLE', price: 1800, damage: 2, mag: 24, reserve: 96, rof: 0.13, spread: 0.008, auto: true, pellets: 1, range: 55, kick: 0.07, desc: 'Scoped, hard-hitting, accurate at range.' },
-  shotgun: { id: 'shotgun', key: '4', icon: '💥', name: 'PUMP SHOTGUN', price: 2600, damage: 1, mag: 6, reserve: 30, rof: 0.75, spread: 0.06, auto: false, pellets: 6, range: 26, kick: 0.16, desc: 'Six pellets a shell. Devastating up close.' },
+  pistol: {
+    id: 'pistol',
+    key: '1',
+    icon: '🔫',
+    name: 'PISTOL',
+    price: 0,
+    damage: 1,
+    mag: 12,
+    reserve: -1,
+    rof: 0.26,
+    spread: 0.012,
+    auto: false,
+    pellets: 1,
+    range: 42,
+    kick: 0.05,
+    desc: 'Standard sidearm. Infinite reserve, quick draw.',
+  },
+  smg: {
+    id: 'smg',
+    key: '2',
+    icon: '🔫',
+    name: 'SMG',
+    price: 800,
+    damage: 1,
+    mag: 32,
+    reserve: 160,
+    rof: 0.085,
+    spread: 0.03,
+    auto: true,
+    pellets: 1,
+    range: 38,
+    kick: 0.03,
+    desc: 'Full-auto spray. Burns ammo, wins close fights.',
+  },
+  rifle: {
+    id: 'rifle',
+    key: '3',
+    icon: '🎯',
+    name: 'RIFLE',
+    price: 1800,
+    damage: 2,
+    mag: 24,
+    reserve: 96,
+    rof: 0.13,
+    spread: 0.008,
+    auto: true,
+    pellets: 1,
+    range: 55,
+    kick: 0.07,
+    desc: 'Scoped, hard-hitting, accurate at range.',
+  },
+  shotgun: {
+    id: 'shotgun',
+    key: '4',
+    icon: '💥',
+    name: 'PUMP SHOTGUN',
+    price: 2600,
+    damage: 1,
+    mag: 6,
+    reserve: 30,
+    rof: 0.75,
+    spread: 0.06,
+    auto: false,
+    pellets: 6,
+    range: 26,
+    kick: 0.16,
+    desc: 'Six pellets a shell. Devastating up close.',
+  },
 };
-
 
 export const WEAPON_ORDER = ['pistol', 'smg', 'rifle', 'shotgun'];
 
 // Shared materials — one instance per finish, reused by every gun.
-const FINISH = {
-  dark: new THREE.MeshStandardMaterial({ color: 0x1c1e24, roughness: 0.35, metalness: 0.85 }),
-  light: new THREE.MeshStandardMaterial({ color: 0x3a3e48, roughness: 0.3, metalness: 0.85 }),
-  wood: new THREE.MeshStandardMaterial({ color: 0x6a4a26, roughness: 0.7 }),
-  grip: new THREE.MeshStandardMaterial({ color: 0x2a1c12, roughness: 0.9 }),
-  brass: new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.9 }),
+const FINISHES = {
+  dark: new THREE.MeshStandardMaterial({
+    color: 0x1c1e24,
+    roughness: 0.35,
+    metalness: 0.85,
+  }),
+  light: new THREE.MeshStandardMaterial({
+    color: 0x3a3e48,
+    roughness: 0.3,
+    metalness: 0.85,
+  }),
+  wood: new THREE.MeshStandardMaterial({
+    color: 0x6a4a26,
+    roughness: 0.7,
+  }),
+  grip: new THREE.MeshStandardMaterial({
+    color: 0x2a1c12,
+    roughness: 0.9,
+  }),
+  brass: new THREE.MeshStandardMaterial({
+    color: 0xc9a227,
+    roughness: 0.3,
+    metalness: 0.9,
+  }),
 };
 
 // A gun part: a box (size + tilt) or a tube (radius + length, laid along Z
@@ -40,61 +121,90 @@ const GUN_PARTS = {
   pistol: {
     tip: 0.32,
     parts: [
-      { mat: 'dark', kind: 'box', size: [0.09, 0.07, 0.34], at: [0, 0.03, 0.06] }, // slide
+      // slide
+      { mat: 'dark', kind: 'box', size: [0.09, 0.07, 0.34], at: [0, 0.03, 0.06] },
       { mat: 'light', kind: 'box', size: [0.07, 0.03, 0.3], at: [0, 0.075, 0.06] },
-      { mat: 'dark', kind: 'tube', radius: 0.026, len: 0.1, at: [0, 0.03, 0.27] }, // barrel
-      { mat: 'grip', kind: 'box', size: [0.075, 0.22, 0.1], at: [0, -0.09, -0.07], tilt: 0.28 }, // raked grip
-      { mat: 'dark', kind: 'box', size: [0.07, 0.02, 0.12], at: [0, -0.045, 0.08] }, // trigger guard
-      { mat: 'dark', kind: 'box', size: [0.02, 0.05, 0.02], at: [0, -0.07, 0.05] }, // trigger
-      { mat: 'brass', kind: 'box', size: [0.03, 0.025, 0.02], at: [0, 0.075, -0.09] }, // rear sight
-      { mat: 'brass', kind: 'box', size: [0.02, 0.02, 0.015], at: [0, 0.075, 0.2] }, // front sight
+      // barrel
+      { mat: 'dark', kind: 'tube', radius: 0.026, len: 0.1, at: [0, 0.03, 0.27] },
+      // raked grip
+      { mat: 'grip', kind: 'box', size: [0.075, 0.22, 0.1], at: [0, -0.09, -0.07], tilt: 0.28 },
+      // trigger guard
+      { mat: 'dark', kind: 'box', size: [0.07, 0.02, 0.12], at: [0, -0.045, 0.08] },
+      // trigger
+      { mat: 'dark', kind: 'box', size: [0.02, 0.05, 0.02], at: [0, -0.07, 0.05] },
+      // rear sight
+      { mat: 'brass', kind: 'box', size: [0.03, 0.025, 0.02], at: [0, 0.075, -0.09] },
+      // front sight
+      { mat: 'brass', kind: 'box', size: [0.02, 0.02, 0.015], at: [0, 0.075, 0.2] },
     ],
   },
   smg: {
     tip: 0.56,
     parts: [
-      { mat: 'dark', kind: 'box', size: [0.1, 0.11, 0.5], at: [0, 0, 0] }, // long body
-      { mat: 'light', kind: 'box', size: [0.12, 0.12, 0.22], at: [0, 0, 0.3] }, // shroud
-      { mat: 'dark', kind: 'tube', radius: 0.032, len: 0.16, at: [0, 0, 0.48] }, // barrel
-      { mat: 'light', kind: 'box', size: [0.07, 0.3, 0.1], at: [0, -0.2, 0.05], tilt: 0.16 }, // curved mag
-      { mat: 'grip', kind: 'box', size: [0.08, 0.1, 0.28], at: [0, -0.01, -0.36] }, // stock
-      { mat: 'grip', kind: 'box', size: [0.07, 0.16, 0.09], at: [0, -0.12, 0.22] }, // foregrip
-      { mat: 'dark', kind: 'box', size: [0.03, 0.05, 0.12], at: [0, 0.08, -0.08] }, // rear sight
-      { mat: 'dark', kind: 'box', size: [0.05, 0.03, 0.08], at: [0, 0.07, 0.38] }, // front post
+      // long body
+      { mat: 'dark', kind: 'box', size: [0.1, 0.11, 0.5], at: [0, 0, 0] },
+      // shroud
+      { mat: 'light', kind: 'box', size: [0.12, 0.12, 0.22], at: [0, 0, 0.3] },
+      // barrel
+      { mat: 'dark', kind: 'tube', radius: 0.032, len: 0.16, at: [0, 0, 0.48] },
+      // curved mag
+      { mat: 'light', kind: 'box', size: [0.07, 0.3, 0.1], at: [0, -0.2, 0.05], tilt: 0.16 },
+      // stock
+      { mat: 'grip', kind: 'box', size: [0.08, 0.1, 0.28], at: [0, -0.01, -0.36] },
+      // foregrip
+      { mat: 'grip', kind: 'box', size: [0.07, 0.16, 0.09], at: [0, -0.12, 0.22] },
+      // rear sight
+      { mat: 'dark', kind: 'box', size: [0.03, 0.05, 0.12], at: [0, 0.08, -0.08] },
+      // front post
+      { mat: 'dark', kind: 'box', size: [0.05, 0.03, 0.08], at: [0, 0.07, 0.38] },
     ],
   },
   rifle: {
     tip: 0.78,
     parts: [
-      { mat: 'dark', kind: 'box', size: [0.09, 0.12, 0.55], at: [0, 0, 0] }, // receiver
-      { mat: 'dark', kind: 'tube', radius: 0.03, len: 0.5, at: [0, 0.01, 0.5] }, // barrel
-      { mat: 'wood', kind: 'box', size: [0.1, 0.1, 0.4], at: [0, -0.01, 0.32] }, // handguard
-      { mat: 'light', kind: 'box', size: [0.07, 0.28, 0.12], at: [0, -0.19, 0.02], tilt: -0.28 }, // mag
-      { mat: 'wood', kind: 'box', size: [0.08, 0.12, 0.35], at: [0, -0.01, -0.42] }, // stock
-      { mat: 'light', kind: 'tube', radius: 0.035, len: 0.22, at: [0, 0.11, -0.05] }, // scope
-      { mat: 'dark', kind: 'box', size: [0.04, 0.04, 0.04], at: [0, 0.08, -0.05] }, // scope mount
-      { mat: 'brass', kind: 'box', size: [0.02, 0.04, 0.02], at: [0, 0.09, 0.72] }, // front sight
+      // receiver
+      { mat: 'dark', kind: 'box', size: [0.09, 0.12, 0.55], at: [0, 0, 0] },
+      // barrel
+      { mat: 'dark', kind: 'tube', radius: 0.03, len: 0.5, at: [0, 0.01, 0.5] },
+      // handguard
+      { mat: 'wood', kind: 'box', size: [0.1, 0.1, 0.4], at: [0, -0.01, 0.32] },
+      // mag
+      { mat: 'light', kind: 'box', size: [0.07, 0.28, 0.12], at: [0, -0.19, 0.02], tilt: -0.28 },
+      // stock
+      { mat: 'wood', kind: 'box', size: [0.08, 0.12, 0.35], at: [0, -0.01, -0.42] },
+      // scope
+      { mat: 'light', kind: 'tube', radius: 0.035, len: 0.22, at: [0, 0.11, -0.05] },
+      // scope mount
+      { mat: 'dark', kind: 'box', size: [0.04, 0.04, 0.04], at: [0, 0.08, -0.05] },
+      // front sight
+      { mat: 'brass', kind: 'box', size: [0.02, 0.04, 0.02], at: [0, 0.09, 0.72] },
     ],
   },
   shotgun: {
     tip: 0.72,
     parts: [
-      { mat: 'dark', kind: 'tube', radius: 0.045, len: 0.55, at: [0, 0.01, 0.42] }, // thick barrel
-      { mat: 'wood', kind: 'box', size: [0.11, 0.09, 0.3], at: [0, -0.06, 0.35] }, // pump
-      { mat: 'dark', kind: 'box', size: [0.1, 0.13, 0.4], at: [0, 0, 0] }, // receiver
-      { mat: 'wood', kind: 'box', size: [0.09, 0.13, 0.32], at: [0, -0.01, -0.35] }, // stock
-      { mat: 'brass', kind: 'box', size: [0.02, 0.03, 0.02], at: [0, 0.07, 0.66] }, // bead
+      // thick barrel
+      { mat: 'dark', kind: 'tube', radius: 0.045, len: 0.55, at: [0, 0.01, 0.42] },
+      // pump
+      { mat: 'wood', kind: 'box', size: [0.11, 0.09, 0.3], at: [0, -0.06, 0.35] },
+      // receiver
+      { mat: 'dark', kind: 'box', size: [0.1, 0.13, 0.4], at: [0, 0, 0] },
+      // stock
+      { mat: 'wood', kind: 'box', size: [0.09, 0.13, 0.32], at: [0, -0.01, -0.35] },
+      // bead
+      { mat: 'brass', kind: 'box', size: [0.02, 0.03, 0.02], at: [0, 0.07, 0.66] },
     ],
   },
 };
 
-// Turn one part object into a mesh and add it to the gun group.
+// Turn one part record into a mesh and add it to the gun group.
 function assemblePart(grp, part) {
-  const mat = FINISH[part.mat];
+  const mat = FINISHES[part.mat];
   const [x, y, z] = part.at;
   let piece;
   if (part.kind === 'tube') {
-    piece = new THREE.Mesh(new THREE.CylinderGeometry(part.radius, part.radius, part.len, 10), mat);
+    const geo = new THREE.CylinderGeometry(part.radius, part.radius, part.len, 10);
+    piece = new THREE.Mesh(geo, mat);
     piece.rotation.x = Math.PI / 2;
   } else {
     const [w, h, d] = part.size;
@@ -121,7 +231,7 @@ export function buildGunMesh(type) {
 // --- star-shaped muzzle flash texture, drawn once, shared by all guns ---
 let cachedFlashTexture = null;
 
-function makeFlashTexture() {
+function starTexture() {
   if (cachedFlashTexture) return cachedFlashTexture;
   const canvas = document.createElement('canvas');
   canvas.width = 128;
@@ -156,7 +266,7 @@ function makeFlashTexture() {
 
 export function makeFlashSprite(scale = 0.55) {
   const material = new THREE.SpriteMaterial({
-    map: makeFlashTexture(),
+    map: starTexture(),
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
@@ -182,7 +292,10 @@ export class Arsenal {
   freshAmmo() {
     const table = {};
     for (const id of WEAPON_ORDER) {
-      table[id] = { mag: WEAPONS[id].mag, reserve: WEAPONS[id].reserve };
+      table[id] = {
+        mag: WEAPONS[id].mag,
+        reserve: WEAPONS[id].reserve,
+      };
     }
     return table;
   }
@@ -201,7 +314,10 @@ export class Arsenal {
   // The ammo state of the current weapon, plus its spec — one lookup for
   // every method that touches ammo.
   state() {
-    return { spec: this.def(), ammo: this.ammo[this.current] };
+    return {
+      spec: this.def(),
+      ammo: this.ammo[this.current],
+    };
   }
 
   canBuy(id) {
@@ -305,7 +421,12 @@ export class Arsenal {
 // --- first-person viewmodel: the gun on the camera, bottom-right ---
 const VIEWMODEL_POS = { x: 0.42, y: -0.36, z: -0.95 };
 const VIEWMODEL_TILT = { x: 0.06, y: -0.12, z: 0 };
-const VIEWMODEL_SCALE = { pistol: 1.5, smg: 1.25, rifle: 1.1, shotgun: 1.1 };
+const VIEWMODEL_SCALE = {
+  pistol: 1.5,
+  smg: 1.25,
+  rifle: 1.1,
+  shotgun: 1.1,
+};
 
 export class Viewmodel {
   constructor(camera) {

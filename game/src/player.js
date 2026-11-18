@@ -1,16 +1,17 @@
-// The people of Coral Bay for CORAL HEAT v2.5: Mara Voss, the player
+// The people of Coral Bay for CORAL HEAT v2.6: Mara Voss, the player
 // character, and the pedestrians who fill the sidewalks. Mara is a
 // red-haired woman in a teal shirt with a red band; pedestrians are
 // procedurally varied — different heights, palettes, caps — and walk the
 // sidewalks until gunfire or a carjack scares them off. All meshes are
 // built from spheres, cylinders and boxes at runtime: no model files.
-// v2.5 rewrites v2.4'arc player.js from scratch a second time: same Mara,
-// same crowd, same movement, same wanted rules, written as new code. The
-// figure is assembled from a parts table now (one builder for Mara,
-// pedestrians and drivers), the movement is split into turn + step helpers,
-// and the pedestrian placement is dealt by one helper.
+// v2.6 rewrites v2.5's player.js from scratch: same Mara, same crowd,
+// same movement, same wanted rules, written as new code. The figure is
+// assembled from a limb table now (one builder for Mara, pedestrians and
+// drivers), the movement is split into turn + step helpers, and the
+// pedestrian placement is dealt by one helper. v2.6 also fixes the v2.5
+// kill() bug: it referenced `p` while its parameter is named `one`.
 // One rule governs this file: the seeded dice calls happen in exactly the
-// same order as v2.4, so the same seed deals the same crowd.
+// same order as v2.5, so the same seed deals the same crowd.
 import * as THREE from 'three';
 import { pick, range, clamp } from './rng.js';
 import { ROAD_COORDS, CITY_MIN, CITY_MAX } from './city.js';
@@ -18,47 +19,52 @@ import { collideCircle } from './vehicles.js';
 import { buildGunMesh, makeFlashSprite } from './weapons.js';
 
 // Crowd variety palettes — picked per person, in a fixed order.
-const CROWD = {
+const PALETTES = {
   shirts: [0xe05a5a, 0x5a9ae0, 0x7ad95a, 0xe0c95a, 0xc95ae0, 0x5ad9c9, 0xe08a3a, 0x9a9a9a],
   skins: [0xf0c8a0, 0xc98a5a, 0x8a5a34, 0xffd9b0],
   hair: [0x1a1a1a, 0x6a3a1a, 0xd8b060, 0x8a8a8a],
   caps: [0xd83a2e, 0x37b6ff, 0xffd23e, 0x2a2a30],
 };
 
-const PANTS_DEFAULT = 0x2a2a3a;
-const CAP_ODDS = 0.35;
+const DEFAULT_PANTS = 0x2a2a3a;
+const CAP_CHANCE = 0.35;
 
-// Resolve a person'arc tones. The picks run skin, shirt, hair — in that
+// Resolve a person's tones. The picks run skin, shirt, hair — in that
 // order — because the dice stream is shared and order is the deal.
-function personColours(dice, opts) {
-  const skinTone = opts.skin ?? pick(dice, CROWD.skins);
-  const shirtTone = opts.shirt ?? pick(dice, CROWD.shirts);
-  const hairTone = opts.hair ?? pick(dice, CROWD.hair);
-  return { skin: skinTone, shirt: shirtTone, pants: opts.pants ?? PANTS_DEFAULT, hair: hairTone };
+function dealTones(dice, opts) {
+  const skinTone = opts.skin ?? pick(dice, PALETTES.skins);
+  const shirtTone = opts.shirt ?? pick(dice, PALETTES.shirts);
+  const hairTone = opts.hair ?? pick(dice, PALETTES.hair);
+  return {
+    skin: skinTone,
+    shirt: shirtTone,
+    pants: opts.pants ?? DEFAULT_PANTS,
+    hair: hairTone,
+  };
 }
 
-function skinMaterial(colour) {
+function skinMat(colour) {
   return new THREE.MeshStandardMaterial({ color: colour, roughness: 0.8 });
 }
 
-function clothMaterial(colour) {
+function clothMat(colour) {
   return new THREE.MeshStandardMaterial({ color: colour, roughness: 0.9 });
 }
 
-// --- figure parts table -------------------------------------------------------
+// --- figure limb table ------------------------------------------------------
 // One row per figure part: [kind, geometry args, material key, x, y, z, joint key].
-// 'clone' rows copy an earlier joint (right leg mirrors left, right arm
-// mirrors left) instead of building a second figure. The geometry values are
-// the v2.4 ones — a sphere head, a hair cap, a box torso — so Mara and the
-// crowd look exactly the same; only the code that assembles them changed.
-const BODY_PARTS = [
+// 'mirror' rows copy an earlier joint (right leg mirrors left, right arm
+// mirrors left) instead of building a second figure. The geometry values
+// are the v2.5 ones — a sphere head, a hair cap, a box torso — so Mara and
+// the crowd look exactly the same; only the code that assembles them changed.
+const LIMBS = [
   ['sphere', [0.26, 10, 8], 'skin', 0, 1.62, 0, 'head'],
   ['sphereSeg', [0.27, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55], 'hair', 0, 1.66, 0, null],
   ['box', [0.62, 0.72, 0.34], 'shirt', 0, 1.08, 0, null],
   ['box', [0.24, 0.72, 0.26], 'pants', -0.16, 0.36, 0, 'legL'],
-  ['clone', 'legL', null, 0.16, 0.36, 0, 'legR'],
+  ['mirror', 'legL', null, 0.16, 0.36, 0, 'legR'],
   ['box', [0.18, 0.62, 0.2], 'shirt', -0.42, 1.1, 0, 'armL'],
-  ['clone', 'armL', null, 0.42, 1.1, 0, 'armR'],
+  ['mirror', 'armL', null, 0.42, 1.1, 0, 'armR'],
 ];
 
 const CAP_PARTS = [
@@ -66,21 +72,22 @@ const CAP_PARTS = [
   ['box', [0.3, 0.04, 0.22], 'cap', 0, 1.78, 0.26],
 ];
 
-function geometryFor(kind, args) {
+function geoFor(kind, args) {
   if (kind === 'sphere') return new THREE.SphereGeometry(...args);
   if (kind === 'sphereSeg') return new THREE.SphereGeometry(...args);
   if (kind === 'cylinder') return new THREE.CylinderGeometry(...args);
   return new THREE.BoxGeometry(...args);
 }
 
-function buildBodyParts(figure, finishes, joints) {
-  for (const [kind, spec, matKey, x, y, z, limbKey] of BODY_PARTS) {
+function buildLimbs(figure, finishes, joints) {
+  for (const row of LIMBS) {
+    const [kind, spec, matKey, x, y, z, limbKey] = row;
     let part;
-    if (kind === 'clone') {
+    if (kind === 'mirror') {
       part = joints[spec].clone();
       part.position.set(x, y, z);
     } else {
-      part = new THREE.Mesh(geometryFor(kind, spec), finishes[matKey]);
+      part = new THREE.Mesh(geoFor(kind, spec), finishes[matKey]);
       part.position.set(x, y, z);
     }
     figure.add(part);
@@ -89,22 +96,23 @@ function buildBodyParts(figure, finishes, joints) {
 }
 
 export function buildPersonMesh(dice, opts = {}) {
-  const tones = personColours(dice, opts);
+  const tones = dealTones(dice, opts);
   const finishes = {
-    skin: skinMaterial(tones.skin),
-    shirt: clothMaterial(tones.shirt),
-    pants: clothMaterial(tones.pants),
-    hair: clothMaterial(tones.hair),
+    skin: skinMat(tones.skin),
+    shirt: clothMat(tones.shirt),
+    pants: clothMat(tones.pants),
+    hair: clothMat(tones.hair),
   };
   const figure = new THREE.Group();
   const joints = {};
-  buildBodyParts(figure, finishes, joints);
+  buildLimbs(figure, finishes, joints);
   // A cap on some heads, so the crowd is not clones. The dice check runs
-  // after the colour picks, exactly as v2.4 dealt it.
-  if (opts.cap || (dice && dice() < CAP_ODDS)) {
-    const hatMat = clothMaterial(opts.capColor ?? pick(dice, CROWD.caps));
-    for (const [kind, args, , x, y, z] of CAP_PARTS) {
-      const part = new THREE.Mesh(geometryFor(kind, args), hatMat);
+  // after the colour picks, exactly as v2.5 dealt it.
+  if (opts.cap || (dice && dice() < CAP_CHANCE)) {
+    const hatMat = clothMat(opts.capColor ?? pick(dice, PALETTES.caps));
+    for (const row of CAP_PARTS) {
+      const [kind, args, , x, y, z] = row;
+      const part = new THREE.Mesh(geoFor(kind, args), hatMat);
       part.position.set(x, y, z);
       figure.add(part);
     }
@@ -117,14 +125,14 @@ export function buildPersonMesh(dice, opts = {}) {
   return figure;
 }
 
-// Swap the gun in a person'arc right hand. Returns the muzzle Object3D.
+// Swap the gun in a person's right hand. Returns the muzzle Object3D.
 export function setPersonGun(figure, type) {
   const anchor = figure.userData.gunAnchor;
   if (!anchor) return null;
   while (anchor.children.length > 0) anchor.remove(anchor.children[0]);
   if (!type) return null;
   const gun = buildGunMesh(type);
-  gun.group.rotation.x = 0; // points +Z, the person'arc facing
+  gun.group.rotation.x = 0; // points +Z, the person's facing
   anchor.add(gun.group);
   return gun.muzzle;
 }
@@ -144,20 +152,20 @@ export function walkCycle(figure, phase, speed) {
 }
 
 // Mara Voss: teal shirt, red band, starts at the Coral Strip.
-const MARA_START = { x: -160, z: 20, heading: Math.PI / 2 };
-const MARA_LOOK = { shirt: 0x2a9a8a, skin: 0xf0c8a0, hair: 0x1a1a1a, pants: 0x1a1a2a };
-const BANDANA_RED = 0xd83a2e;
-const WALK_SPEED = 5;
-const RUN_SPEED = 8.5;
-const TURN_RATE = 2.6;
+const MARA_SPAWN = { x: -160, z: 20, heading: Math.PI / 2 };
+const MARA_TONES = { shirt: 0x2a9a8a, skin: 0xf0c8a0, hair: 0x1a1a1a, pants: 0x1a1a2a };
+const BAND_RED = 0xd83a2e;
+const WALK = 5;
+const RUN = 8.5;
+const TURN = 2.6;
 
 export class Player {
   constructor(scene, rng) {
     this.scene = scene;
     this.rng = rng;
-    this.x = MARA_START.x;
-    this.z = MARA_START.z;
-    this.heading = MARA_START.heading;
+    this.x = MARA_SPAWN.x;
+    this.z = MARA_SPAWN.z;
+    this.heading = MARA_SPAWN.heading;
     this.speed = 0;
     this.inCar = false;
     this.car = null;
@@ -166,14 +174,16 @@ export class Player {
     this.wanted = 0;
     this.wantedTimer = 0;
     this.walkPhase = 0;
-    this.mesh = buildPersonMesh(rng, MARA_LOOK);
+    this.mesh = buildPersonMesh(rng, MARA_TONES);
     // Mara wears a red band — the protagonist reads at a glance in third
     // person, and the foot shot shows her, not just another walker.
-    const cloth = clothMaterial(BANDANA_RED);
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.29, 0.12, 10), cloth);
+    const cloth = clothMat(BAND_RED);
+    const bandGeo = new THREE.CylinderGeometry(0.28, 0.29, 0.12, 10);
+    const band = new THREE.Mesh(bandGeo, cloth);
     band.position.set(0, 1.8, 0);
     this.mesh.add(band);
-    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.06), cloth);
+    const knotGeo = new THREE.BoxGeometry(0.12, 0.22, 0.06);
+    const knot = new THREE.Mesh(knotGeo, cloth);
     knot.position.set(0, 1.72, -0.28);
     this.mesh.add(knot);
     this.mesh.position.set(this.x, 0, this.z);
@@ -204,12 +214,12 @@ export class Player {
   }
 
   // Turn in spot with A/D, then step forward/back along the heading.
-  turnMara(dt, input) {
-    if (input.left) this.heading += TURN_RATE * dt;
-    if (input.right) this.heading -= TURN_RATE * dt;
+  turn(dt, input) {
+    if (input.left) this.heading += TURN * dt;
+    if (input.right) this.heading -= TURN * dt;
   }
 
-  stepMara(dt, speed, colliders) {
+  step(dt, speed, colliders) {
     // Forward/back run along the heading.
     let mx = 0;
     let mz = 0;
@@ -245,14 +255,14 @@ export class Player {
   }
 
   onFootMove(dt, input, colliders) {
-    const speed = input.run ? RUN_SPEED : WALK_SPEED;
+    const speed = input.run ? RUN : WALK;
     // The step runs along the heading as it was when the frame began;
     // the turn applies after, so Mara faces the new heading while the
-    // step itself follows the old one — exactly as v2.4 ordered it.
+    // step itself follows the old one — exactly as v2.5 ordered it.
     this._moveForward = input.forward;
     this._moveBack = input.back;
-    this.stepMara(dt, speed, colliders);
-    this.turnMara(dt, input);
+    this.step(dt, speed, colliders);
+    this.turn(dt, input);
     this.x = clamp(this.x, CITY_MIN - 60, CITY_MAX + 20);
     this.z = clamp(this.z, CITY_MIN, CITY_MAX);
     this.mesh.position.set(this.x, 0, this.z);
@@ -297,19 +307,22 @@ export class Player {
 }
 
 // --- pedestrians: sidewalk walkers who flee gunfire and police ---
-const PED_BOUND = 178;
-const PED_FLEE_SPEED = 6.5;
-const PED_STROLL_SPEED = 1.6;
+const WALK_BOUND = 178;
+const FLEE_SPEED = 6.5;
+const STROLL_SPEED = 1.6;
 
-// Deal one pedestrian'arc placement: road, distance along it, side, heading,
+// Deal one pedestrian's placement: road, distance along it, side, heading,
 // speed and walk phase — in that order, from the shared stream.
-function dealPedPlacement(dice) {
+function dealSpot(dice) {
   const road = pick(dice, ROAD_COORDS);
   const along = range(dice, -170, 170);
   const northSouth = dice() < 0.5;
   const side = dice() < 0.5 ? 5.8 : -5.8;
   return {
-    road, along, northSouth, side,
+    road,
+    along,
+    northSouth,
+    side,
     heading: dice() * Math.PI * 2,
     speed: range(dice, 1.2, 2.2),
     phase: dice() * 10,
@@ -330,7 +343,7 @@ export class Pedestrians {
       // The crowd is not clones: height and cap variety.
       figure.scale.setScalar(range(this.rng, 0.92, 1.08));
       this.scene.add(figure);
-      const spot = dealPedPlacement(this.rng);
+      const spot = dealSpot(this.rng);
       const walker = {
         mesh: figure,
         x: spot.northSouth ? spot.road + spot.side : spot.along,
@@ -354,69 +367,82 @@ export class Pedestrians {
   spawnDriver(x, z, heading) {
     const figure = buildPersonMesh(this.rng);
     this.scene.add(figure);
-    const walker = { mesh: figure, x, z, heading, speed: 2.5, phase: 0, fleeing: 6, dead: false, driver: true };
+    const walker = {
+      mesh: figure,
+      x,
+      z,
+      heading,
+      speed: 2.5,
+      phase: 0,
+      fleeing: 6,
+      dead: false,
+      driver: true,
+    };
     figure.position.set(x, 0, z);
     this.peds.push(walker);
     return walker;
   }
 
   scare(x, z, radius) {
-    for (const one of this.peds) {
-      if (one.dead) continue;
-      if (Math.hypot(one.x - x, one.z - z) >= radius) continue;
-      one.fleeing = 5;
-      one.heading = Math.atan2(one.x - x, one.z - z);
+    for (const walker of this.peds) {
+      if (walker.dead) continue;
+      if (Math.hypot(walker.x - x, walker.z - z) >= radius) continue;
+      walker.fleeing = 5;
+      walker.heading = Math.atan2(walker.x - x, walker.z - z);
     }
   }
 
   update(dt) {
-    for (const one of this.peds) {
-      if (one.dead) continue;
-      if (one.fleeing > 0) {
-        one.fleeing -= dt;
-        one.speed = PED_FLEE_SPEED;
+    for (const walker of this.peds) {
+      if (walker.dead) continue;
+      if (walker.fleeing > 0) {
+        walker.fleeing -= dt;
+        walker.speed = FLEE_SPEED;
       } else {
-        one.speed = PED_STROLL_SPEED;
+        walker.speed = STROLL_SPEED;
       }
-      const nextX = one.x + Math.sin(one.heading) * one.speed * dt;
-      const nextZ = one.z + Math.cos(one.heading) * one.speed * dt;
+      const nextX = walker.x + Math.sin(walker.heading) * walker.speed * dt;
+      const nextZ = walker.z + Math.cos(walker.heading) * walker.speed * dt;
       const stuck = collideCircle(nextX, nextZ, 0.6, this.colliders)
-        || nextX > PED_BOUND || nextX < -PED_BOUND || nextZ > PED_BOUND || nextZ < -PED_BOUND;
+        || nextX > WALK_BOUND || nextX < -WALK_BOUND
+        || nextZ > WALK_BOUND || nextZ < -WALK_BOUND;
       if (stuck) {
         // Stay on sidewalks: if the next step hits a building, turn around.
-        one.heading += Math.PI * (0.5 + this.rng() * 0.5);
+        walker.heading += Math.PI * (0.5 + this.rng() * 0.5);
       } else {
-        one.x = nextX;
-        one.z = nextZ;
+        walker.x = nextX;
+        walker.z = nextZ;
         // At intersections, sometimes turn onto another sidewalk.
         if (this.rng() < dt * 0.25) {
-          one.heading += pick(this.rng, [-Math.PI / 2, Math.PI / 2]);
+          walker.heading += pick(this.rng, [-Math.PI / 2, Math.PI / 2]);
         }
       }
-      one.phase += dt * one.speed * 1.6;
-      one.mesh.position.set(one.x, 0, one.z);
-      one.mesh.rotation.y = one.heading;
-      walkCycle(one.mesh, one.phase, one.speed);
+      walker.phase += dt * walker.speed * 1.6;
+      walker.mesh.position.set(walker.x, 0, walker.z);
+      walker.mesh.rotation.y = walker.heading;
+      walkCycle(walker.mesh, walker.phase, walker.speed);
     }
   }
 
   nearest(x, z, maxDist) {
     let best = null;
     let bestD = maxDist * maxDist;
-    for (const one of this.peds) {
-      if (one.dead) continue;
-      const dist = (one.x - x) ** 2 + (one.z - z) ** 2;
+    for (const walker of this.peds) {
+      if (walker.dead) continue;
+      const dist = (walker.x - x) ** 2 + (walker.z - z) ** 2;
       if (dist < bestD) {
         bestD = dist;
-        best = one;
+        best = walker;
       }
     }
     return best;
   }
 
   kill(one) {
-    p.dead = true;
-    p.mesh.rotation.x = Math.PI / 2;
-    p.mesh.position.y = 0.3;
+    // v2.6 fix: v2.5 referenced `p` here while the parameter is `one`,
+    // which threw a ReferenceError the first time a pedestrian was shot.
+    one.dead = true;
+    one.mesh.rotation.x = Math.PI / 2;
+    one.mesh.position.y = 0.3;
   }
 }

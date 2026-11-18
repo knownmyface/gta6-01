@@ -1,29 +1,30 @@
 // Seeded RNG (mulberry32) + helpers shared by every system of CORAL HEAT.
 // Every world layout decision flows through one seeded stream so a screenshot
-// seed reproduces the same city, traffic and pedestrians. v2.5 is a
-// from-scratch rewrite of v2.4's rng.js: same mulberry32 sequence, same
+// seed reproduces the same city, traffic and pedestrians. v2.6 is a
+// from-scratch rewrite of v2.5's rng.js: same mulberry32 sequence, same
 // helpers, same draw order, different code. The sequence is the contract —
 // a different stream would deal a different city, so it is verified by a
-// differential test against v2.4's implementation before any screenshot.
-const GOLDEN_STEP = 0x6D2B79F5;
-const TWO_POW_32 = 4294967296;
+// differential test against v2.5's implementation before any screenshot.
+const STEP = 0x6D2B79F5;
+const MODULUS = 4294967296;
 
-// Mulberry32: a small, fast seeded PRNG. `initial` is taken unsigned; each
+// Mulberry32: a small, fast seeded PRNG. `seed` is taken unsigned; each
 // call advances the state by the golden-ratio step and scrambles it.
-export function createRng(initial) {
-  let seed = initial >>> 0;
+export function createRng(seed) {
+  let state = seed >>> 0;
   return function next() {
-    seed |= 0;
-    seed = (seed + GOLDEN_STEP) | 0;
-    let scrambled = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    scrambled = (scrambled + Math.imul(scrambled ^ (scrambled >>> 7), 61 | scrambled)) ^ scrambled;
-    return ((scrambled ^ (scrambled >>> 14)) >>> 0) / TWO_POW_32;
+    state |= 0;
+    state = (state + STEP) | 0;
+    let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+    mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / MODULUS;
   };
 }
 
 // One random element — one draw from the stream.
 export function pick(rng, arr) {
-  return arr[Math.floor(rng() * arr.length)];
+  const idx = Math.floor(rng() * arr.length);
+  return arr[idx];
 }
 
 // Pick n distinct items, in random order — used for hostile jacket variety.
@@ -42,21 +43,21 @@ export function shuffle(rng, arr) {
   const copy = arr.slice();
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
-    const swap = copy[i];
+    const tmp = copy[i];
     copy[i] = copy[j];
-    copy[j] = swap;
+    copy[j] = tmp;
   }
   return copy;
 }
 
 // Pick a weighted option: [[weight, value], ...] — used by traffic mix and drops.
 export function weighted(rng, entries) {
-  let sum = 0;
-  for (const [weight] of entries) sum += weight;
-  let cursor = rng() * sum;
-  for (const [weight, value] of entries) {
-    cursor -= weight;
-    if (cursor <= 0) return value;
+  let total = 0;
+  for (const entry of entries) total += entry[0];
+  let cursor = rng() * total;
+  for (const entry of entries) {
+    cursor -= entry[0];
+    if (cursor <= 0) return entry[1];
   }
   return entries[entries.length - 1][1];
 }
@@ -78,7 +79,9 @@ export function chance(rng, p) {
 
 // Clamp a value into [min, max] — no draws.
 export function clamp(v, min, max) {
-  return Math.min(max, Math.max(min, v));
+  if (v < min) return min;
+  if (v > max) return max;
+  return v;
 }
 
 // Linear interpolation between a and b.
@@ -97,7 +100,7 @@ export function angleLerp(a, b, t) {
 
 // Squared distance on the ground plane — no square root, for comparisons.
 export function dist2(ax, az, bx, bz) {
-  const diffX = ax - bx;
-  const diffZ = az - bz;
-  return diffX * diffX + diffZ * diffZ;
+  const dx = ax - bx;
+  const dz = az - bz;
+  return dx * dx + dz * dz;
 }

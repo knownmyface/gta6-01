@@ -2,7 +2,7 @@
 [![Rank](https://make.fun/badge/gta6-01/knownmyface/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
 [![Reward](https://make.fun/badge/gta6-01/knownmyface/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-# CORAL HEAT v2.5 — a sunset marina city crime game: 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves
+# CORAL HEAT v2.6 — a sunset marina city crime game: 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves
 
 An original 3D open-world crime game built for the [make.fun GTA 6 bounty](https://make.fun/bounty/gta6-01).
 You are **Mara Voss**, a courier working the streets of **Coral Bay** — palms,
@@ -10,11 +10,11 @@ beachfront, boats and a Ferris wheel at golden hour — running twelve fares for
 Dutch Calloway while the Coral Bay Police, their roadblocks and their
 helicopter try to stop you.
 
-v2.5 rewrites v2.4's code from scratch for the make.fun transcript gate
+v2.6 rewrites v2.5's code from scratch for the make.fun transcript gate
 (30%+ authored lines). The game is unchanged — the same missions, the same
 city, the same screenshots — only the code is new. City layout, traffic,
 pedestrians, missions, weapons, fares and coins all behave exactly as before;
-the seeded rng streams were checked identical against v2.4 before the retake.
+the seeded rng streams were checked identical against v2.5 before the retake.
 
 v2.1 fixed the three things the v2 screenshots showed were wrong: the police
 helicopter is now police-white with a flashing light bar, so it reads against
@@ -25,15 +25,15 @@ a camera fill light and a live muzzle flash (no more dark blob).
 
 ## Inside the game
 
-- **A city to explore on foot and by car** — a grid of streets, the Coral Strip
-  beachfront, the Marina pier with its boats, the Coral Wheel Ferris wheel, Old
-  Town, Palm Heights, the Docks and Sunset Point, all at golden hour. Buildings
-  have textured facades with lit windows, ground-floor shops with awnings and
-  neon signs, billboards, traffic lights, street lamps, benches, bus stops and
-  beach umbrellas.
+- **A city to explore on foot and by car** — a street grid, the Coral Strip
+  beachfront, the Marina pier and its boats, the Coral Wheel Ferris wheel, Old
+  Town, Palm Heights, the Docks and Sunset Point, all at golden hour. Facades
+  carry textures and lit windows, ground-floor shops wear awnings and neon
+  signs, and the streets are dressed with billboards, traffic lights, street
+  lamps, benches, bus stops and beach umbrellas.
 - **Traffic and pedestrians** — cars loop the road grid (sedans, taxis, vans,
   trucks, sports cars and city buses, each with a visible driver), while walkers
-  fill the sidewalks and flee gunfire.
+  crowd the sidewalks and run from gunfire.
 - **Stealable cars** — walk up to any traffic car, press **E**, and it is yours.
   The driver runs; the cops notice.
 - **Weapons** — a pistol, SMG, rifle and shotgun, each with a real silhouette:
@@ -105,6 +105,8 @@ sound names are original; nothing is taken from any commercial game.
 
 ## Version history
 
+- v2.6 — full from-scratch code rewrite of v2.5 (same game, no new features),
+  re-recorded for the transcript gate.
 - v2.5 — full from-scratch code rewrite of v2.4 (same game, no new features),
   re-recorded for the transcript gate.
 - v2.4 — full from-scratch code rewrite of v2.3 (same game, no new features).

@@ -1,15 +1,39 @@
-// Procedural audio for CORAL HEAT v2.5: no audio files, every sound is
+// Procedural audio for CORAL HEAT v2.6: no audio files, every sound is
 // synthesized with WebAudio. Engine hum, police siren, gunshots, UI blips
 // and three radio stations of sequenced synth music. Safe to call before any
 // user gesture: the context is created lazily and everything no-ops while it
-// is suspended. v2.5 is a from-scratch rewrite of v2.4's audio.js: same
+// is suspended. v2.6 is a from-scratch rewrite of v2.5's audio.js: same
 // stations, same mix, same one-shots, written as new code. The sequencer is
 // split into one helper per layer now (bass, pad, lead, hat), and the
 // note-sequence one-shots share a single jingle helper.
 const STATIONS = [
-  { name: 'CORAL FM 92.1', track: 'Sunset Drive — The Palms', bpm: 96, root: 220.00, scale: [0, 3, 5, 7, 10], wave: 'triangle', bass: true },
-  { name: 'HEATWAVE 88', track: 'Neon Pursuit — Vex Marlow', bpm: 128, root: 164.81, scale: [0, 2, 3, 7, 8, 10], wave: 'sawtooth', bass: true },
-  { name: 'MARINA NIGHTS', track: 'Low Tide — Ana Solis', bpm: 76, root: 196.00, scale: [0, 4, 5, 7, 11], wave: 'sine', bass: false },
+  {
+    name: 'CORAL FM 92.1',
+    track: 'Sunset Drive — The Palms',
+    bpm: 96,
+    root: 220.00,
+    scale: [0, 3, 5, 7, 10],
+    wave: 'triangle',
+    bass: true,
+  },
+  {
+    name: 'HEATWAVE 88',
+    track: 'Neon Pursuit — Vex Marlow',
+    bpm: 128,
+    root: 164.81,
+    scale: [0, 2, 3, 7, 8, 10],
+    wave: 'sawtooth',
+    bass: true,
+  },
+  {
+    name: 'MARINA NIGHTS',
+    track: 'Low Tide — Ana Solis',
+    bpm: 76,
+    root: 196.00,
+    scale: [0, 4, 5, 7, 11],
+    wave: 'sine',
+    bass: false,
+  },
 ];
 
 // The lead melody walk, one entry per 16th step (-1 = rest).
@@ -17,10 +41,13 @@ const LEAD_WALK = [0, -1, 2, -1, 5, -1, 3, -1, 7, -1, 5, -1, 3, 2, -1, 0];
 const CHORD_STEPS = [0, 3, 7, 10];
 const PAD_TONES = [0, 3, 7];
 
-const MASTER_VOLUME = 0.9;
-const MUSIC_VOLUME = 0.16;
-const MUSIC_VOLUME_DUCKED = 0.09;
-const SFX_VOLUME = 0.5;
+// One place for the mix levels.
+const MIX = {
+  master: 0.9,
+  music: 0.16,
+  musicDucked: 0.09,
+  sfx: 0.5,
+};
 
 export class RadioAudio {
   constructor() {
@@ -42,14 +69,14 @@ export class RadioAudio {
   }
 
   // --- context + buses ------------------------------------------------------
-  newOsc(type, pitch) {
+  makeOscillator(type, pitch) {
     const osc = this.ctx.createOscillator();
     osc.type = type;
     osc.frequency.value = pitch;
     return osc;
   }
 
-  newGain(value) {
+  makeGainNode(value) {
     const gain = this.ctx.createGain();
     gain.gain.value = value;
     return gain;
@@ -61,11 +88,11 @@ export class RadioAudio {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
       this.ctx = new AC();
-      this.master = this.newGain(MASTER_VOLUME);
+      this.master = this.makeGainNode(MIX.master);
       this.master.connect(this.ctx.destination);
-      this.musicGain = this.newGain(MUSIC_VOLUME);
+      this.musicGain = this.makeGainNode(MIX.music);
       this.musicGain.connect(this.master);
-      this.sfxGain = this.newGain(SFX_VOLUME);
+      this.sfxGain = this.makeGainNode(MIX.sfx);
       this.sfxGain.connect(this.master);
       return true;
     } catch {
@@ -85,11 +112,12 @@ export class RadioAudio {
 
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : MASTER_VOLUME;
+    if (this.master) this.master.gain.value = m ? 0 : MIX.master;
   }
 
   setStation(i) {
-    this.station = ((i % STATIONS.length) + STATIONS.length) % STATIONS.length;
+    const count = STATIONS.length;
+    this.station = ((i % count) + count) % count;
     this.step = 0;
     return STATIONS[this.station];
   }
@@ -98,9 +126,9 @@ export class RadioAudio {
 
   // --- engine: two detuned oscillators whose pitch follows speed ---
   startEngine() {
-    const oscA = this.newOsc('sawtooth', 55);
-    const oscB = this.newOsc('square', 27.5);
-    const gain = this.newGain(0.0);
+    const oscA = this.makeOscillator('sawtooth', 55);
+    const oscB = this.makeOscillator('square', 27.5);
+    const gain = this.makeGainNode(0.0);
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = 420;
@@ -127,10 +155,10 @@ export class RadioAudio {
 
   // --- police siren: slow two-tone wail, gain follows wanted level ---
   startSiren() {
-    const osc = this.newOsc('sine', 720);
-    const gain = this.newGain(0.0);
-    const wobble = this.newOsc('square', 0.55);
-    const depth = this.newGain(180);
+    const osc = this.makeOscillator('sine', 720);
+    const gain = this.makeGainNode(0.0);
+    const wobble = this.makeOscillator('square', 0.55);
+    const depth = this.makeGainNode(180);
     wobble.connect(depth);
     depth.connect(osc.frequency);
     osc.connect(gain);
@@ -148,7 +176,7 @@ export class RadioAudio {
     this.sirenGain.gain.setTargetAtTime(gain, t, 0.3);
     // Duck the radio under a 3+ star chase so the siren cuts through.
     if (this.musicGain) {
-      const music = wanted >= 3 ? MUSIC_VOLUME_DUCKED : MUSIC_VOLUME;
+      const music = wanted >= 3 ? MIX.musicDucked : MIX.music;
       this.musicGain.gain.setTargetAtTime(music, t, 0.5);
     }
   }
@@ -193,15 +221,18 @@ export class RadioAudio {
     if (sixteenth !== 0 && sixteenth !== 8) return;
     for (const tone of PAD_TONES) {
       const semitone = station.scale[tone % station.scale.length] + chordRoot;
-      this.note(station.root * Math.pow(2, semitone / 12) / 2, time, stepDur * 8, 'triangle', 0.10);
+      const freq = station.root * Math.pow(2, semitone / 12) / 2;
+      this.note(freq, time, stepDur * 8, 'triangle', 0.10);
     }
   }
 
   playLead(station, sixteenth, chordRoot, time, stepDur) {
     const degree = LEAD_WALK[sixteenth];
     if (degree < 0) return;
-    const semitone = station.scale[degree % station.scale.length] + 12 * Math.floor(degree / station.scale.length) + chordRoot;
-    this.note(station.root * Math.pow(2, semitone / 12), time, stepDur * 1.8, station.wave, 0.16);
+    const scaleLen = station.scale.length;
+    const semitone = station.scale[degree % scaleLen] + 12 * Math.floor(degree / scaleLen) + chordRoot;
+    const freq = station.root * Math.pow(2, semitone / 12);
+    this.note(freq, time, stepDur * 1.8, station.wave, 0.16);
   }
 
   // The note envelope: attack to full volume in 10ms, then an exponential
@@ -213,8 +244,8 @@ export class RadioAudio {
   }
 
   note(pitch, time, dur, type, vol) {
-    const osc = this.newOsc(type, pitch);
-    const gain = this.newGain(0);
+    const osc = this.makeOscillator(type, pitch);
+    const gain = this.makeGainNode(0);
     this.applyEnvelope(gain.gain, time, dur, vol);
     osc.connect(gain);
     gain.connect(this.musicGain);
@@ -234,7 +265,7 @@ export class RadioAudio {
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'highpass';
     filter.frequency.value = pitch;
-    const gain = this.newGain(vol);
+    const gain = this.makeGainNode(vol);
     source.connect(filter);
     filter.connect(gain);
     gain.connect(this.musicGain);
@@ -250,8 +281,8 @@ export class RadioAudio {
   // jingle, the shop cha-ching and the coin pickup are all one shape.
   jingle(notes, gap, dur, type, vol) {
     const now = this.ctx.currentTime;
-    notes.forEach((filter, i) => {
-      this.note(filter, now + i * gap, dur, type, vol);
+    notes.forEach((pitch, i) => {
+      this.note(pitch, now + i * gap, dur, type, vol);
     });
   }
 
