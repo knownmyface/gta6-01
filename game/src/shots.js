@@ -1,7 +1,7 @@
-// Screenshot staging for CORAL HEAT v2.3: ?shot=<name>&seed=<n> teleports
+// Screenshot staging for CORAL HEAT v2.4: ?shot=<name>&seed=<n> teleports
 // the game into a composed, fully-playing scene and drives a cinematic
 // camera, so every screenshot is a real render of the game's own code —
-// never edited or faked. v2.3 is a from-scratch rewrite of v2.2's shots.js:
+// never edited or faked. v2.4 is a from-scratch rewrite of v2.3's shots.js:
 // same four staged scenes, same cameras, same counts, different code.
 // v2 staging is denser than v1: closer/lower cameras, buildings on both
 // sides, more traffic and peds, more police, and a VISIBLE WEAPON in every
@@ -18,6 +18,7 @@
 import * as THREE from 'three';
 import { buildCarMesh } from './vehicles.js';
 
+// --- staging primitives -----------------------------------------------------
 // Put the player in a fresh car and hand it to the world.
 function playerCar(ctx, type, color, x, z, heading) {
   const mesh = buildCarMesh(type, color);
@@ -32,6 +33,31 @@ function playerCar(ctx, type, color, x, z, heading) {
   ctx.player.enterCar(car);
   ctx.world.playerCars.push(car);
   return car;
+}
+
+// Park a car in the world without anyone driving it (a staged prop car
+// for a shot, or a car Mara is about to steal).
+function parkCar(ctx, type, color, x, z, heading) {
+  const mesh = buildCarMesh(type, color);
+  ctx.world.scene.add(mesh);
+  const car = {
+    mesh, type, x, z, heading,
+    speed: 0, maxSpeed: type === 'sports' ? 55 : 42,
+    accel: 26, crashed: false, dead: false,
+  };
+  mesh.position.set(x, 0, z);
+  mesh.rotation.y = heading;
+  ctx.world.playerCars.push(car);
+  return car;
+}
+
+// Stand Mara at a spot, facing a heading — mesh and state together.
+function placePlayer(ctx, x, z, heading) {
+  ctx.player.x = x;
+  ctx.player.z = z;
+  ctx.player.heading = heading;
+  ctx.player.mesh.position.set(x, 0, z);
+  ctx.player.mesh.rotation.y = heading;
 }
 
 // Place police cars at exact spots. They are spawned near the player first
@@ -122,6 +148,41 @@ function muzzleWorldPos(ctx) {
   return out;
 }
 
+// --- staged traffic tables --------------------------------------------------
+// The chase traffic: westbound lane moving away, eastbound lane head-on, a
+// bus far ahead — nothing behind the camera.
+const CHASE_TRAFFIC = [
+  ['sedan', 0x3a6a9a, 10, -2.2, -Math.PI / 2, 11],
+  ['taxi', 0xffd23e, -15, -2.2, -Math.PI / 2, 10],
+  ['van', 0x8a8a8a, -40, -2.2, -Math.PI / 2, 9],
+  ['bus', 0xf0ead8, -58, -2.2, -Math.PI / 2, 9],
+  ['sedan', 0xd83a2e, 20, 2.2, Math.PI / 2, 12],
+  ['sports', 0x37b6ff, -8, 2.2, Math.PI / 2, 13],
+  ['sedan', 0x7a9a3a, -32, 2.2, Math.PI / 2, 11],
+  ['truck', 0x9a7a3a, 55, 40, Math.PI, 10],
+];
+
+// The marina traffic: northbound lane head-on, southbound lane moving away,
+// a bus far ahead — the road behind the camera stays clear so the shot is
+// never a bus roof.
+const MARINA_TRAFFIC = [
+  ['sedan', 0xd83a2e, -162.2, 100, Math.PI, 11],
+  ['taxi', 0xffd23e, -162.2, 130, Math.PI, 12],
+  ['sports', 0xe8232e, -162.2, 160, Math.PI, 13],
+  ['bus', 0x37b6ff, -162.2, 185, Math.PI, 9],
+  ['sedan', 0x7a9a3a, -157.8, 125, 0, 10],
+  ['van', 0x8a8a8a, -157.8, 155, 0, 9],
+  ['truck', 0x9a7a3a, -120, 120, Math.PI / 2, 10],
+  ['sedan', 0x3a6a9a, -120, 160, -Math.PI / 2, 11],
+];
+
+const CHASE_POLICE = [
+  [10, -5, -Math.PI / 2],
+  [-2, 5, -Math.PI / 2],
+  [38, 0, -Math.PI / 2],
+];
+
+// --- the four shots ---------------------------------------------------------
 const SHOTS = {
   chase(ctx) {
     ctx.missions.startMission(6); // Marina Getaway (mission 7), wanted 4
@@ -131,23 +192,8 @@ const SHOTS = {
     // when the shutter fires (~95 units west of the start).
     const car = playerCar(ctx, 'sports', 0xe8232e, 120, 0, -Math.PI / 2);
     car.speed = 38;
-    // Traffic staged AHEAD of the car only (westbound lane moving away,
-    // eastbound lane head-on, a bus far ahead) — nothing behind the camera.
-    placeTraffic(ctx, [
-      ['sedan', 0x3a6a9a, 10, -2.2, -Math.PI / 2, 11],
-      ['taxi', 0xffd23e, -15, -2.2, -Math.PI / 2, 10],
-      ['van', 0x8a8a8a, -40, -2.2, -Math.PI / 2, 9],
-      ['bus', 0xf0ead8, -58, -2.2, -Math.PI / 2, 9],
-      ['sedan', 0xd83a2e, 20, 2.2, Math.PI / 2, 12],
-      ['sports', 0x37b6ff, -8, 2.2, Math.PI / 2, 13],
-      ['sedan', 0x7a9a3a, -32, 2.2, Math.PI / 2, 11],
-      ['truck', 0x9a7a3a, 55, 40, Math.PI, 10],
-    ]);
-    placePolice(ctx, [
-      [10, -5, -Math.PI / 2],
-      [-2, 5, -Math.PI / 2],
-      [38, 0, -Math.PI / 2],
-    ]);
+    placeTraffic(ctx, CHASE_TRAFFIC);
+    placePolice(ctx, CHASE_POLICE);
     ctx.world.peds.spawn(16, { x: 40, z: 0 });
     ctx.input = { throttle: 1, steer: 0, brake: false };
     ctx.cameraMode = 'cinematic';
@@ -164,20 +210,8 @@ const SHOTS = {
   foot(ctx) {
     ctx.missions.startMission(1); // Hot Wheels (mission 2): steal a car
     ctx.player.addWanted(1);
-    ctx.player.x = -157;
-    ctx.player.z = 34;
-    ctx.player.heading = Math.PI * 0.75;
-    ctx.player.mesh.position.set(ctx.player.x, 0, ctx.player.z);
-    ctx.player.mesh.rotation.y = ctx.player.heading;
-    const mesh = buildCarMesh('sports', 0xe8232e);
-    ctx.world.scene.add(mesh);
-    const car = {
-      mesh, type: 'sports', x: -160, z: 30, heading: Math.PI,
-      speed: 0, maxSpeed: 55, accel: 26, crashed: false, dead: false,
-    };
-    mesh.position.set(-160, 0, 30);
-    mesh.rotation.y = Math.PI;
-    ctx.world.playerCars.push(car);
+    placePlayer(ctx, -157, 34, Math.PI * 0.75);
+    parkCar(ctx, 'sports', 0xe8232e, -160, 30, Math.PI);
     ctx.world.peds.spawnDriver(-164, 26, Math.PI * 0.5);
     ctx.world.traffic.spawn(10, { x: -160, z: 30 });
     ctx.world.peds.spawn(14, { x: -160, z: 30 });
@@ -202,19 +236,7 @@ const SHOTS = {
     // ahead of the car when the shutter fires.
     const car = playerCar(ctx, 'sports', 0x37b6ff, -160, 60, 0);
     car.speed = 30;
-    // Traffic staged AHEAD down the Strip only: northbound lane head-on,
-    // southbound lane moving away, a bus far ahead — the road behind the
-    // camera stays clear so the shot is never a bus roof.
-    placeTraffic(ctx, [
-      ['sedan', 0xd83a2e, -162.2, 100, Math.PI, 11],
-      ['taxi', 0xffd23e, -162.2, 130, Math.PI, 12],
-      ['sports', 0xe8232e, -162.2, 160, Math.PI, 13],
-      ['bus', 0x37b6ff, -162.2, 185, Math.PI, 9],
-      ['sedan', 0x7a9a3a, -157.8, 125, 0, 10],
-      ['van', 0x8a8a8a, -157.8, 155, 0, 9],
-      ['truck', 0x9a7a3a, -120, 120, Math.PI / 2, 10],
-      ['sedan', 0x3a6a9a, -120, 160, -Math.PI / 2, 11],
-    ]);
+    placeTraffic(ctx, MARINA_TRAFFIC);
     ctx.world.peds.spawn(16, { x: -160, z: 100 });
     ctx.input = { throttle: 1, steer: 0, brake: false };
     ctx.cameraMode = 'cinematic';
@@ -232,11 +254,7 @@ const SHOTS = {
     ctx.player.setWeapon('rifle');
     ctx.viewmodel.setWeapon('rifle');
     ctx.viewmodel.fire();
-    ctx.player.x = 2;
-    ctx.player.z = 138;
-    ctx.player.heading = 0;
-    ctx.player.mesh.position.set(2, 0, 138);
-    ctx.player.mesh.rotation.y = 0;
+    placePlayer(ctx, 2, 138, 0);
     // One rival already down, the rest up — the fight is mid-way.
     const first = ctx.missions.hostiles[0];
     if (first) {

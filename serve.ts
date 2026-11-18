@@ -1,7 +1,7 @@
 // A tiny static server for game/ (Node 22, standard library only), so an
 // entry can be played locally without a build step: `node serve.ts` serves
-// game/ on http://localhost:8080 (or $PORT, or --port <n>). v2.3 is a
-// from-scratch rewrite of v2.2's serve.ts: same routes, same MIME types,
+// game/ on http://localhost:8080 (or $PORT, or --port <n>). v2.4 is a
+// from-scratch rewrite of v2.3's serve.ts: same routes, same MIME types,
 // same path guard, different code. It sends the MIME types a browser game
 // needs, refuses any path outside game/, and otherwise does nothing clever:
 // this is a development convenience, not a web server for the internet.
@@ -46,6 +46,32 @@ function pickPort(): number {
   return 8080;
 }
 
+// Resolve a request path to a file under game/. Returns the file path, or
+// 'forbidden' when the path escapes the root, or 'not-found' when it is not
+// a plain file inside the root.
+function resolveGameFile(pathname: string): string | 'forbidden' | 'not-found' {
+  const file = resolve(join(gameRoot, normalize(pathname)));
+  if (file !== gameRoot && !file.startsWith(gameRoot + sep)) return 'forbidden';
+  let stats;
+  try {
+    stats = statSync(file);
+  } catch {
+    return 'not-found';
+  }
+  if (!stats.isFile()) return 'not-found';
+  return file;
+}
+
+function sendFile(response, file: string): void {
+  const size = statSync(file).size;
+  response.writeHead(200, {
+    'content-type': MIME_TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': size,
+    'cache-control': 'no-store',
+  });
+  createReadStream(file).pipe(response);
+}
+
 const port = pickPort();
 
 createServer((request, response) => {
@@ -58,26 +84,16 @@ createServer((request, response) => {
     return;
   }
   if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolve(join(gameRoot, normalize(pathname)));
-  if (file !== gameRoot && !file.startsWith(gameRoot + sep)) {
+  const file = resolveGameFile(pathname);
+  if (file === 'forbidden') {
     response.writeHead(403).end('forbidden');
     return;
   }
-  let size: number;
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
-  } catch {
+  if (file === 'not-found') {
     response.writeHead(404).end('not found');
     return;
   }
-  response.writeHead(200, {
-    'content-type': MIME_TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
-    'cache-control': 'no-store',
-  });
-  createReadStream(file).pipe(response);
+  sendFile(response, file);
 }).listen(port, '127.0.0.1', () => {
   console.log(`game/ is on http://localhost:${port}`);
   console.log(`shots: http://localhost:${port}/?shot=chase&seed=7  (chase | foot | marina | mission)`);

@@ -1,11 +1,13 @@
-// Combat for CORAL HEAT v2.3: hitscan shooting on foot, tracers, muzzle
+// Combat for CORAL HEAT v2.4: hitscan shooting on foot, tracers, muzzle
 // flash, hostiles and police shooting back, health, and getting busted.
 // Shots go through the arsenal — damage, pellets, spread and fire rate come
 // from the equipped weapon, and every shot lights the viewmodel + the gun in
-// Mara's hand. v2.3 is a from-scratch rewrite of v2.2's combat.js: same
-// shooting, same return fire, same busted rules, different code.
+// Mara's hand. v2.4 is a from-scratch rewrite of v2.3's combat.js: same
+// shooting, same return fire, same busted rules, different code. The pellet
+// loop is split into a per-pellet resolver now, and the target list is built
+// by one builder per target kind.
 // Spread and return fire use Math.random, not the seeded stream — the draws
-// happen in the same order as v2.2, so the odds stay identical.
+// happen in the same order as v2.3, so the odds stay identical.
 import * as THREE from 'three';
 import { clamp } from './rng.js';
 import { makeFlashSprite } from './weapons.js';
@@ -25,6 +27,19 @@ function makeLine(from, to, opacity) {
   return new THREE.Line(geo, new THREE.LineBasicMaterial({
     color: TRACER_COLOR, transparent: true, opacity,
   }));
+}
+
+// One ray against one target: returns the distance along the ray when the
+// target is hit, or null when the ray misses or passes behind.
+function rayHitTarget(ox, oz, dx, dz, t, maxT) {
+  if (!t.alive()) return null;
+  const rx = t.x - ox;
+  const rz = t.z - oz;
+  const along = rx * dx + rz * dz;
+  if (along < 0 || along > maxT) return null;
+  const perp = Math.abs(rx * dz - rz * dx);
+  if (perp >= (t.radius ?? 1.2)) return null;
+  return along;
 }
 
 export class Combat {
@@ -61,6 +76,25 @@ export class Combat {
     return out;
   }
 
+  // Fire one pellet along a spread heading; returns the target it hit and
+  // the distance it flew, or null when it hit nothing.
+  firePellet(ox, oz, heading, w, targets) {
+    const spreadHeading = heading + (Math.random() - 0.5) * 2 * w.spread;
+    const dx = Math.sin(spreadHeading);
+    const dz = Math.cos(spreadHeading);
+    let best = null;
+    let bestT = w.range;
+    for (const t of targets) {
+      const along = rayHitTarget(ox, oz, dx, dz, t, bestT);
+      if (along === null) continue;
+      best = t;
+      bestT = along;
+    }
+    if (!best) return null;
+    best.hit(w.damage);
+    return { target: best, dist: bestT };
+  }
+
   // Player shoots from their position along their heading (mouse aim
   // adjusts it). Returns the target hit, or null.
   playerShoot(player, aimHeading, targets) {
@@ -74,27 +108,11 @@ export class Combat {
     let anyHit = null;
     let farT = w.range;
     for (let p = 0; p < w.pellets; p++) {
-      const spreadHeading = aimHeading + (Math.random() - 0.5) * 2 * w.spread;
-      const dx = Math.sin(spreadHeading);
-      const dz = Math.cos(spreadHeading);
-      let best = null;
-      let bestT = w.range;
-      for (const t of targets) {
-        if (!t.alive()) continue;
-        const rx = t.x - ox;
-        const rz = t.z - oz;
-        const along = rx * dx + rz * dz;
-        if (along < 0 || along > bestT) continue;
-        const perp = Math.abs(rx * dz - rz * dx);
-        if (perp < (t.radius ?? 1.2)) {
-          best = t;
-          bestT = along;
-        }
-      }
-      if (!best) continue;
-      best.hit(w.damage);
-      anyHit = best;
-      farT = Math.min(farT, bestT);
+      const shot = this.firePellet(ox, oz, aimHeading, w, targets);
+      if (shot === null) continue;
+      // The tracer stops at the closest hit across all pellets.
+      farT = Math.min(farT, shot.dist);
+      anyHit = shot.target;
     }
     const dx = Math.sin(aimHeading);
     const dz = Math.cos(aimHeading);
@@ -115,8 +133,9 @@ export class Combat {
     this.tracers.push({ line, life: TRACER_LIFE });
   }
 
-  update(dt, player, missions, police, peds) {
-    this.shootCooldown = Math.max(0, this.shootCooldown - dt);
+  // Age the tracers out: a tracer lives 0.09s, then its line is removed
+  // from the scene and its geometry disposed.
+  cleanTracers(dt) {
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const t = this.tracers[i];
       t.life -= dt;
@@ -125,12 +144,18 @@ export class Combat {
       t.line.geometry.dispose();
       this.tracers.splice(i, 1);
     }
+  }
+
+  update(dt, player, missions, police, peds) {
+    this.shootCooldown = Math.max(0, this.shootCooldown - dt);
+    this.cleanTracers(dt);
     this.hostileFire(dt, player, missions);
     this.policeFire(dt, player, police);
     // Slow health regen out of danger.
     if (player.wanted === 0 && player.health < 100 && player.health > 0) {
       player.health = Math.min(100, player.health + HEALTH_REGEN * dt);
     }
+    void peds;
   }
 
   // Hostiles shoot back at the player.
@@ -184,8 +209,8 @@ export class Combat {
     this.onBusted?.(cause);
   }
 
-  // Build the target list the player's shots can hit this frame.
-  buildTargets(player, missions, police, peds) {
+  // --- target builders: one per kind the player's shots can hit ---
+  hostileTargets(player, missions) {
     const targets = [];
     for (const h of missions.hostiles) {
       if (h.dead) continue;
@@ -202,6 +227,11 @@ export class Combat {
         },
       });
     }
+    return targets;
+  }
+
+  policeTargets(player, police) {
+    const targets = [];
     for (const c of police.cars) {
       targets.push({
         x: c.x, z: c.z, radius: 2.2, alive: () => !c.dead,
@@ -215,6 +245,11 @@ export class Combat {
         },
       });
     }
+    return targets;
+  }
+
+  pedTargets(player, peds) {
+    const targets = [];
     for (const p of peds.peds) {
       if (p.dead) continue;
       targets.push({
@@ -227,5 +262,14 @@ export class Combat {
       });
     }
     return targets;
+  }
+
+  // Build the target list the player's shots can hit this frame.
+  buildTargets(player, missions, police, peds) {
+    return [
+      ...this.hostileTargets(player, missions),
+      ...this.policeTargets(player, police),
+      ...this.pedTargets(player, peds),
+    ];
   }
 }

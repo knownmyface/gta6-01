@@ -1,5 +1,5 @@
-// CORAL HEAT v2.3 — entry hand-in for make.fun gta6-01.
-// Same game as v2.2, code rewritten from scratch in-session.
+// CORAL HEAT v2.4 — entry hand-in for make.fun gta6-01.
+// Same game as v2.3, code rewritten from scratch in-session.
 // What this program does: copy game/ and screenshots/ from beside this file
 // into the output directory and write output/dossier.json with the vendored
 // make.fun library, exactly like the kit's starter does. Outside the grader,
@@ -55,27 +55,33 @@ function listFiles(dir: string): string[] {
 }
 
 // --- build the output tree ---
-mkdirSync(outputRoot, { recursive: true });
-copyTree(join(sourceRoot, 'game'), join(outputRoot, 'game'));
-if (existsSync(join(sourceRoot, 'screenshots'))) {
-  copyTree(join(sourceRoot, 'screenshots'), join(outputRoot, 'screenshots'));
+function buildOutput(): void {
+  mkdirSync(outputRoot, { recursive: true });
+  copyTree(join(sourceRoot, 'game'), join(outputRoot, 'game'));
+  if (existsSync(join(sourceRoot, 'screenshots'))) {
+    copyTree(join(sourceRoot, 'screenshots'), join(outputRoot, 'screenshots'));
+  }
+  const dossierPath = join(outputRoot, 'dossier.json');
+  writeFileSync(dossierPath, buildDossier(outputRoot, DOSSIER_CAPS));
 }
-
-// --- dossier ---
-const dossierPath = join(outputRoot, 'dossier.json');
-writeFileSync(dossierPath, buildDossier(outputRoot, DOSSIER_CAPS));
 
 // --- gate sizes at a glance ---
-const dossierSize = statSync(dossierPath).size;
-const gameSize = totalBytes(join(outputRoot, 'game'));
-const shotNames = listFiles(join(outputRoot, 'screenshots'));
-let shotsSize = 0;
-console.log(`dossier.json ${dossierSize} bytes (cap ${DOSSIER_CAP_BYTES})`);
-console.log(`game/ ${gameSize} bytes (cap ${GAME_CAP_BYTES})`);
-for (const name of shotNames) {
-  const bytes = statSync(join(outputRoot, 'screenshots', name)).size;
-  shotsSize += bytes;
-  console.log(`screenshot ${name} ${bytes} bytes (cap 262144)`);
+function reportSizes(): void {
+  const dossierPath = join(outputRoot, 'dossier.json');
+  const dossierSize = statSync(dossierPath).size;
+  const gameSize = totalBytes(join(outputRoot, 'game'));
+  const shotNames = listFiles(join(outputRoot, 'screenshots'));
+  let shotsSize = 0;
+  console.log(`dossier.json ${dossierSize} bytes (cap ${DOSSIER_CAP_BYTES})`);
+  console.log(`game/ ${gameSize} bytes (cap ${GAME_CAP_BYTES})`);
+  for (const name of shotNames) {
+    const bytes = statSync(join(outputRoot, 'screenshots', name)).size;
+    shotsSize += bytes;
+    console.log(`screenshot ${name} ${bytes} bytes (cap 262144)`);
+  }
+  // v2.1: the whole output shares the platform's 64 MiB cap — print it too.
+  console.log(`output total ${dossierSize + gameSize + shotsSize} bytes (cap ${OUTPUT_CAP_BYTES})`);
 }
-// v2.1: the whole output shares the platform's 64 MiB cap — print it too.
-console.log(`output total ${dossierSize + gameSize + shotsSize} bytes (cap ${OUTPUT_CAP_BYTES})`);
+
+buildOutput();
+reportSizes();

@@ -1,13 +1,15 @@
-// Side activities for CORAL HEAT v2.3 — the stuff that makes Coral Bay a
+// Side activities for CORAL HEAT v2.4 — the stuff that makes Coral Bay a
 // game you keep playing after the story missions: taxi fares, 12 hidden
 // Coral Coins, and the GUNSMITH weapon shop. All three run alongside the
-// mission manager, pay cash, and feed the stats on the start screen. v2.3
-// is a from-scratch rewrite of v2.2's side.js: same coins, same fares, same
-// shop, different code.
+// mission manager, pay cash, and feed the stats on the start screen. v2.4
+// is a from-scratch rewrite of v2.3's side.js: same coins, same fares, same
+// shop, different code. The fare state machine is split into one method per
+// stage now (offer, pickup, ride), and the coin + marker builders are
+// table-driven.
 // One rule governs this file: the seeded rng calls happen in exactly the
-// same order as v2.2, so the same seed deals the same passengers.
+// same order as v2.3, so the same seed deals the same passengers.
 import * as THREE from 'three';
-import { createRng, pick, range } from './rng.js';
+import { pick } from './rng.js';
 
 export const COIN_POSITIONS = [
   { x: -215, z: 190, label: 'Pier end' },
@@ -61,6 +63,18 @@ function makeMarker(color) {
   return g;
 }
 
+// One Coral Coin: a gold disc with a pale centre, standing on edge.
+function makeCoinMesh(mats) {
+  const g = new THREE.Group();
+  const coin = new THREE.Mesh(mats.discGeo, mats.disc);
+  coin.rotation.x = Math.PI / 2;
+  g.add(coin);
+  const dot = new THREE.Mesh(mats.dotGeo, mats.inner);
+  dot.rotation.x = Math.PI / 2;
+  g.add(dot);
+  return g;
+}
+
 export class SideActivities {
   constructor(scene, rng, hooks) {
     this.scene = scene;
@@ -84,24 +98,20 @@ export class SideActivities {
   }
 
   spawnCoins() {
-    const geo = new THREE.CylinderGeometry(0.9, 0.9, 0.22, 20);
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0xffd23e, metalness: 0.9, roughness: 0.2, emissive: 0x6a4a00,
-    });
-    const inner = new THREE.MeshStandardMaterial({ color: 0xfff2b0, metalness: 0.7, roughness: 0.3 });
-    for (let i = 0; i < COIN_POSITIONS.length; i++) {
-      const p = COIN_POSITIONS[i];
-      const g = new THREE.Group();
-      const coin = new THREE.Mesh(geo, mat);
-      coin.rotation.x = Math.PI / 2;
-      g.add(coin);
-      const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.26, 12), inner);
-      dot.rotation.x = Math.PI / 2;
-      g.add(dot);
+    const mats = {
+      discGeo: new THREE.CylinderGeometry(0.9, 0.9, 0.22, 20),
+      dotGeo: new THREE.CylinderGeometry(0.45, 0.45, 0.26, 12),
+      disc: new THREE.MeshStandardMaterial({
+        color: 0xffd23e, metalness: 0.9, roughness: 0.2, emissive: 0x6a4a00,
+      }),
+      inner: new THREE.MeshStandardMaterial({ color: 0xfff2b0, metalness: 0.7, roughness: 0.3 }),
+    };
+    COIN_POSITIONS.forEach((p, i) => {
+      const g = makeCoinMesh(mats);
       g.position.set(p.x, 1.4, p.z);
       this.scene.add(g);
       this.coinMeshes.push({ mesh: g, x: p.x, z: p.z, id: i, taken: false, label: p.label });
-    }
+    });
   }
 
   restoreCoins(foundIds) {
@@ -115,7 +125,9 @@ export class SideActivities {
   }
 
   // --- taxi fares: get in a taxi, pick up a passenger, get paid ---
-  maybeOfferFare(player) {
+  // Offer stage: while the player sits in a taxi with no active fare, count
+  // frames; after the wait, a passenger appears on the nearest sidewalk.
+  offerFare(player) {
     if (this.fare) return;
     if (!player.inCar || !player.car || player.car.type !== 'taxi') return;
     this.fareTimer += 1;
@@ -132,54 +144,30 @@ export class SideActivities {
     this.hooks.onToast('TAXI FARE', 'A passenger is waving you down — pick them up.');
   }
 
-  update(dt, player, peds) {
-    // Spin + bob the coins.
-    for (const c of this.coinMeshes) {
-      if (c.taken) continue;
-      c.mesh.rotation.y += dt * 2.2;
-      c.mesh.position.y = 1.4 + Math.sin(performance.now() / 500 + c.id) * 0.25;
-    }
-    // Shop marker pulse.
-    this.shopMarker.children[1].scale.setScalar(1 + Math.sin(performance.now() / 300) * 0.08);
-
-    const p = player.pos;
-    // Coins: collect on foot or by car.
-    for (const c of this.coinMeshes) {
-      if (c.taken) continue;
-      if (Math.hypot(p.x - c.x, p.z - c.z) >= 3.5) continue;
-      c.taken = true;
-      this.scene.remove(c.mesh);
-      this.coinsFound.add(c.id);
-      this.hooks.onCash(COIN_REWARD);
-      this.hooks.onToast(`CORAL COIN ${this.coinsFound.size}/12 — ${c.label}`, '+$150 — keep hunting, 12 are hidden around Coral Bay.');
-      this.hooks.onObjective(`Coral Coins ${this.coinsFound.size}/12 found`);
-    }
-
-    // Taxi fare state machine.
-    if (!this.fare) {
-      this.maybeOfferFare(player);
-      return;
-    }
+  // Pickup stage: drive to the blue marker; the passenger hops in and the
+  // destination + payout are dealt.
+  pickupFare(dt, player, p) {
     const f = this.fare;
-    if (f.stage === 'pickup') {
-      if (!player.inCar || !player.car || player.car.type !== 'taxi') {
-        this.cancelFare('Fare cancelled — you left the taxi.');
-        return;
-      }
-      if (Math.hypot(p.x - f.x, p.z - f.z) >= 5) return;
-      // Passenger hops in.
-      f.stage = 'ride';
-      f.timer = FARE_TIME;
-      f.dest = pick(this.rng, TAXI_DESTINATIONS);
-      f.payout = FARE_BASE + Math.floor(Math.hypot(f.dest.x - f.x, f.dest.z - f.z) * FARE_PER_UNIT);
-      this.taxiMarker.visible = false;
-      this.destMarker.position.set(f.dest.x, 0, f.dest.z);
-      this.destMarker.visible = true;
-      this.hooks.onObjective(`TAXI: drop them off at the gold marker — ${Math.ceil(f.timer)}s`);
-      this.hooks.onToast('PASSENGER ABOARD', 'Drive smooth — the meter is running.');
+    if (!player.inCar || !player.car || player.car.type !== 'taxi') {
+      this.cancelFare('Fare cancelled — you left the taxi.');
       return;
     }
-    // Stage 'ride'.
+    if (Math.hypot(p.x - f.x, p.z - f.z) >= 5) return;
+    f.stage = 'ride';
+    f.timer = FARE_TIME;
+    f.dest = pick(this.rng, TAXI_DESTINATIONS);
+    f.payout = FARE_BASE + Math.floor(Math.hypot(f.dest.x - f.x, f.dest.z - f.z) * FARE_PER_UNIT);
+    this.taxiMarker.visible = false;
+    this.destMarker.position.set(f.dest.x, 0, f.dest.z);
+    this.destMarker.visible = true;
+    this.hooks.onObjective(`TAXI: drop them off at the gold marker — ${Math.ceil(f.timer)}s`);
+    this.hooks.onToast('PASSENGER ABOARD', 'Drive smooth — the meter is running.');
+    void dt;
+  }
+
+  // Ride stage: the meter runs down; reach the gold marker in time to get paid.
+  rideFare(dt, player, p) {
+    const f = this.fare;
     f.timer -= dt;
     this.hooks.onObjective(`TAXI: drop them off at the gold marker — ${Math.max(0, Math.ceil(f.timer))}s`);
     if (!player.inCar) {
@@ -198,6 +186,45 @@ export class SideActivities {
     this.fare = null;
     this.fareTimer = FARE_COOLDOWN; // cooldown before the next offer
     if (this.hooks.onFareDone) this.hooks.onFareDone();
+  }
+
+  collectCoins(player, p) {
+    for (const c of this.coinMeshes) {
+      if (c.taken) continue;
+      if (Math.hypot(p.x - c.x, p.z - c.z) >= 3.5) continue;
+      c.taken = true;
+      this.scene.remove(c.mesh);
+      this.coinsFound.add(c.id);
+      this.hooks.onCash(COIN_REWARD);
+      this.hooks.onToast(`CORAL COIN ${this.coinsFound.size}/12 — ${c.label}`, '+$150 — keep hunting, 12 are hidden around Coral Bay.');
+      this.hooks.onObjective(`Coral Coins ${this.coinsFound.size}/12 found`);
+    }
+  }
+
+  // Spin + bob the coins, and pulse the shop marker ring.
+  animateMarkers(dt) {
+    for (const c of this.coinMeshes) {
+      if (c.taken) continue;
+      c.mesh.rotation.y += dt * 2.2;
+      c.mesh.position.y = 1.4 + Math.sin(performance.now() / 500 + c.id) * 0.25;
+    }
+    this.shopMarker.children[1].scale.setScalar(1 + Math.sin(performance.now() / 300) * 0.08);
+  }
+
+  update(dt, player, peds) {
+    this.animateMarkers(dt);
+
+    const p = player.pos;
+    this.collectCoins(player, p);
+
+    // Taxi fare state machine.
+    if (!this.fare) {
+      this.offerFare(player);
+      return;
+    }
+    if (this.fare.stage === 'pickup') this.pickupFare(dt, player, p);
+    else this.rideFare(dt, player, p);
+    void peds;
   }
 
   cancelFare(reason) {

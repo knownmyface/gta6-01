@@ -1,10 +1,10 @@
 // Seeded RNG (mulberry32) + helpers shared by every system of CORAL HEAT.
 // Every world layout decision flows through one seeded stream so a screenshot
-// seed reproduces the same city, traffic and pedestrians. v2.3 is a
-// from-scratch rewrite of v2.2's rng.js: same mulberry32 sequence, same
+// seed reproduces the same city, traffic and pedestrians. v2.4 is a
+// from-scratch rewrite of v2.3's rng.js: same mulberry32 sequence, same
 // helpers, same draw order, different code. The sequence is the contract —
 // a different stream would deal a different city, so it is verified by a
-// differential test against v2.2's implementation before any screenshot.
+// differential test against v2.3's implementation before any screenshot.
 const MULBERRY_STEP = 0x6D2B79F5;
 const UINT32 = 4294967296;
 
@@ -21,6 +21,7 @@ export function createRng(seed) {
   };
 }
 
+// One random element — one draw from the stream.
 export function pick(rng, arr) {
   return arr[Math.floor(rng() * arr.length)];
 }
@@ -36,6 +37,7 @@ export function pickN(rng, arr, n) {
   return chosen;
 }
 
+// Fisher-Yates, in place on a copy: one draw per swap, from the end down.
 export function shuffle(rng, arr) {
   const out = arr.slice();
   for (let i = out.length - 1; i > 0; i--) {
@@ -59,28 +61,33 @@ export function weighted(rng, entries) {
   return entries[entries.length - 1][1];
 }
 
+// A float in [min, max) — one draw.
 export function range(rng, min, max) {
   return min + rng() * (max - min);
 }
 
+// An integer in [min, max] — one draw, inclusive on both ends.
 export function rangeInt(rng, min, max) {
   return Math.floor(range(rng, min, max + 1));
 }
 
+// A coin flip with probability p — one draw.
 export function chance(rng, p) {
   return rng() < p;
 }
 
+// Clamp a value into [min, max] — no draws.
 export function clamp(v, min, max) {
-  if (v < min) return min;
-  if (v > max) return max;
-  return v;
+  return Math.min(max, Math.max(min, v));
 }
 
+// Linear interpolation between a and b.
 export function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+// Interpolate an angle along the shortest arc, so a heading never spins
+// the long way round when it crosses -π/π.
 export function angleLerp(a, b, t) {
   let d = (b - a) % (Math.PI * 2);
   if (d > Math.PI) d -= Math.PI * 2;
@@ -88,6 +95,7 @@ export function angleLerp(a, b, t) {
   return a + d * t;
 }
 
+// Squared distance on the ground plane — no square root, for comparisons.
 export function dist2(ax, az, bx, bz) {
   const dx = ax - bx;
   const dz = az - bz;

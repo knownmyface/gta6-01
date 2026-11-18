@@ -1,16 +1,19 @@
-// Weapons for CORAL HEAT v2.3: four buyable guns with REAL silhouettes —
+// Weapons for CORAL HEAT v2.4: four buyable guns with REAL silhouettes —
 // a pistol, an SMG, a rifle and a pump shotgun, each assembled from boxes
 // and cylinders so its shape reads at a glance. One mesh builder serves
 // three places: the first-person viewmodel on the camera, the gun in Mara's
 // hand in third person, and the guns hostiles and police officers carry.
 // No model files, no network — pure procedural geometry.
-// v2.3 is a from-scratch rewrite of v2.2's weapons.js: same guns, same
-// stats, same meshes, different code.
+// v2.4 rewrites v2.3's weapons.js from scratch a second time: same guns,
+// same stats, same meshes, different code. Each gun is a table of named
+// part objects now (size, material, position, tilt), and the arsenal is
+// written as small state transitions around one ammo-state helper.
+// The part dimensions are the v2.3 ones — the silhouettes are unchanged.
 import * as THREE from 'three';
 
 // The catalogue. Every number here is gameplay: price, damage, magazine,
 // reserve, rate of fire, spread, auto, pellets, range and kick all feed the
-// combat code and the HUD, so they must match v2.2 exactly.
+// combat code and the HUD, so they must match v2.3 exactly.
 export const WEAPONS = {
   pistol: {
     id: 'pistol', key: '1', icon: '🔫', name: 'PISTOL', price: 0,
@@ -49,83 +52,87 @@ const FINISH = {
   brass: new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.9 }),
 };
 
-// Attach a box part to a gun group. `tilt` rotates around X (raked grips,
-// curved magazines); pass 0 for a straight part.
-function addBox(group, w, h, d, mat, px, py, pz, tilt = 0) {
-  const part = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  part.position.set(px, py, pz);
-  if (tilt !== 0) part.rotation.x = tilt;
-  group.add(part);
-  return part;
-}
-
-// Attach a cylinder part, laid along Z like a barrel.
-function addBarrel(group, radius, len, mat, px, py, pz) {
-  const part = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, 10), mat);
-  part.rotation.x = Math.PI / 2;
-  part.position.set(px, py, pz);
-  group.add(part);
-  return part;
-}
-
-// One builder per gun. Each builds pointing along +Z and returns the z of
-// the barrel tip, where the muzzle marker (and the flash) will sit.
-const GUN_BUILDERS = {
-  pistol(g) {
-    // Slide, barrel, raked grip, trigger guard, sights — a pistol silhouette.
-    addBox(g, 0.09, 0.07, 0.34, FINISH.dark, 0, 0.03, 0.06);
-    addBox(g, 0.07, 0.03, 0.3, FINISH.light, 0, 0.075, 0.06);
-    addBarrel(g, 0.026, 0.1, FINISH.dark, 0, 0.03, 0.27);
-    addBox(g, 0.075, 0.22, 0.1, FINISH.grip, 0, -0.09, -0.07, 0.28);
-    addBox(g, 0.07, 0.02, 0.12, FINISH.dark, 0, -0.045, 0.08); // trigger guard
-    addBox(g, 0.02, 0.05, 0.02, FINISH.dark, 0, -0.07, 0.05); // trigger
-    addBox(g, 0.03, 0.025, 0.02, FINISH.brass, 0, 0.075, -0.09); // rear sight
-    addBox(g, 0.02, 0.02, 0.015, FINISH.brass, 0, 0.075, 0.2); // front sight
-    return 0.32;
+// A gun part: a box (size + tilt) or a tube (radius + length, laid along Z
+// like a barrel), in a finish, at a position. `tip` is the barrel-tip z,
+// where the muzzle marker (and the flash) will sit.
+const GUN_PARTS = {
+  pistol: {
+    tip: 0.32,
+    parts: [
+      { kind: 'box', size: [0.09, 0.07, 0.34], mat: 'dark', at: [0, 0.03, 0.06] }, // slide
+      { kind: 'box', size: [0.07, 0.03, 0.3], mat: 'light', at: [0, 0.075, 0.06] },
+      { kind: 'tube', radius: 0.026, len: 0.1, mat: 'dark', at: [0, 0.03, 0.27] }, // barrel
+      { kind: 'box', size: [0.075, 0.22, 0.1], mat: 'grip', at: [0, -0.09, -0.07], tilt: 0.28 }, // raked grip
+      { kind: 'box', size: [0.07, 0.02, 0.12], mat: 'dark', at: [0, -0.045, 0.08] }, // trigger guard
+      { kind: 'box', size: [0.02, 0.05, 0.02], mat: 'dark', at: [0, -0.07, 0.05] }, // trigger
+      { kind: 'box', size: [0.03, 0.025, 0.02], mat: 'brass', at: [0, 0.075, -0.09] }, // rear sight
+      { kind: 'box', size: [0.02, 0.02, 0.015], mat: 'brass', at: [0, 0.075, 0.2] }, // front sight
+    ],
   },
-  smg(g) {
-    // Long body, barrel shroud, curved mag, stock, foregrip.
-    addBox(g, 0.1, 0.11, 0.5, FINISH.dark, 0, 0, 0);
-    addBox(g, 0.12, 0.12, 0.22, FINISH.light, 0, 0, 0.3); // shroud
-    addBarrel(g, 0.032, 0.16, FINISH.dark, 0, 0, 0.48);
-    addBox(g, 0.07, 0.3, 0.1, FINISH.light, 0, -0.2, 0.05, 0.16); // curved mag
-    addBox(g, 0.08, 0.1, 0.28, FINISH.grip, 0, -0.01, -0.36); // stock
-    addBox(g, 0.07, 0.16, 0.09, FINISH.grip, 0, -0.12, 0.22); // foregrip
-    addBox(g, 0.03, 0.05, 0.12, FINISH.dark, 0, 0.08, -0.08); // rear sight
-    addBox(g, 0.05, 0.03, 0.08, FINISH.dark, 0, 0.07, 0.38); // front post
-    return 0.56;
+  smg: {
+    tip: 0.56,
+    parts: [
+      { kind: 'box', size: [0.1, 0.11, 0.5], mat: 'dark', at: [0, 0, 0] }, // long body
+      { kind: 'box', size: [0.12, 0.12, 0.22], mat: 'light', at: [0, 0, 0.3] }, // shroud
+      { kind: 'tube', radius: 0.032, len: 0.16, mat: 'dark', at: [0, 0, 0.48] }, // barrel
+      { kind: 'box', size: [0.07, 0.3, 0.1], mat: 'light', at: [0, -0.2, 0.05], tilt: 0.16 }, // curved mag
+      { kind: 'box', size: [0.08, 0.1, 0.28], mat: 'grip', at: [0, -0.01, -0.36] }, // stock
+      { kind: 'box', size: [0.07, 0.16, 0.09], mat: 'grip', at: [0, -0.12, 0.22] }, // foregrip
+      { kind: 'box', size: [0.03, 0.05, 0.12], mat: 'dark', at: [0, 0.08, -0.08] }, // rear sight
+      { kind: 'box', size: [0.05, 0.03, 0.08], mat: 'dark', at: [0, 0.07, 0.38] }, // front post
+    ],
   },
-  rifle(g) {
-    // Long barrel, handguard, scope, curved mag, stock — unmistakably a rifle.
-    addBox(g, 0.09, 0.12, 0.55, FINISH.dark, 0, 0, 0);
-    addBarrel(g, 0.03, 0.5, FINISH.dark, 0, 0.01, 0.5);
-    addBox(g, 0.1, 0.1, 0.4, FINISH.wood, 0, -0.01, 0.32); // handguard
-    addBox(g, 0.07, 0.28, 0.12, FINISH.light, 0, -0.19, 0.02, -0.28); // mag
-    addBox(g, 0.08, 0.12, 0.35, FINISH.wood, 0, -0.01, -0.42); // stock
-    addBarrel(g, 0.035, 0.22, FINISH.light, 0, 0.11, -0.05); // scope
-    addBox(g, 0.04, 0.04, 0.04, FINISH.dark, 0, 0.08, -0.05); // scope mount
-    addBox(g, 0.02, 0.04, 0.02, FINISH.brass, 0, 0.09, 0.72); // front sight
-    return 0.78;
+  rifle: {
+    tip: 0.78,
+    parts: [
+      { kind: 'box', size: [0.09, 0.12, 0.55], mat: 'dark', at: [0, 0, 0] }, // receiver
+      { kind: 'tube', radius: 0.03, len: 0.5, mat: 'dark', at: [0, 0.01, 0.5] }, // barrel
+      { kind: 'box', size: [0.1, 0.1, 0.4], mat: 'wood', at: [0, -0.01, 0.32] }, // handguard
+      { kind: 'box', size: [0.07, 0.28, 0.12], mat: 'light', at: [0, -0.19, 0.02], tilt: -0.28 }, // mag
+      { kind: 'box', size: [0.08, 0.12, 0.35], mat: 'wood', at: [0, -0.01, -0.42] }, // stock
+      { kind: 'tube', radius: 0.035, len: 0.22, mat: 'light', at: [0, 0.11, -0.05] }, // scope
+      { kind: 'box', size: [0.04, 0.04, 0.04], mat: 'dark', at: [0, 0.08, -0.05] }, // scope mount
+      { kind: 'box', size: [0.02, 0.04, 0.02], mat: 'brass', at: [0, 0.09, 0.72] }, // front sight
+    ],
   },
-  shotgun(g) {
-    // Thick barrel, wooden pump + stock, bead sight.
-    addBarrel(g, 0.045, 0.55, FINISH.dark, 0, 0.01, 0.42);
-    addBox(g, 0.11, 0.09, 0.3, FINISH.wood, 0, -0.06, 0.35); // pump
-    addBox(g, 0.1, 0.13, 0.4, FINISH.dark, 0, 0, 0);
-    addBox(g, 0.09, 0.13, 0.32, FINISH.wood, 0, -0.01, -0.35); // stock
-    addBox(g, 0.02, 0.03, 0.02, FINISH.brass, 0, 0.07, 0.66); // bead
-    return 0.72;
+  shotgun: {
+    tip: 0.72,
+    parts: [
+      { kind: 'tube', radius: 0.045, len: 0.55, mat: 'dark', at: [0, 0.01, 0.42] }, // thick barrel
+      { kind: 'box', size: [0.11, 0.09, 0.3], mat: 'wood', at: [0, -0.06, 0.35] }, // pump
+      { kind: 'box', size: [0.1, 0.13, 0.4], mat: 'dark', at: [0, 0, 0] }, // receiver
+      { kind: 'box', size: [0.09, 0.13, 0.32], mat: 'wood', at: [0, -0.01, -0.35] }, // stock
+      { kind: 'box', size: [0.02, 0.03, 0.02], mat: 'brass', at: [0, 0.07, 0.66] }, // bead
+    ],
   },
 };
+
+// Turn one part object into a mesh and add it to the gun group.
+function assemblePart(group, part) {
+  const mat = FINISH[part.mat];
+  const [x, y, z] = part.at;
+  let mesh;
+  if (part.kind === 'tube') {
+    mesh = new THREE.Mesh(new THREE.CylinderGeometry(part.radius, part.radius, part.len, 10), mat);
+    mesh.rotation.x = Math.PI / 2;
+  } else {
+    const [w, h, d] = part.size;
+    mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    if (part.tilt) mesh.rotation.x = part.tilt;
+  }
+  mesh.position.set(x, y, z);
+  group.add(mesh);
+  return mesh;
+}
 
 // Build a gun mesh pointing along +Z. Returns { group, muzzle } where muzzle
 // is an Object3D at the barrel tip (world position = where shots + flash start).
 export function buildGunMesh(type) {
   const group = new THREE.Group();
-  const builder = GUN_BUILDERS[type] ?? GUN_BUILDERS.shotgun;
-  const tipZ = builder(group);
+  const spec = GUN_PARTS[type] ?? GUN_PARTS.shotgun;
+  for (const part of spec.parts) assemblePart(group, part);
   const muzzle = new THREE.Object3D();
-  muzzle.position.set(0, type === 'pistol' ? 0.03 : 0.01, tipZ);
+  muzzle.position.set(0, type === 'pistol' ? 0.03 : 0.01, spec.tip);
   group.add(muzzle);
   return { group, muzzle };
 }
@@ -210,6 +217,12 @@ export class Arsenal {
   reload() { return this.startReload(); }
   update(dt) { this.tick(dt); }
 
+  // The ammo state of the current weapon, plus its spec — one lookup for
+  // every method that touches ammo.
+  state() {
+    return { spec: this.def(), ammo: this.ammo[this.current] };
+  }
+
   canBuy(id) {
     return !this.owned.has(id);
   }
@@ -232,36 +245,33 @@ export class Arsenal {
   }
 
   startReload() {
-    const spec = this.def();
-    const state = this.ammo[this.current];
-    const magFull = state.mag >= spec.mag;
-    const noReserve = spec.reserve !== -1 && state.reserve <= 0;
+    const { spec, ammo } = this.state();
+    const magFull = ammo.mag >= spec.mag;
+    const noReserve = spec.reserve !== -1 && ammo.reserve <= 0;
     if (this.reloading > 0 || magFull || noReserve) return false;
     this.reloading = RELOAD_SECONDS;
     return true;
   }
 
   finishReload() {
-    const spec = this.def();
-    const state = this.ammo[this.current];
+    const { spec, ammo } = this.state();
     if (spec.reserve === -1) {
-      state.mag = spec.mag;
+      ammo.mag = spec.mag;
       return;
     }
-    const needed = spec.mag - state.mag;
-    const moved = Math.min(needed, state.reserve);
-    state.mag += moved;
-    state.reserve -= moved;
+    const needed = spec.mag - ammo.mag;
+    const moved = Math.min(needed, ammo.reserve);
+    ammo.mag += moved;
+    ammo.reserve -= moved;
   }
 
   // Consume one trigger pull; returns false when the mag is dry.
   pullTrigger() {
     if (this.cooldown > 0) return false;
     if (this.reloading > 0) return false;
-    const spec = this.def();
-    const state = this.ammo[this.current];
-    if (state.mag <= 0) return false;
-    state.mag -= 1;
+    const { spec, ammo } = this.state();
+    if (ammo.mag <= 0) return false;
+    ammo.mag -= 1;
     this.cooldown = spec.rof;
     return true;
   }
@@ -277,11 +287,10 @@ export class Arsenal {
   }
 
   ammoText() {
-    const spec = this.def();
-    const state = this.ammo[this.current];
+    const { spec, ammo } = this.state();
     if (this.reloading > 0) return 'RELOADING…';
-    const reserveText = spec.reserve === -1 ? '∞' : String(state.reserve);
-    return `${state.mag} / ${reserveText}`;
+    const reserveText = spec.reserve === -1 ? '∞' : String(ammo.reserve);
+    return `${ammo.mag} / ${reserveText}`;
   }
 
   serialize() {
@@ -341,6 +350,14 @@ export class Viewmodel {
     this.camera.add(this.fill);
   }
 
+  // Point the flash at the barrel tip: the gun is flipped to point
+  // down-range, so the muzzle's +Z becomes -Z in viewmodel space.
+  placeFlash() {
+    const muzzle = this.gun.muzzle.position;
+    const scale = VIEWMODEL_SCALE[this.current] ?? 1.1;
+    this.flash.position.set(0, muzzle.y * scale, -muzzle.z * scale);
+  }
+
   setWeapon(type) {
     if (type === this.current) return;
     if (this.gun) {
@@ -355,11 +372,9 @@ export class Viewmodel {
     // as a dark blob. Turn it around so the muzzle points down-range and the
     // rifle reads as a rifle: barrel, handguard, magazine, stock.
     this.gun.group.rotation.set(0.04, Math.PI - 0.18, 0.02);
-    // The flash sits at the barrel tip — flipped with the gun, so -Z now.
-    const muzzle = this.gun.muzzle.position;
-    this.flash.position.set(0, muzzle.y * scale, -muzzle.z * scale);
     this.group.add(this.gun.group);
     this.current = type;
+    this.placeFlash();
   }
 
   fire() {
@@ -387,5 +402,6 @@ export class Viewmodel {
     if (this.flashTimer > 0) return;
     this.flash.visible = false;
     this.flashLight.intensity = 0;
+    void firing;
   }
 }

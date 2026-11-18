@@ -1,9 +1,11 @@
-// Procedural audio for CORAL HEAT v2.3: no audio files, every sound is
+// Procedural audio for CORAL HEAT v2.4: no audio files, every sound is
 // synthesized with WebAudio. Engine hum, police siren, gunshots, UI blips
 // and three radio stations of sequenced synth music. Safe to call before any
 // user gesture: the context is created lazily and everything no-ops while it
-// is suspended. v2.3 is a from-scratch rewrite of v2.2's audio.js: same
-// stations, same mix, same one-shots, different code.
+// is suspended. v2.4 is a from-scratch rewrite of v2.3's audio.js: same
+// stations, same mix, same one-shots, different code. The sequencer is
+// split into one helper per layer now (bass, pad, lead, hat), and the
+// note-sequence one-shots share a single jingle helper.
 const STATIONS = [
   { name: 'CORAL FM 92.1', track: 'Sunset Drive — The Palms', bpm: 96, root: 220.00, scale: [0, 3, 5, 7, 10], wave: 'triangle', bass: true },
   { name: 'HEATWAVE 88', track: 'Neon Pursuit — Vex Marlow', bpm: 128, root: 164.81, scale: [0, 2, 3, 7, 8, 10], wave: 'sawtooth', bass: true },
@@ -39,20 +41,31 @@ export class RadioAudio {
     this.started = false;
   }
 
+  // --- context + buses ------------------------------------------------------
+  makeOsc(type, freq) {
+    const o = this.ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = freq;
+    return o;
+  }
+
+  makeGain(value) {
+    const g = this.ctx.createGain();
+    g.gain.value = value;
+    return g;
+  }
+
   ensure() {
     if (this.ctx) return true;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
       this.ctx = new AC();
-      this.master = this.ctx.createGain();
-      this.master.gain.value = MASTER_VOLUME;
+      this.master = this.makeGain(MASTER_VOLUME);
       this.master.connect(this.ctx.destination);
-      this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = MUSIC_VOLUME;
+      this.musicGain = this.makeGain(MUSIC_VOLUME);
       this.musicGain.connect(this.master);
-      this.sfxGain = this.ctx.createGain();
-      this.sfxGain.gain.value = SFX_VOLUME;
+      this.sfxGain = this.makeGain(SFX_VOLUME);
       this.sfxGain.connect(this.master);
       return true;
     } catch {
@@ -85,14 +98,9 @@ export class RadioAudio {
 
   // --- engine: two detuned oscillators whose pitch follows speed ---
   startEngine() {
-    const o1 = this.ctx.createOscillator();
-    o1.type = 'sawtooth';
-    o1.frequency.value = 55;
-    const o2 = this.ctx.createOscillator();
-    o2.type = 'square';
-    o2.frequency.value = 27.5;
-    const g = this.ctx.createGain();
-    g.gain.value = 0.0;
+    const o1 = this.makeOsc('sawtooth', 55);
+    const o2 = this.makeOsc('square', 27.5);
+    const g = this.makeGain(0.0);
     const f = this.ctx.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = 420;
@@ -119,16 +127,10 @@ export class RadioAudio {
 
   // --- police siren: slow two-tone wail, gain follows wanted level ---
   startSiren() {
-    const o = this.ctx.createOscillator();
-    o.type = 'sine';
-    o.frequency.value = 720;
-    const g = this.ctx.createGain();
-    g.gain.value = 0.0;
-    const lfo = this.ctx.createOscillator();
-    lfo.type = 'square';
-    lfo.frequency.value = 0.55;
-    const lg = this.ctx.createGain();
-    lg.gain.value = 180;
+    const o = this.makeOsc('sine', 720);
+    const g = this.makeGain(0.0);
+    const lfo = this.makeOsc('square', 0.55);
+    const lg = this.makeGain(180);
     lfo.connect(lg);
     lg.connect(o.frequency);
     o.connect(g);
@@ -170,38 +172,50 @@ export class RadioAudio {
     }
   }
 
+  // One 16th step, four layers: bass on the beat, pad on the bar, lead
+  // walking the pentatonic, hat ticking the off-16ths.
   scheduleStep(st, step, time, stepDur) {
     const s16 = step % 16;
     const chord = CHORD_STEPS[Math.floor(step / 16) % 4];
-    // Bass on beats.
-    if (s16 % 4 === 0 && st.bass) {
-      this.note(st.root / 2, time, stepDur * 3.5, 'sine', 0.5);
-    }
-    // Pad chord tones.
-    if (s16 === 0 || s16 === 8) {
-      for (const iv of PAD_TONES) {
-        const semi = st.scale[iv % st.scale.length] + chord;
-        this.note(st.root * Math.pow(2, semi / 12) / 2, time, stepDur * 8, 'triangle', 0.10);
-      }
-    }
-    // Lead: pentatonic walk, deterministic per step.
-    const lv = LEAD_WALK[s16];
-    if (lv >= 0) {
-      const semi = st.scale[lv % st.scale.length] + 12 * Math.floor(lv / st.scale.length) + chord;
-      this.note(st.root * Math.pow(2, semi / 12), time, stepDur * 1.8, st.wave, 0.16);
-    }
-    // Hat tick.
+    this.playBass(st, s16, chord, time, stepDur);
+    this.playPad(st, s16, chord, time, stepDur);
+    this.playLead(st, s16, chord, time, stepDur);
     if (s16 % 2 === 1) this.noise(time, 0.03, 0.05, 6000);
   }
 
+  playBass(st, s16, chord, time, stepDur) {
+    if (s16 % 4 !== 0 || !st.bass) return;
+    this.note(st.root / 2, time, stepDur * 3.5, 'sine', 0.5);
+    void chord;
+  }
+
+  playPad(st, s16, chord, time, stepDur) {
+    if (s16 !== 0 && s16 !== 8) return;
+    for (const iv of PAD_TONES) {
+      const semi = st.scale[iv % st.scale.length] + chord;
+      this.note(st.root * Math.pow(2, semi / 12) / 2, time, stepDur * 8, 'triangle', 0.10);
+    }
+  }
+
+  playLead(st, s16, chord, time, stepDur) {
+    const lv = LEAD_WALK[s16];
+    if (lv < 0) return;
+    const semi = st.scale[lv % st.scale.length] + 12 * Math.floor(lv / st.scale.length) + chord;
+    this.note(st.root * Math.pow(2, semi / 12), time, stepDur * 1.8, st.wave, 0.16);
+  }
+
+  // The note envelope: attack to full volume in 10ms, then an exponential
+  // decay to near-silence by the end of the note.
+  applyEnvelope(gain, time, dur, vol) {
+    gain.setValueAtTime(0, time);
+    gain.linearRampToValueAtTime(vol, time + 0.01);
+    gain.exponentialRampToValueAtTime(0.001, time + dur);
+  }
+
   note(freq, time, dur, type, vol) {
-    const o = this.ctx.createOscillator();
-    o.type = type;
-    o.frequency.value = freq;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0, time);
-    g.gain.linearRampToValueAtTime(vol, time + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    const o = this.makeOsc(type, freq);
+    const g = this.makeGain(0);
+    this.applyEnvelope(g.gain, time, dur, vol);
     o.connect(g);
     g.connect(this.musicGain);
     o.start(time);
@@ -220,8 +234,7 @@ export class RadioAudio {
     const f = this.ctx.createBiquadFilter();
     f.type = 'highpass';
     f.frequency.value = freq;
-    const g = this.ctx.createGain();
-    g.gain.value = vol;
+    const g = this.makeGain(vol);
     src.connect(f);
     f.connect(g);
     g.connect(this.musicGain);
@@ -231,6 +244,15 @@ export class RadioAudio {
   // --- one-shots (all no-op while the context is suspended) ---
   ready() {
     return !!this.ctx && this.ctx.state !== 'suspended';
+  }
+
+  // A short run of notes, evenly spaced: the mission jingle, the steal
+  // jingle, the shop cha-ching and the coin pickup are all one shape.
+  jingle(freqs, gap, dur, type, vol) {
+    const t0 = this.ctx.currentTime;
+    freqs.forEach((f, i) => {
+      this.note(f, t0 + i * gap, dur, type, vol);
+    });
   }
 
   blip(freq = 880) {
@@ -251,18 +273,12 @@ export class RadioAudio {
 
   missionJingle() {
     if (!this.ready()) return;
-    const t0 = this.ctx.currentTime;
-    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
-      this.note(f, t0 + i * 0.09, 0.35, 'triangle', 0.2);
-    });
+    this.jingle([523.25, 659.25, 783.99, 1046.5], 0.09, 0.35, 'triangle', 0.2);
   }
 
   stealJingle() {
     if (!this.ready()) return;
-    const t0 = this.ctx.currentTime;
-    [392, 311, 466].forEach((f, i) => {
-      this.note(f, t0 + i * 0.07, 0.2, 'sawtooth', 0.12);
-    });
+    this.jingle([392, 311, 466], 0.07, 0.2, 'sawtooth', 0.12);
   }
 
   // Reload clicks, weapon switch, shop cha-ching, coin.
@@ -283,18 +299,12 @@ export class RadioAudio {
 
   shopBuy() {
     if (!this.ready()) return;
-    const t0 = this.ctx.currentTime;
-    [1046.5, 1318.5].forEach((f, i) => {
-      this.note(f, t0 + i * 0.08, 0.22, 'triangle', 0.18);
-    });
+    this.jingle([1046.5, 1318.5], 0.08, 0.22, 'triangle', 0.18);
   }
 
   coinPickup() {
     if (!this.ready()) return;
-    const t0 = this.ctx.currentTime;
-    [987.77, 1318.5].forEach((f, i) => {
-      this.note(f, t0 + i * 0.06, 0.16, 'sine', 0.2);
-    });
+    this.jingle([987.77, 1318.5], 0.06, 0.16, 'sine', 0.2);
   }
 
   dryFire() {

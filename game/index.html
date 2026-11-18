@@ -3,9 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- CORAL HEAT v2.3 -->
+<!-- CORAL HEAT v2.4 -->
 <title>CORAL HEAT — open-world crime in a sunset marina city</title>
 <style>
+  /* Palette: the sunset-marina HUD colours, named once and reused so a
+     colour change is one edit, not thirty. Computed styles are identical
+     to v2.3 — only the source form changed. */
+  :root {
+    --panel-bg: rgba(10,8,20,.55);
+    --panel-border: rgba(255,255,255,.22);
+    --amber: #ffb347;
+    --gold: #ffd23e;
+    --green: #7dff9a;
+    --pale: #ffd9a0;
+    --ink-soft: #e8e2f0;
+    --ink-faint: #b9b3c9;
+    --sky: #9fd8ff;
+    --sky-soft: #cfe6ff;
+    --red: #ff2e63;
+    --red-bright: #ff5a5a;
+  }
   /* Base: full-screen canvas, dark backdrop while the scene loads. */
   html, body {
     margin: 0;
@@ -40,8 +57,8 @@
     user-select: none;
   }
   .panel {
-    background: rgba(10,8,20,.55);
-    border: 1px solid rgba(255,255,255,.22);
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
     border-radius: 10px;
     backdrop-filter: blur(2px);
   }
@@ -55,7 +72,7 @@
   #missionPanel .mnum {
     font-size: 11px;
     letter-spacing: 2px;
-    color: #ffb347;
+    color: var(--amber);
     font-weight: 700;
   }
   #missionPanel .mtitle {
@@ -65,12 +82,12 @@
   }
   #missionPanel .mbrief {
     font-size: 13px;
-    color: #e8e2f0;
+    color: var(--ink-soft);
     line-height: 1.35;
   }
   #missionPanel .mprog {
     font-size: 12px;
-    color: #9fd8ff;
+    color: var(--sky);
     margin-top: 5px;
   }
   /* Cash + wanted, top-right. */
@@ -83,18 +100,18 @@
   #cash {
     font-size: 26px;
     font-weight: 800;
-    color: #7dff9a;
+    color: var(--green);
   }
   #wanted {
     font-size: 24px;
     letter-spacing: 4px;
     margin-top: 2px;
   }
-  #wanted .on { color: #ffd23e; }
+  #wanted .on { color: var(--gold); }
   #wanted .off { color: rgba(255,255,255,.28); }
   #district {
     font-size: 12px;
-    color: #ffd9a0;
+    color: var(--pale);
     letter-spacing: 1px;
     margin-top: 2px;
   }
@@ -113,7 +130,7 @@
     display: block;
     font-size: 11px;
     font-weight: 400;
-    color: #ffd9a0;
+    color: var(--pale);
     letter-spacing: 2px;
   }
   /* Minimap, bottom-left. */
@@ -140,7 +157,7 @@
     text-align: center;
     font-size: 11px;
     letter-spacing: 3px;
-    color: #ffd9a0;
+    color: var(--pale);
   }
   /* Speed, bottom-right. */
   #speedBox {
@@ -156,11 +173,11 @@
   }
   #speed small {
     font-size: 15px;
-    color: #ffb347;
+    color: var(--amber);
   }
   #carName {
     font-size: 13px;
-    color: #e8e2f0;
+    color: var(--ink-soft);
     letter-spacing: 1px;
   }
   /* Radio, bottom-centre. */
@@ -173,11 +190,11 @@
     font-size: 13px;
   }
   #radioBox b {
-    color: #ffb347;
+    color: var(--amber);
     letter-spacing: 1px;
   }
   #radioBox .track {
-    color: #cfe6ff;
+    color: var(--sky-soft);
     font-size: 12px;
   }
   /* Health + weapon, above minimap. */
@@ -206,7 +223,7 @@
   }
   #weapon {
     font-size: 12px;
-    color: #ffd9a0;
+    color: var(--pale);
     margin-top: 4px;
   }
   /* Toasts, centre-right. */
@@ -253,27 +270,27 @@
     margin: 0 0 4px;
     font-size: 18px;
     letter-spacing: 2px;
-    color: #ff5a5a;
+    color: var(--red-bright);
   }
   #shopPanel .shopsub {
     font-size: 12px;
-    color: #b9b3c9;
+    color: var(--ink-faint);
     margin-bottom: 8px;
   }
   #shopCash {
     font-size: 14px;
-    color: #7dff9a;
+    color: var(--green);
     font-weight: 700;
     margin-bottom: 6px;
   }
   #coins {
     font-size: 13px;
-    color: #ffd23e;
+    color: var(--gold);
     font-weight: 700;
   }
   #statsLine {
     font-size: 13px;
-    color: #cfe6ff;
+    color: var(--sky-soft);
     margin-top: 10px;
     line-height: 1.7;
   }
@@ -309,21 +326,21 @@
   .screen h2 {
     font-size: 15px;
     letter-spacing: 4px;
-    color: #ffd9a0;
+    color: var(--pale);
     margin: 6px 0 18px;
     font-weight: 600;
   }
   .screen p {
     font-size: 14px;
     line-height: 1.55;
-    color: #e8e2f0;
+    color: var(--ink-soft);
   }
   .screen .btn {
     display: inline-block;
     margin: 8px 6px 0;
     padding: 12px 26px;
     border-radius: 10px;
-    background: #ff2e63;
+    background: var(--red);
     color: #fff;
     font-weight: 800;
     font-size: 16px;
@@ -335,7 +352,7 @@
   .screen .btn.ghost { background: rgba(255,255,255,.14); }
   .screen .keys {
     font-size: 12px;
-    color: #b9b3c9;
+    color: var(--ink-faint);
     margin-top: 16px;
     line-height: 1.8;
   }
@@ -353,9 +370,9 @@
     margin: 10px auto 0;
     max-width: 480px;
   }
-  #missionList .done { color: #7dff9a; }
+  #missionList .done { color: var(--green); }
   #missionList .next {
-    color: #ffb347;
+    color: var(--amber);
     font-weight: 700;
   }
   .hidden { display: none !important; }
@@ -368,52 +385,52 @@
 <canvas id="game" aria-label="CORAL HEAT: open-world crime game in a sunset marina city"></canvas>
 <p id="status" role="status" aria-live="polite"></p>
 
-<div id="missionPanel" class="hud panel">
+<div class="hud panel" id="missionPanel">
   <div class="mnum" id="missionNum">MISSION 1 / 12</div>
   <div class="mtitle" id="missionTitle">First Fare</div>
   <div class="mbrief" id="missionBrief">Dutch needs a package run to the Marina. Get in a car and follow the gold marker.</div>
   <div class="mprog" id="missionProg">0 / 12 missions done &nbsp;•&nbsp; $0 earned</div>
 </div>
 
-<div id="cashBox" class="hud panel">
+<div class="hud panel" id="cashBox">
   <div id="cash">$1,250</div>
   <div id="wanted"><span class="on">★</span><span class="off">★</span><span class="off">★</span><span class="off">★</span><span class="off">★</span></div>
   <div id="district">CORAL STRIP • CORAL BAY</div>
   <div id="coins">🪙 0/12</div>
 </div>
 
-<div id="objective" class="hud panel"><small>OBJECTIVE</small><span id="objectiveText">Drive to the gold marker</span></div>
+<div class="hud panel" id="objective"><small>OBJECTIVE</small><span id="objectiveText">Drive to the gold marker</span></div>
 
-<div id="minimapWrap" class="hud"><canvas id="minimap" width="196" height="196"></canvas></div>
-<div id="mapLabel" class="hud">CORAL BAY</div>
+<div class="hud" id="minimapWrap"><canvas id="minimap" width="196" height="196"></canvas></div>
+<div class="hud" id="mapLabel">CORAL BAY</div>
 
-<div id="speedBox" class="hud panel">
+<div class="hud panel" id="speedBox">
   <div id="speed">0<small> MPH</small></div>
   <div id="carName">ON FOOT</div>
 </div>
 
-<div id="radioBox" class="hud panel"><b id="radioName">CORAL FM 92.1</b> <span class="track" id="radioTrack">Sunset Drive — The Palms</span><br><span style="font-size:11px;color:#b9b3c9">1/2/3 change station • M mute</span></div>
+<div class="hud panel" id="radioBox"><b id="radioName">CORAL FM 92.1</b> <span class="track" id="radioTrack">Sunset Drive — The Palms</span><br><span style="font-size:11px;color:#b9b3c9">1/2/3 change station • M mute</span></div>
 
-<div id="vitals" class="hud panel">
+<div class="hud panel" id="vitals">
   <div class="row"><span>HEALTH</span><span id="healthNum">100</span></div>
   <div id="healthBar"><div id="healthFill"></div></div>
   <svg width="72" height="26" viewBox="0 0 72 26" style="margin-top:6px;display:block" aria-hidden="true"><path d="M4 6 h52 v6 h-14 l-2 8 h-8 l1-8 h-8 v8 h-9 l-2-8 h-6 v-2 h-4 z" fill="#e8e2f0"/><rect x="56" y="7" width="12" height="4" fill="#ffb347"/><circle cx="20" cy="9" r="2" fill="#1a0f1e"/></svg>
   <div id="weapon">🔫 Pistol • 12/∞ &nbsp;•&nbsp; F enter car • E steal</div>
 </div>
 
-<div id="toast" class="hud panel"></div>
+<div class="hud panel" id="toast"></div>
 
-<div id="missionCard" class="hud panel"></div>
-<div id="completeBanner" class="hud panel"></div>
+<div class="hud panel" id="missionCard"></div>
+<div class="hud panel" id="completeBanner"></div>
 
-<div id="shopPanel" class="hud panel">
+<div class="hud panel" id="shopPanel">
   <h3>🔫 GUNSMITH</h3>
   <div class="shopsub">Coral Strip — press E to leave. Weapons save with your game.</div>
   <div id="shopCash">Cash: $1,250</div>
   <div id="shopList"></div>
 </div>
 
-<div id="startScreen" class="screen">
+<div class="screen" id="startScreen">
   <div class="card">
     <h1>CORAL HEAT</h1>
     <h2>12 STORY MISSIONS • 4 WEAPONS • TAXI FARES • 12 CORAL COINS • 5-STAR POLICE • HELICOPTER CHASES • RADIO &amp; SAVES</h2>
@@ -433,7 +450,7 @@
   </div>
 </div>
 
-<div id="pauseScreen" class="screen hidden">
+<div class="screen hidden" id="pauseScreen">
   <div class="card">
     <h1 style="font-size:44px">PAUSED</h1>
     <p>Progress saves automatically to this browser. Missions, cash, weapons and coins are kept.</p>
@@ -444,7 +461,7 @@
   </div>
 </div>
 
-<div id="bustedScreen" class="screen hidden">
+<div class="screen hidden" id="bustedScreen">
   <div class="card">
     <h1 style="font-size:44px">BUSTED</h1>
     <p id="bustedText">The Coral Bay Police caught up with you. Bail posted — back on the Strip.</p>

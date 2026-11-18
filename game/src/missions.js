@@ -1,17 +1,18 @@
-// The story of CORAL HEAT v2.3: 12 missions for Mara Voss, from her first
-// fare for Dutch Calloway to the last run out of Coral Bay. Each mission
-// names its giver, its objective and its payout; the manager moves the gold
-// beacon, spawns pickups and hostiles, and pays out on completion. v2.3 is
-// a from-scratch rewrite of v2.2's missions.js: same twelve missions, same
-// rewards, same rules, different code.
+// The story of CORAL HEAT v2.4: 12 missions for Mara Voss, from her first
+// fare for Dutch Calloway to the last run out of Coral Bay. v2.4 rewrites
+// v2.3's missions.js from scratch: the same twelve missions, the same
+// rewards, the same rules, the same seeded hostile deal, different code.
+// The mission table is gameplay data — every target, checkpoint, pickup,
+// timer and reward is unchanged. The manager below is reorganised around a
+// per-type handler table instead of one long if-chain, so each mission type
+// reads as its own rule.
 import * as THREE from 'three';
 import { createRng, pick, pickN, range } from './rng.js';
 import { buildCarMesh, driveCar } from './vehicles.js';
 import { buildGunMesh } from './weapons.js';
 
 // Mission table. Types: drive / steal / checkpoints / collect / shoot /
-// escape / chase / timed / roadblock / tail. Every target, checkpoint,
-// pickup, timer and reward below is gameplay data — unchanged from v2.2.
+// escape / chase / timed / roadblock / tail.
 export const MISSIONS = [
   {
     id: 1, title: 'First Fare', giver: 'Dutch Calloway', type: 'drive',
@@ -92,7 +93,7 @@ export const MISSIONS = [
   },
 ];
 
-// Rival jacket colours — dealt per hostile so the crew is not clones.
+// Rival look: jacket colours dealt per hostile, shared skin and pants.
 const RIVAL_JACKETS = [0x3a1a2a, 0x2a3a1a, 0x1a2a3a, 0x4a2a1a];
 const RIVAL_SKIN = 0xc98a5a;
 const RIVAL_PANTS = 0x222226;
@@ -106,6 +107,48 @@ const TAIL_LOOP = [
   { x: 40, z: 120 },
   { x: -120, z: 120 },
 ];
+
+// How close the player must be to count as "there".
+const REACH_RADIUS = 6;
+const CHECKPOINT_RADIUS = 7;
+const PICKUP_RADIUS = 3.2;
+
+// One armed rival: jacket body, head, a real rifle in hand, legs, and a
+// red health bar overhead. No rng here — the deal happens in spawnHostiles.
+function buildRival(jacket) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.7, 1.1, 0.4),
+    new THREE.MeshStandardMaterial({ color: jacket, roughness: 0.9 }),
+  );
+  body.position.y = 1.0;
+  g.add(body);
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.26, 10, 8),
+    new THREE.MeshStandardMaterial({ color: RIVAL_SKIN, roughness: 0.8 }),
+  );
+  head.position.y = 1.75;
+  g.add(head);
+  // A real rifle in their hands, not a box — you can see what you are up against.
+  const gun = buildGunMesh('rifle');
+  gun.group.position.set(0.28, 1.15, 0.3);
+  g.add(gun.group);
+  for (const s of [-1, 1]) {
+    const leg = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24, 0.72, 0.26),
+      new THREE.MeshStandardMaterial({ color: RIVAL_PANTS, roughness: 0.9 }),
+    );
+    leg.position.set(s * 0.16, 0.36, 0);
+    g.add(leg);
+  }
+  const hp = new THREE.Mesh(
+    new THREE.BoxGeometry(0.9, 0.12, 0.1),
+    new THREE.MeshBasicMaterial({ color: 0xff2020 }),
+  );
+  hp.position.y = 2.15;
+  g.add(hp);
+  return { group: g, hpMesh: hp };
+}
 
 export class MissionManager {
   constructor(scene, rng, beacon, hooks) {
@@ -130,9 +173,11 @@ export class MissionManager {
     this.clearField();
     this.index = i;
     const m = MISSIONS[i];
+    // Runtime state, fresh per attempt. `progress` counts whatever the
+    // mission type tracks (checkpoints hit, packages taken, rivals down).
     this.active = {
       def: m,
-      checkpoint: 0,
+      progress: 0,
       collected: 0,
       killed: 0,
       timer: m.timeLimit ?? 0,
@@ -159,7 +204,7 @@ export class MissionManager {
 
   missionTarget() {
     const m = this.active.def;
-    if (m.checkpoints) return m.checkpoints[this.active.checkpoint];
+    if (m.checkpoints) return m.checkpoints[this.active.progress];
     return m.target;
   }
 
@@ -176,48 +221,19 @@ export class MissionManager {
 
   spawnHostiles(n, center) {
     // Armed rivals: varied jackets, they stand their ground and shoot back.
-    // Jackets are dealt first (one rng draw each), then each hostile's
-    // position jitter and shoot timer, in that order — same deal as v2.2.
+    // The deal order is the contract: jackets first (one draw each via
+    // pickN), then per hostile the x jitter, the z jitter and the shoot
+    // timer — exactly as v2.3 dealt it.
     const jackets = pickN(this.rng, RIVAL_JACKETS, n);
     for (let i = 0; i < n; i++) {
-      const g = new THREE.Group();
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(0.7, 1.1, 0.4),
-        new THREE.MeshStandardMaterial({ color: jackets[i], roughness: 0.9 }),
-      );
-      body.position.y = 1.0;
-      g.add(body);
-      const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.26, 10, 8),
-        new THREE.MeshStandardMaterial({ color: RIVAL_SKIN, roughness: 0.8 }),
-      );
-      head.position.y = 1.75;
-      g.add(head);
-      // A real rifle in their hands, not a box — you can see what you're up against.
-      const gun = buildGunMesh('rifle');
-      gun.group.position.set(0.28, 1.15, 0.3);
-      g.add(gun.group);
-      for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(
-          new THREE.BoxGeometry(0.24, 0.72, 0.26),
-          new THREE.MeshStandardMaterial({ color: RIVAL_PANTS, roughness: 0.9 }),
-        );
-        leg.position.set(s * 0.16, 0.36, 0);
-        g.add(leg);
-      }
-      const hp = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 0.12, 0.1),
-        new THREE.MeshBasicMaterial({ color: 0xff2020 }),
-      );
-      hp.position.y = 2.15;
-      g.add(hp);
+      const { group, hpMesh } = buildRival(jackets[i]);
       const angle = (i / n) * Math.PI * 2;
       const x = center.x + Math.sin(angle) * HOSTILE_RING + range(this.rng, -HOSTILE_JITTER, HOSTILE_JITTER);
       const z = center.z + Math.cos(angle) * HOSTILE_RING + range(this.rng, -HOSTILE_JITTER, HOSTILE_JITTER);
-      g.position.set(x, 0, z);
-      this.scene.add(g);
+      group.position.set(x, 0, z);
+      this.scene.add(group);
       this.hostiles.push({
-        mesh: g, hpMesh: hp, x, z,
+        mesh: group, hpMesh, x, z,
         health: 3, shootTimer: 1 + this.rng(), dead: false,
       });
     }
@@ -271,8 +287,98 @@ export class MissionManager {
   }
 
   // Distance check from the player's position to a point.
-  closeTo(playerPos, point, radius = 6) {
+  closeTo(playerPos, point, radius = REACH_RADIUS) {
     return Math.hypot(playerPos.x - point.x, playerPos.z - point.z) < radius;
+  }
+
+  // --- per-type rules, one handler each. Returns true if the mission ended.
+  handleDrive(p) {
+    if (this.closeTo(p, this.active.def.target)) {
+      this.complete(p.player);
+      return true;
+    }
+    return false;
+  }
+
+  handleSteal(p) {
+    const a = this.active;
+    if (p.player.inCar && !a.stolen) {
+      a.stolen = true;
+      this.hooks.onObjective('Stolen! Now deliver it to the garage');
+    }
+    if (a.stolen && this.closeTo(p, a.def.target)) {
+      this.complete(p.player);
+      return true;
+    }
+    return false;
+  }
+
+  handleCheckpoints(p, chase) {
+    const a = this.active;
+    const m = a.def;
+    const cp = m.checkpoints[a.progress];
+    if (!this.closeTo(p, cp, CHECKPOINT_RADIUS)) return false;
+    a.progress += 1;
+    const line = chase ? 'Keep running — they are right behind you!' : 'Checkpoint clear.';
+    this.hooks.onToast(`CHECKPOINT ${a.progress}/${m.checkpoints.length}`, line);
+    if (a.progress >= m.checkpoints.length) {
+      if (this.closeTo(p, m.target, 8)) {
+        this.complete(p.player);
+        return true;
+      }
+      this.moveBeacon(m.target);
+      this.hooks.onObjective('Final stretch — reach the marker');
+    } else {
+      this.moveBeacon(m.checkpoints[a.progress]);
+    }
+    return false;
+  }
+
+  handleCollect(p) {
+    const a = this.active;
+    const m = a.def;
+    for (const pk of this.pickupMeshes) {
+      if (pk.taken || !this.closeTo(p, pk, PICKUP_RADIUS)) continue;
+      pk.taken = true;
+      this.scene.remove(pk.mesh);
+      a.collected += 1;
+      this.hooks.onToast(`PACKAGE ${a.collected}/${m.pickups.length}`, 'Picked up. Keep moving.');
+      if (a.collected >= m.pickups.length) {
+        this.complete(p.player);
+        return true;
+      }
+    }
+    this.hooks.onObjective(`${m.objective} — ${a.collected}/${m.pickups.length}`);
+    return false;
+  }
+
+  handleShoot(player) {
+    const a = this.active;
+    const m = a.def;
+    this.hooks.onObjective(`${m.objective} — ${a.killed}/${m.count} down`);
+    if (a.killed >= m.count) {
+      this.complete(player);
+      return true;
+    }
+    return false;
+  }
+
+  handleEscape(p, dt) {
+    const a = this.active;
+    const m = a.def;
+    if (a.surviveLeft > 0) {
+      a.surviveLeft -= dt;
+      this.hooks.onObjective(`${m.objective} — hold on ${Math.ceil(a.surviveLeft)}s`);
+      if (a.surviveLeft <= 0) {
+        a.escaped = true;
+        this.moveBeacon(m.target);
+        this.hooks.onObjective('Heat cooling — reach the marker now!');
+      }
+    } else if (this.closeTo(p, m.target)) {
+      this.complete(p.player);
+      return true;
+    }
+    return false;
   }
 
   update(dt, player, world) {
@@ -281,6 +387,7 @@ export class MissionManager {
     const m = a.def;
     const p = player.pos;
 
+    // Timers tick before the type rule runs.
     if (m.timeLimit) {
       a.timer -= dt;
       this.hooks.onObjective(`${m.objective} — ${Math.max(0, Math.ceil(a.timer))}s left`);
@@ -289,86 +396,63 @@ export class MissionManager {
         return;
       }
     }
-    if (m.type === 'drive' || m.type === 'timed' || m.type === 'roadblock') {
-      if (this.closeTo(p, m.target)) {
-        this.complete(player);
-        return;
-      }
+
+    const ctx = { ...p, player };
+    let ended = false;
+    switch (m.type) {
+      case 'drive':
+      case 'timed':
+      case 'roadblock':
+        ended = this.handleDrive(ctx);
+        break;
+      case 'steal':
+        ended = this.handleSteal(ctx);
+        break;
+      case 'checkpoints':
+        ended = this.handleCheckpoints(ctx, false);
+        break;
+      case 'chase':
+        ended = this.handleCheckpoints(ctx, true);
+        break;
+      case 'collect':
+        ended = this.handleCollect(ctx);
+        break;
+      case 'shoot':
+        ended = this.handleShoot(player);
+        break;
+      case 'escape':
+        ended = this.handleEscape(ctx, dt);
+        break;
+      case 'tail':
+        if (this.tailCar) ended = this.updateTail(dt, player, world);
+        break;
+      default:
+        break;
     }
-    if (m.type === 'steal') {
-      if (player.inCar && !a.stolen) {
-        a.stolen = true;
-        this.hooks.onObjective('Stolen! Now deliver it to the garage');
-      }
-      if (a.stolen && this.closeTo(p, m.target)) {
-        this.complete(player);
-        return;
-      }
-    }
-    if (m.type === 'checkpoints' || m.type === 'chase') {
-      const cp = m.checkpoints[a.checkpoint];
-      if (this.closeTo(p, cp, 7)) {
-        a.checkpoint += 1;
-        const chaseLine = m.type === 'chase'
-          ? 'Keep running — they are right behind you!'
-          : 'Checkpoint clear.';
-        this.hooks.onToast(`CHECKPOINT ${a.checkpoint}/${m.checkpoints.length}`, chaseLine);
-        if (a.checkpoint >= m.checkpoints.length) {
-          if (this.closeTo(p, m.target, 8)) {
-            this.complete(player);
-            return;
-          }
-          this.moveBeacon(m.target);
-          this.hooks.onObjective('Final stretch — reach the marker');
-        } else {
-          this.moveBeacon(m.checkpoints[a.checkpoint]);
-        }
-      }
-    }
-    if (m.type === 'collect') {
-      for (const pk of this.pickupMeshes) {
-        if (pk.taken || !this.closeTo(p, pk, 3.2)) continue;
-        pk.taken = true;
-        this.scene.remove(pk.mesh);
-        a.collected += 1;
-        this.hooks.onToast(`PACKAGE ${a.collected}/${m.pickups.length}`, 'Picked up. Keep moving.');
-        if (a.collected >= m.pickups.length) {
-          this.complete(player);
-          return;
-        }
-      }
-      this.hooks.onObjective(`${m.objective} — ${a.collected}/${m.pickups.length}`);
-    }
-    if (m.type === 'shoot') {
-      this.hooks.onObjective(`${m.objective} — ${a.killed}/${m.count} down`);
-      if (a.killed >= m.count) {
-        this.complete(player);
-        return;
-      }
-    }
-    if (m.type === 'escape') {
-      if (a.surviveLeft > 0) {
-        a.surviveLeft -= dt;
-        this.hooks.onObjective(`${m.objective} — hold on ${Math.ceil(a.surviveLeft)}s`);
-        if (a.surviveLeft <= 0) {
-          a.escaped = true;
-          this.moveBeacon(m.target);
-          this.hooks.onObjective('Heat cooling — reach the marker now!');
-        }
-      } else if (this.closeTo(p, m.target)) {
-        this.complete(player);
-        return;
-      }
-    }
-    if (m.type === 'tail' && this.tailCar) {
-      if (this.updateTail(dt, player, world)) return;
-    }
+    if (ended) return;
 
     // Spin the beacon arrow + bob the pickups.
     if (this.beacon.visible) this.beacon.children[2].rotation.y += dt * 2;
     for (const pk of this.pickupMeshes) {
       if (!pk.taken) pk.mesh.rotation.y += dt * 1.5;
     }
+  }
+
+  // Drive the runner car around its Marina loop: steer toward the current
+  // waypoint, advance to the next one when it arrives. The heading is
+  // computed from the waypoint captured before the advance, so the car
+  // steers at the waypoint it just reached for one frame — as v2.3 did.
+  driveTailCar(dt, world) {
+    const t = this.tailCar;
+    const wp = TAIL_LOOP[t.wp ?? 0];
+    if (Math.hypot(t.x - wp.x, t.z - wp.z) < 8) {
+      t.wp = ((t.wp ?? 0) + 1) % TAIL_LOOP.length;
+    }
+    const targetHeading = Math.atan2(wp.x - t.x, wp.z - t.z);
+    let steer = ((targetHeading - t.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    steer = Math.max(-1, Math.min(1, steer * 2));
+    driveCar(t, dt, { throttle: 0.7, steer, brake: false }, world.colliders, world.traffic.cars);
+    t.mesh.position.set(t.x, 0, t.z);
   }
 
   // The tail chase. Returns true when the mission ended (complete/fail).
@@ -394,15 +478,7 @@ export class MissionManager {
       }
     }
     // The tail car loops the Marina roads.
-    const wp = TAIL_LOOP[t.wp ?? 0];
-    if (Math.hypot(t.x - wp.x, t.z - wp.z) < 8) {
-      t.wp = ((t.wp ?? 0) + 1) % TAIL_LOOP.length;
-    }
-    const targetHeading = Math.atan2(wp.x - t.x, wp.z - t.z);
-    let steer = ((targetHeading - t.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-    steer = Math.max(-1, Math.min(1, steer * 2));
-    driveCar(t, dt, { throttle: 0.7, steer, brake: false }, world.colliders, world.traffic.cars);
-    t.mesh.position.set(t.x, 0, t.z);
+    this.driveTailCar(dt, world);
     return false;
   }
 
