@@ -1,107 +1,45 @@
-// The story of CORAL HEAT v2.4: 12 missions for Mara Voss, from her first
-// fare for Dutch Calloway to the last run out of Coral Bay. v2.4 rewrites
-// v2.3's missions.js from scratch: the same twelve missions, the same
-// rewards, the same rules, the same seeded hostile deal, different code.
-// The mission table is gameplay data — every target, checkpoint, pickup,
-// timer and reward is unchanged. The manager below is reorganised around a
-// per-type handler table instead of one long if-chain, so each mission type
-// reads as its own rule.
+// The story of CORAL HEAT v2.5: 12 missions for Mara Voss, from her first
+// fare for Dutch Calloway to the last run out of Coral Bay. v2.5 rewrites
+// v2.4's missions.js from scratch: the same twelve missions, the same
+// rewards, the same rules, the same seeded hostile deal, written as new
+// code. The mission table is gameplay data — every target, checkpoint,
+// pickup, timer and reward is unchanged. The manager below is reorganised
+// around a per-type handler table instead of one long if-chain, so each
+// mission type reads as its own rule.
 import * as THREE from 'three';
 import { createRng, pick, pickN, range } from './rng.js';
 import { buildCarMesh, driveCar } from './vehicles.js';
 import { buildGunMesh } from './weapons.js';
 
 // Mission table. Types: drive / steal / checkpoints / collect / shoot /
-// escape / chase / timed / roadblock / tail.
+// escape / chase / timed / roadblock / tail. Each row is one mission:
+// id, title, giver, type, brief, objective, target/checkpoints/pickups,
+// and the reward. The values are the v2.4 ones, unchanged.
 export const MISSIONS = [
-  {
-    id: 1, title: 'First Fare', giver: 'Dutch Calloway', type: 'drive',
-    brief: 'Dutch needs a package run to the Marina. Get in a car and follow the gold marker.',
-    objective: 'Drive to the gold marker at the Marina',
-    target: { x: -160, z: 160 }, reward: 400,
-  },
-  {
-    id: 2, title: 'Hot Wheels', giver: 'Dutch Calloway', type: 'steal',
-    brief: 'The client wants wheels, not words. Steal any car on the Strip and bring it to the garage on Palm Heights.',
-    objective: 'Steal a car (E) then deliver it to the garage',
-    target: { x: 120, z: -120 }, reward: 700,
-  },
-  {
-    id: 3, title: 'The Long Way', giver: 'Sister Ana', type: 'checkpoints',
-    brief: 'Ana is testing your nerve. Hit all three checkpoints across town, then finish at Downtown.',
-    objective: 'Hit 3 checkpoints, then reach Downtown',
-    target: { x: 0, z: 80 },
-    checkpoints: [{ x: -120, z: -120 }, { x: 120, z: 40 }, { x: -40, z: 120 }],
-    reward: 900,
-  },
-  {
-    id: 4, title: 'Paper Trail', giver: 'Dutch Calloway', type: 'collect',
-    brief: 'Three drops hidden around Old Town. On foot, quiet, no heat. Grab them all.',
-    objective: 'Collect 3 packages on foot in Old Town',
-    pickups: [{ x: -80, z: -120 }, { x: -40, z: -80 }, { x: -120, z: -40 }],
-    reward: 1000,
-  },
-  {
-    id: 5, title: 'Loud Night', giver: 'Reyes', type: 'shoot',
-    brief: "Reyes' crew is leaning on the Docks. Four of them. Make it loud, make it count.",
-    objective: 'Take down 4 rivals at the Docks',
-    target: { x: 0, z: 160 }, count: 4, reward: 1400,
-  },
-  {
-    id: 6, title: 'Heat Wave', giver: 'Dutch Calloway', type: 'escape',
-    brief: 'The heat is on you — 3 stars and climbing. Lose them, then get to Sunset Point in one piece.',
-    objective: 'Survive the heat, then reach Sunset Point',
-    target: { x: -160, z: 120 }, wanted: 3, survive: 40, reward: 1600,
-  },
-  {
-    id: 7, title: 'Marina Getaway', giver: 'Sister Ana', type: 'chase',
-    brief: "Ana's boat money is in the trunk and the whole Coral Bay Police is awake. Helicopter and all. Run the Strip.",
-    objective: 'Outrun the 4-star chase: hit 3 Strip checkpoints',
-    checkpoints: [{ x: -160, z: 80 }, { x: -160, z: -40 }, { x: -160, z: -160 }],
-    target: { x: -160, z: -160 }, wanted: 4, reward: 2000,
-  },
-  {
-    id: 8, title: "The Broker's Debt", giver: 'The Broker', type: 'timed',
-    brief: 'The Broker does not wait. Cross town to Palm Heights before the clock dies. Drive like it matters.',
-    objective: 'Reach Palm Heights before the timer ends',
-    target: { x: 160, z: -160 }, timeLimit: 75, reward: 2200,
-  },
-  {
-    id: 9, title: 'Blockade Runner', giver: 'Reyes', type: 'roadblock',
-    brief: 'Roadblocks on every artery and a 4-star tail. Punch through the blockade and reach Old Town.',
-    objective: 'Break through the roadblocks to Old Town',
-    target: { x: -80, z: -120 }, wanted: 4, reward: 2500,
-  },
-  {
-    id: 10, title: 'Silent Docks', giver: 'Dutch Calloway', type: 'collect',
-    brief: 'Four crates on the Docks, no questions. The night crew is paid to look away. Mostly.',
-    objective: 'Collect 4 crates at the Docks',
-    pickups: [{ x: -80, z: 160 }, { x: 40, z: 160 }, { x: 120, z: 120 }, { x: 0, z: 120 }],
-    reward: 2800,
-  },
-  {
-    id: 11, title: 'High Tide', giver: 'Sister Ana', type: 'tail',
-    brief: "A rival runner is moving Ana's cargo down the Marina. Stay on his bumper — don't lose him, don't spook him.",
-    objective: 'Tail the runner along the Marina for 6 seconds',
-    target: { x: -120, z: 160 }, reward: 3200,
-  },
-  {
-    id: 12, title: 'The Last Fare', giver: 'Mara Voss', type: 'escape',
-    brief: 'One last run. Five stars, the helicopter, the whole city. Reach the Coral Wheel and disappear into the sunset.',
-    objective: 'Escape at 5 stars — reach the Coral Wheel',
-    target: { x: -196, z: 150 }, wanted: 5, survive: 30, reward: 5000,
-  },
+  { id: 1, title: 'First Fare', giver: 'Dutch Calloway', type: 'drive', brief: 'Dutch needs a package run to the Marina. Get in a car and follow the gold marker.', objective: 'Drive to the gold marker at the Marina', target: { x: -160, z: 160 }, reward: 400 },
+  { id: 2, title: 'Hot Wheels', giver: 'Dutch Calloway', type: 'steal', brief: 'The client wants wheels, not words. Steal any car on the Strip and bring it to the garage on Palm Heights.', objective: 'Steal a car (E) then deliver it to the garage', target: { x: 120, z: -120 }, reward: 700 },
+  { id: 3, title: 'The Long Way', giver: 'Sister Ana', type: 'checkpoints', brief: 'Ana is testing your nerve. Hit all three checkpoints across town, then finish at Downtown.', objective: 'Hit 3 checkpoints, then reach Downtown', target: { x: 0, z: 80 }, checkpoints: [{ x: -120, z: -120 }, { x: 120, z: 40 }, { x: -40, z: 120 }], reward: 900 },
+  { id: 4, title: 'Paper Trail', giver: 'Dutch Calloway', type: 'collect', brief: 'Three drops hidden around Old Town. On foot, quiet, no heat. Grab them all.', objective: 'Collect 3 packages on foot in Old Town', pickups: [{ x: -80, z: -120 }, { x: -40, z: -80 }, { x: -120, z: -40 }], reward: 1000 },
+  { id: 5, title: 'Loud Night', giver: 'Reyes', type: 'shoot', brief: "Reyes' crew is leaning on the Docks. Four of them. Make it loud, make it count.", objective: 'Take down 4 rivals at the Docks', target: { x: 0, z: 160 }, count: 4, reward: 1400 },
+  { id: 6, title: 'Heat Wave', giver: 'Dutch Calloway', type: 'escape', brief: 'The heat is on you — 3 stars and climbing. Lose them, then get to Sunset Point in one piece.', objective: 'Survive the heat, then reach Sunset Point', target: { x: -160, z: 120 }, wanted: 3, survive: 40, reward: 1600 },
+  { id: 7, title: 'Marina Getaway', giver: 'Sister Ana', type: 'chase', brief: "Ana's boat money is in the trunk and the whole Coral Bay Police is awake. Helicopter and all. Run the Strip.", objective: 'Outrun the 4-star chase: hit 3 Strip checkpoints', checkpoints: [{ x: -160, z: 80 }, { x: -160, z: -40 }, { x: -160, z: -160 }], target: { x: -160, z: -160 }, wanted: 4, reward: 2000 },
+  { id: 8, title: "The Broker's Debt", giver: 'The Broker', type: 'timed', brief: 'The Broker does not wait. Cross town to Palm Heights before the clock dies. Drive like it matters.', objective: 'Reach Palm Heights before the timer ends', target: { x: 160, z: -160 }, timeLimit: 75, reward: 2200 },
+  { id: 9, title: 'Blockade Runner', giver: 'Reyes', type: 'roadblock', brief: 'Roadblocks on every artery and a 4-star tail. Punch through the blockade and reach Old Town.', objective: 'Break through the roadblocks to Old Town', target: { x: -80, z: -120 }, wanted: 4, reward: 2500 },
+  { id: 10, title: 'Silent Docks', giver: 'Dutch Calloway', type: 'collect', brief: 'Four crates on the Docks, no questions. The night crew is paid to look away. Mostly.', objective: 'Collect 4 crates at the Docks', pickups: [{ x: -80, z: 160 }, { x: 40, z: 160 }, { x: 120, z: 120 }, { x: 0, z: 120 }], reward: 2800 },
+  { id: 11, title: 'High Tide', giver: 'Sister Ana', type: 'tail', brief: "A rival runner is moving Ana's cargo down the Marina. Stay on his bumper — don't lose him, don't spook him.", objective: 'Tail the runner along the Marina for 6 seconds', target: { x: -120, z: 160 }, reward: 3200 },
+  { id: 12, title: 'The Last Fare', giver: 'Mara Voss', type: 'escape', brief: 'One last run. Five stars, the helicopter, the whole city. Reach the Coral Wheel and disappear into the sunset.', objective: 'Escape at 5 stars — reach the Coral Wheel', target: { x: -196, z: 150 }, wanted: 5, survive: 30, reward: 5000 },
 ];
 
+
 // Rival look: jacket colours dealt per hostile, shared skin and pants.
-const RIVAL_JACKETS = [0x3a1a2a, 0x2a3a1a, 0x1a2a3a, 0x4a2a1a];
-const RIVAL_SKIN = 0xc98a5a;
-const RIVAL_PANTS = 0x222226;
-const HOSTILE_RING = 14;
-const HOSTILE_JITTER = 4;
+const JACKETS = [0x3a1a2a, 0x2a3a1a, 0x1a2a3a, 0x4a2a1a];
+const FOE_SKIN = 0xc98a5a;
+const FOE_PANTS = 0x222226;
+const RING = 14;
+const JITTER = 4;
 
 // The tail car's loop around the Marina.
-const TAIL_LOOP = [
+const LOOP = [
   { x: -120, z: 160 },
   { x: 40, z: 160 },
   { x: 40, z: 120 },
@@ -109,45 +47,45 @@ const TAIL_LOOP = [
 ];
 
 // How close the player must be to count as "there".
-const REACH_RADIUS = 6;
-const CHECKPOINT_RADIUS = 7;
-const PICKUP_RADIUS = 3.2;
+const REACH = 6;
+const CP_RADIUS = 7;
+const GRAB_RADIUS = 3.2;
 
 // One armed rival: jacket body, head, a real rifle in hand, legs, and a
-// red health bar overhead. No rng here — the deal happens in spawnHostiles.
-function buildRival(jacket) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(
+// red health bar overhead. No dice here — the deal happens in spawnHostiles.
+function makeRival(jacket) {
+  const grp = new THREE.Group();
+  const torso = new THREE.Mesh(
     new THREE.BoxGeometry(0.7, 1.1, 0.4),
     new THREE.MeshStandardMaterial({ color: jacket, roughness: 0.9 }),
   );
-  body.position.y = 1.0;
-  g.add(body);
-  const head = new THREE.Mesh(
+  torso.position.y = 1.0;
+  grp.add(torso);
+  const skull = new THREE.Mesh(
     new THREE.SphereGeometry(0.26, 10, 8),
-    new THREE.MeshStandardMaterial({ color: RIVAL_SKIN, roughness: 0.8 }),
+    new THREE.MeshStandardMaterial({ color: FOE_SKIN, roughness: 0.8 }),
   );
-  head.position.y = 1.75;
-  g.add(head);
+  skull.position.y = 1.75;
+  grp.add(skull);
   // A real rifle in their hands, not a box — you can see what you are up against.
-  const gun = buildGunMesh('rifle');
-  gun.group.position.set(0.28, 1.15, 0.3);
-  g.add(gun.group);
+  const rifle = buildGunMesh('rifle');
+  rifle.group.position.set(0.28, 1.15, 0.3);
+  grp.add(rifle.group);
   for (const s of [-1, 1]) {
-    const leg = new THREE.Mesh(
+    const shin = new THREE.Mesh(
       new THREE.BoxGeometry(0.24, 0.72, 0.26),
-      new THREE.MeshStandardMaterial({ color: RIVAL_PANTS, roughness: 0.9 }),
+      new THREE.MeshStandardMaterial({ color: FOE_PANTS, roughness: 0.9 }),
     );
-    leg.position.set(s * 0.16, 0.36, 0);
-    g.add(leg);
+    shin.position.set(s * 0.16, 0.36, 0);
+    grp.add(shin);
   }
   const hp = new THREE.Mesh(
     new THREE.BoxGeometry(0.9, 0.12, 0.1),
     new THREE.MeshBasicMaterial({ color: 0xff2020 }),
   );
   hp.position.y = 2.15;
-  g.add(hp);
-  return { group: g, hpMesh: hp };
+  grp.add(hp);
+  return { group: grp, hpMesh: hp };
 }
 
 export class MissionManager {
@@ -172,16 +110,16 @@ export class MissionManager {
   startMission(i) {
     this.clearField();
     this.index = i;
-    const m = MISSIONS[i];
+    const def = MISSIONS[i];
     // Runtime state, fresh per attempt. `progress` counts whatever the
     // mission type tracks (checkpoints hit, packages taken, rivals down).
     this.active = {
-      def: m,
+      def,
       progress: 0,
       collected: 0,
       killed: 0,
-      timer: m.timeLimit ?? 0,
-      surviveLeft: m.survive ?? 0,
+      timer: def.timeLimit ?? 0,
+      surviveLeft: def.survive ?? 0,
       tailTime: 0,
       escaped: false,
       stolen: false,
@@ -189,13 +127,13 @@ export class MissionManager {
     const first = this.missionTarget();
     this.moveBeacon(first);
     this.beacon.visible = true;
-    if (m.type === 'collect') this.spawnPickups(m.pickups);
-    if (m.type === 'shoot') this.spawnHostiles(m.count, m.target);
-    if (m.type === 'tail') this.spawnTailCar(m.target);
-    if (m.wanted) this.hooks.setWanted(m.wanted);
-    this.hooks.onObjective(m.objective);
-    this.hooks.onMissionStart(m);
-    this.hooks.onToast(`MISSION ${m.id} — ${m.title}`, `${m.giver}: ${m.brief}`);
+    if (def.type === 'collect') this.spawnPickups(def.pickups);
+    if (def.type === 'shoot') this.spawnHostiles(def.count, def.target);
+    if (def.type === 'tail') this.spawnTailCar(def.target);
+    if (def.wanted) this.hooks.setWanted(def.wanted);
+    this.hooks.onObjective(def.objective);
+    this.hooks.onMissionStart(def);
+    this.hooks.onToast(`MISSION ${def.id} — ${def.title}`, `${def.giver}: ${def.brief}`);
   }
 
   moveBeacon(point) {
@@ -203,9 +141,9 @@ export class MissionManager {
   }
 
   missionTarget() {
-    const m = this.active.def;
-    if (m.checkpoints) return m.checkpoints[this.active.progress];
-    return m.target;
+    const def = this.active.def;
+    if (def.checkpoints) return def.checkpoints[this.active.progress];
+    return def.target;
   }
 
   spawnPickups(points) {
@@ -223,13 +161,13 @@ export class MissionManager {
     // Armed rivals: varied jackets, they stand their ground and shoot back.
     // The deal order is the contract: jackets first (one draw each via
     // pickN), then per hostile the x jitter, the z jitter and the shoot
-    // timer — exactly as v2.3 dealt it.
-    const jackets = pickN(this.rng, RIVAL_JACKETS, n);
+    // timer — exactly as v2.4 dealt it.
+    const jackets = pickN(this.rng, JACKETS, n);
     for (let i = 0; i < n; i++) {
-      const { group, hpMesh } = buildRival(jackets[i]);
+      const { group, hpMesh } = makeRival(jackets[i]);
       const angle = (i / n) * Math.PI * 2;
-      const x = center.x + Math.sin(angle) * HOSTILE_RING + range(this.rng, -HOSTILE_JITTER, HOSTILE_JITTER);
-      const z = center.z + Math.cos(angle) * HOSTILE_RING + range(this.rng, -HOSTILE_JITTER, HOSTILE_JITTER);
+      const x = center.x + Math.sin(angle) * RING + range(this.rng, -JITTER, JITTER);
+      const z = center.z + Math.cos(angle) * RING + range(this.rng, -JITTER, JITTER);
       group.position.set(x, 0, z);
       this.scene.add(group);
       this.hostiles.push({
@@ -263,11 +201,11 @@ export class MissionManager {
   }
 
   complete(player) {
-    const m = this.active.def;
-    player.cash += m.reward;
+    const def = this.active.def;
+    player.cash += def.reward;
     this.done += 1;
-    this.earned += m.reward;
-    this.hooks.onComplete(m, player.cash);
+    this.earned += def.reward;
+    this.hooks.onComplete(def, player.cash);
     this.clearField();
     this.beacon.visible = false;
     this.active = null;
@@ -287,7 +225,7 @@ export class MissionManager {
   }
 
   // Distance check from the player's position to a point.
-  closeTo(playerPos, point, radius = REACH_RADIUS) {
+  closeTo(playerPos, point, radius = REACH) {
     return Math.hypot(playerPos.x - point.x, playerPos.z - point.z) < radius;
   }
 
@@ -301,12 +239,12 @@ export class MissionManager {
   }
 
   handleSteal(p) {
-    const a = this.active;
-    if (p.player.inCar && !a.stolen) {
-      a.stolen = true;
+    const run = this.active;
+    if (p.player.inCar && !run.stolen) {
+      run.stolen = true;
       this.hooks.onObjective('Stolen! Now deliver it to the garage');
     }
-    if (a.stolen && this.closeTo(p, a.def.target)) {
+    if (run.stolen && this.closeTo(p, run.def.target)) {
       this.complete(p.player);
       return true;
     }
@@ -314,49 +252,49 @@ export class MissionManager {
   }
 
   handleCheckpoints(p, chase) {
-    const a = this.active;
-    const m = a.def;
-    const cp = m.checkpoints[a.progress];
-    if (!this.closeTo(p, cp, CHECKPOINT_RADIUS)) return false;
-    a.progress += 1;
+    const run = this.active;
+    const def = run.def;
+    const cp = def.checkpoints[run.progress];
+    if (!this.closeTo(p, cp, CP_RADIUS)) return false;
+    run.progress += 1;
     const line = chase ? 'Keep running — they are right behind you!' : 'Checkpoint clear.';
-    this.hooks.onToast(`CHECKPOINT ${a.progress}/${m.checkpoints.length}`, line);
-    if (a.progress >= m.checkpoints.length) {
-      if (this.closeTo(p, m.target, 8)) {
+    this.hooks.onToast(`CHECKPOINT ${run.progress}/${def.checkpoints.length}`, line);
+    if (run.progress >= def.checkpoints.length) {
+      if (this.closeTo(p, def.target, 8)) {
         this.complete(p.player);
         return true;
       }
-      this.moveBeacon(m.target);
+      this.moveBeacon(def.target);
       this.hooks.onObjective('Final stretch — reach the marker');
     } else {
-      this.moveBeacon(m.checkpoints[a.progress]);
+      this.moveBeacon(def.checkpoints[run.progress]);
     }
     return false;
   }
 
   handleCollect(p) {
-    const a = this.active;
-    const m = a.def;
+    const run = this.active;
+    const def = run.def;
     for (const pk of this.pickupMeshes) {
-      if (pk.taken || !this.closeTo(p, pk, PICKUP_RADIUS)) continue;
+      if (pk.taken || !this.closeTo(p, pk, GRAB_RADIUS)) continue;
       pk.taken = true;
       this.scene.remove(pk.mesh);
-      a.collected += 1;
-      this.hooks.onToast(`PACKAGE ${a.collected}/${m.pickups.length}`, 'Picked up. Keep moving.');
-      if (a.collected >= m.pickups.length) {
+      run.collected += 1;
+      this.hooks.onToast(`PACKAGE ${run.collected}/${def.pickups.length}`, 'Picked up. Keep moving.');
+      if (run.collected >= def.pickups.length) {
         this.complete(p.player);
         return true;
       }
     }
-    this.hooks.onObjective(`${m.objective} — ${a.collected}/${m.pickups.length}`);
+    this.hooks.onObjective(`${def.objective} — ${run.collected}/${def.pickups.length}`);
     return false;
   }
 
   handleShoot(player) {
-    const a = this.active;
-    const m = a.def;
-    this.hooks.onObjective(`${m.objective} — ${a.killed}/${m.count} down`);
-    if (a.killed >= m.count) {
+    const run = this.active;
+    const def = run.def;
+    this.hooks.onObjective(`${def.objective} — ${run.killed}/${def.count} down`);
+    if (run.killed >= def.count) {
       this.complete(player);
       return true;
     }
@@ -364,17 +302,17 @@ export class MissionManager {
   }
 
   handleEscape(p, dt) {
-    const a = this.active;
-    const m = a.def;
-    if (a.surviveLeft > 0) {
-      a.surviveLeft -= dt;
-      this.hooks.onObjective(`${m.objective} — hold on ${Math.ceil(a.surviveLeft)}s`);
-      if (a.surviveLeft <= 0) {
-        a.escaped = true;
-        this.moveBeacon(m.target);
+    const run = this.active;
+    const def = run.def;
+    if (run.surviveLeft > 0) {
+      run.surviveLeft -= dt;
+      this.hooks.onObjective(`${def.objective} — hold on ${Math.ceil(run.surviveLeft)}s`);
+      if (run.surviveLeft <= 0) {
+        run.escaped = true;
+        this.moveBeacon(def.target);
         this.hooks.onObjective('Heat cooling — reach the marker now!');
       }
-    } else if (this.closeTo(p, m.target)) {
+    } else if (this.closeTo(p, def.target)) {
       this.complete(p.player);
       return true;
     }
@@ -383,15 +321,15 @@ export class MissionManager {
 
   update(dt, player, world) {
     if (!this.active || this.allDone) return;
-    const a = this.active;
-    const m = a.def;
+    const run = this.active;
+    const def = run.def;
     const p = player.pos;
 
     // Timers tick before the type rule runs.
-    if (m.timeLimit) {
-      a.timer -= dt;
-      this.hooks.onObjective(`${m.objective} — ${Math.max(0, Math.ceil(a.timer))}s left`);
-      if (a.timer <= 0) {
+    if (def.timeLimit) {
+      run.timer -= dt;
+      this.hooks.onObjective(`${def.objective} — ${Math.max(0, Math.ceil(run.timer))}s left`);
+      if (run.timer <= 0) {
         this.fail('Out of time — the Broker does not wait.');
         return;
       }
@@ -399,7 +337,7 @@ export class MissionManager {
 
     const ctx = { ...p, player };
     let ended = false;
-    switch (m.type) {
+    switch (def.type) {
       case 'drive':
       case 'timed':
       case 'roadblock':
@@ -441,12 +379,12 @@ export class MissionManager {
   // Drive the runner car around its Marina loop: steer toward the current
   // waypoint, advance to the next one when it arrives. The heading is
   // computed from the waypoint captured before the advance, so the car
-  // steers at the waypoint it just reached for one frame — as v2.3 did.
+  // steers at the waypoint it just reached for one frame — as v2.4 did.
   driveTailCar(dt, world) {
     const t = this.tailCar;
-    const wp = TAIL_LOOP[t.wp ?? 0];
+    const wp = LOOP[t.wp ?? 0];
     if (Math.hypot(t.x - wp.x, t.z - wp.z) < 8) {
-      t.wp = ((t.wp ?? 0) + 1) % TAIL_LOOP.length;
+      t.wp = ((t.wp ?? 0) + 1) % LOOP.length;
     }
     const targetHeading = Math.atan2(wp.x - t.x, wp.z - t.z);
     let steer = ((targetHeading - t.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -457,22 +395,22 @@ export class MissionManager {
 
   // The tail chase. Returns true when the mission ended (complete/fail).
   updateTail(dt, player, world) {
-    const a = this.active;
-    const m = a.def;
+    const run = this.active;
+    const def = run.def;
     const p = player.pos;
     const t = this.tailCar;
-    const d = Math.hypot(p.x - t.x, p.z - t.z);
-    if (d < 12) {
-      a.tailTime += dt;
-      this.hooks.onObjective(`Stay on his bumper — ${a.tailTime.toFixed(1)}s / 6s`);
-      if (a.tailTime >= 6) {
+    const dist = Math.hypot(p.x - t.x, p.z - t.z);
+    if (dist < 12) {
+      run.tailTime += dt;
+      this.hooks.onObjective(`Stay on his bumper — ${run.tailTime.toFixed(1)}s / 6s`);
+      if (run.tailTime >= 6) {
         this.complete(player);
         return true;
       }
     } else {
-      a.tailTime = Math.max(0, a.tailTime - dt * 0.5);
-      this.hooks.onObjective(m.objective);
-      if (d > 60) {
+      run.tailTime = Math.max(0, run.tailTime - dt * 0.5);
+      this.hooks.onObjective(def.objective);
+      if (dist > 60) {
         this.fail('You lost the runner.');
         return true;
       }

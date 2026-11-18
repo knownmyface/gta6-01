@@ -1,9 +1,9 @@
-// Procedural audio for CORAL HEAT v2.4: no audio files, every sound is
+// Procedural audio for CORAL HEAT v2.5: no audio files, every sound is
 // synthesized with WebAudio. Engine hum, police siren, gunshots, UI blips
 // and three radio stations of sequenced synth music. Safe to call before any
 // user gesture: the context is created lazily and everything no-ops while it
-// is suspended. v2.4 is a from-scratch rewrite of v2.3's audio.js: same
-// stations, same mix, same one-shots, different code. The sequencer is
+// is suspended. v2.5 is a from-scratch rewrite of v2.4's audio.js: same
+// stations, same mix, same one-shots, written as new code. The sequencer is
 // split into one helper per layer now (bass, pad, lead, hat), and the
 // note-sequence one-shots share a single jingle helper.
 const STATIONS = [
@@ -42,17 +42,17 @@ export class RadioAudio {
   }
 
   // --- context + buses ------------------------------------------------------
-  makeOsc(type, freq) {
-    const o = this.ctx.createOscillator();
-    o.type = type;
-    o.frequency.value = freq;
-    return o;
+  newOsc(type, pitch) {
+    const osc = this.ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = pitch;
+    return osc;
   }
 
-  makeGain(value) {
-    const g = this.ctx.createGain();
-    g.gain.value = value;
-    return g;
+  newGain(value) {
+    const gain = this.ctx.createGain();
+    gain.gain.value = value;
+    return gain;
   }
 
   ensure() {
@@ -61,11 +61,11 @@ export class RadioAudio {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
       this.ctx = new AC();
-      this.master = this.makeGain(MASTER_VOLUME);
+      this.master = this.newGain(MASTER_VOLUME);
       this.master.connect(this.ctx.destination);
-      this.musicGain = this.makeGain(MUSIC_VOLUME);
+      this.musicGain = this.newGain(MUSIC_VOLUME);
       this.musicGain.connect(this.master);
-      this.sfxGain = this.makeGain(SFX_VOLUME);
+      this.sfxGain = this.newGain(SFX_VOLUME);
       this.sfxGain.connect(this.master);
       return true;
     } catch {
@@ -98,21 +98,21 @@ export class RadioAudio {
 
   // --- engine: two detuned oscillators whose pitch follows speed ---
   startEngine() {
-    const o1 = this.makeOsc('sawtooth', 55);
-    const o2 = this.makeOsc('square', 27.5);
-    const g = this.makeGain(0.0);
-    const f = this.ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = 420;
-    o1.connect(f);
-    o2.connect(f);
-    f.connect(g);
-    g.connect(this.sfxGain);
-    o1.start();
-    o2.start();
-    this.engineOsc = o1;
-    this.engineOsc2 = o2;
-    this.engineGain = g;
+    const oscA = this.newOsc('sawtooth', 55);
+    const oscB = this.newOsc('square', 27.5);
+    const gain = this.newGain(0.0);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 420;
+    oscA.connect(filter);
+    oscB.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGain);
+    oscA.start();
+    oscB.start();
+    this.engineOsc = oscA;
+    this.engineOsc2 = oscB;
+    this.engineGain = gain;
   }
 
   setEngine(speedMph, inCar) {
@@ -120,25 +120,25 @@ export class RadioAudio {
     const t = this.ctx.currentTime;
     const target = inCar ? 0.05 + Math.min(0.09, speedMph / 1800) : 0.0;
     this.engineGain.gain.setTargetAtTime(target, t, 0.08);
-    const freq = 48 + speedMph * 1.1;
-    this.engineOsc.frequency.setTargetAtTime(freq, t, 0.1);
-    this.engineOsc2.frequency.setTargetAtTime(freq / 2, t, 0.1);
+    const pitch = 48 + speedMph * 1.1;
+    this.engineOsc.frequency.setTargetAtTime(pitch, t, 0.1);
+    this.engineOsc2.frequency.setTargetAtTime(pitch / 2, t, 0.1);
   }
 
   // --- police siren: slow two-tone wail, gain follows wanted level ---
   startSiren() {
-    const o = this.makeOsc('sine', 720);
-    const g = this.makeGain(0.0);
-    const lfo = this.makeOsc('square', 0.55);
-    const lg = this.makeGain(180);
-    lfo.connect(lg);
-    lg.connect(o.frequency);
-    o.connect(g);
-    g.connect(this.sfxGain);
-    o.start();
-    lfo.start();
-    this.sirenOsc = o;
-    this.sirenGain = g;
+    const osc = this.newOsc('sine', 720);
+    const gain = this.newGain(0.0);
+    const wobble = this.newOsc('square', 0.55);
+    const depth = this.newGain(180);
+    wobble.connect(depth);
+    depth.connect(osc.frequency);
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start();
+    wobble.start();
+    this.sirenOsc = osc;
+    this.sirenGain = gain;
   }
 
   setSiren(wanted) {
@@ -160,13 +160,13 @@ export class RadioAudio {
 
   musicTick() {
     if (!this.ctx || this.ctx.state === 'suspended' || this.muted) return;
-    const st = STATIONS[this.station];
-    const stepDur = 60 / st.bpm / 4;
+    const station = STATIONS[this.station];
+    const stepDur = 60 / station.bpm / 4;
     while (this.nextStepTime < this.ctx.currentTime + 0.12) {
       if (this.nextStepTime < this.ctx.currentTime - 0.05) {
         this.nextStepTime = this.ctx.currentTime;
       }
-      this.scheduleStep(st, this.step, this.nextStepTime, stepDur);
+      this.scheduleStep(station, this.step, this.nextStepTime, stepDur);
       this.step = (this.step + 1) % 64;
       this.nextStepTime += stepDur;
     }
@@ -174,34 +174,34 @@ export class RadioAudio {
 
   // One 16th step, four layers: bass on the beat, pad on the bar, lead
   // walking the pentatonic, hat ticking the off-16ths.
-  scheduleStep(st, step, time, stepDur) {
-    const s16 = step % 16;
-    const chord = CHORD_STEPS[Math.floor(step / 16) % 4];
-    this.playBass(st, s16, chord, time, stepDur);
-    this.playPad(st, s16, chord, time, stepDur);
-    this.playLead(st, s16, chord, time, stepDur);
-    if (s16 % 2 === 1) this.noise(time, 0.03, 0.05, 6000);
+  scheduleStep(station, step, time, stepDur) {
+    const sixteenth = step % 16;
+    const chordRoot = CHORD_STEPS[Math.floor(step / 16) % 4];
+    this.playBass(station, sixteenth, chordRoot, time, stepDur);
+    this.playPad(station, sixteenth, chordRoot, time, stepDur);
+    this.playLead(station, sixteenth, chordRoot, time, stepDur);
+    if (sixteenth % 2 === 1) this.noise(time, 0.03, 0.05, 6000);
   }
 
-  playBass(st, s16, chord, time, stepDur) {
-    if (s16 % 4 !== 0 || !st.bass) return;
-    this.note(st.root / 2, time, stepDur * 3.5, 'sine', 0.5);
-    void chord;
+  playBass(station, sixteenth, chordRoot, time, stepDur) {
+    if (sixteenth % 4 !== 0 || !station.bass) return;
+    this.note(station.root / 2, time, stepDur * 3.5, 'sine', 0.5);
+    void chordRoot;
   }
 
-  playPad(st, s16, chord, time, stepDur) {
-    if (s16 !== 0 && s16 !== 8) return;
-    for (const iv of PAD_TONES) {
-      const semi = st.scale[iv % st.scale.length] + chord;
-      this.note(st.root * Math.pow(2, semi / 12) / 2, time, stepDur * 8, 'triangle', 0.10);
+  playPad(station, sixteenth, chordRoot, time, stepDur) {
+    if (sixteenth !== 0 && sixteenth !== 8) return;
+    for (const tone of PAD_TONES) {
+      const semitone = station.scale[tone % station.scale.length] + chordRoot;
+      this.note(station.root * Math.pow(2, semitone / 12) / 2, time, stepDur * 8, 'triangle', 0.10);
     }
   }
 
-  playLead(st, s16, chord, time, stepDur) {
-    const lv = LEAD_WALK[s16];
-    if (lv < 0) return;
-    const semi = st.scale[lv % st.scale.length] + 12 * Math.floor(lv / st.scale.length) + chord;
-    this.note(st.root * Math.pow(2, semi / 12), time, stepDur * 1.8, st.wave, 0.16);
+  playLead(station, sixteenth, chordRoot, time, stepDur) {
+    const degree = LEAD_WALK[sixteenth];
+    if (degree < 0) return;
+    const semitone = station.scale[degree % station.scale.length] + 12 * Math.floor(degree / station.scale.length) + chordRoot;
+    this.note(station.root * Math.pow(2, semitone / 12), time, stepDur * 1.8, station.wave, 0.16);
   }
 
   // The note envelope: attack to full volume in 10ms, then an exponential
@@ -212,33 +212,33 @@ export class RadioAudio {
     gain.exponentialRampToValueAtTime(0.001, time + dur);
   }
 
-  note(freq, time, dur, type, vol) {
-    const o = this.makeOsc(type, freq);
-    const g = this.makeGain(0);
-    this.applyEnvelope(g.gain, time, dur, vol);
-    o.connect(g);
-    g.connect(this.musicGain);
-    o.start(time);
-    o.stop(time + dur + 0.05);
+  note(pitch, time, dur, type, vol) {
+    const osc = this.newOsc(type, pitch);
+    const gain = this.newGain(0);
+    this.applyEnvelope(gain.gain, time, dur, vol);
+    osc.connect(gain);
+    gain.connect(this.musicGain);
+    osc.start(time);
+    osc.stop(time + dur + 0.05);
   }
 
-  noise(time, dur, vol, freq) {
-    const len = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) {
-      d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  noise(time, dur, vol, pitch) {
+    const frames = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
+    const buffer = this.ctx.createBuffer(1, frames, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < frames; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
     }
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    const f = this.ctx.createBiquadFilter();
-    f.type = 'highpass';
-    f.frequency.value = freq;
-    const g = this.makeGain(vol);
-    src.connect(f);
-    f.connect(g);
-    g.connect(this.musicGain);
-    src.start(time);
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = pitch;
+    const gain = this.newGain(vol);
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.musicGain);
+    source.start(time);
   }
 
   // --- one-shots (all no-op while the context is suspended) ---
@@ -248,16 +248,16 @@ export class RadioAudio {
 
   // A short run of notes, evenly spaced: the mission jingle, the steal
   // jingle, the shop cha-ching and the coin pickup are all one shape.
-  jingle(freqs, gap, dur, type, vol) {
-    const t0 = this.ctx.currentTime;
-    freqs.forEach((f, i) => {
-      this.note(f, t0 + i * gap, dur, type, vol);
+  jingle(notes, gap, dur, type, vol) {
+    const now = this.ctx.currentTime;
+    notes.forEach((filter, i) => {
+      this.note(filter, now + i * gap, dur, type, vol);
     });
   }
 
-  blip(freq = 880) {
+  blip(pitch = 880) {
     if (!this.ready()) return;
-    this.note(freq, this.ctx.currentTime, 0.09, 'square', 0.12);
+    this.note(pitch, this.ctx.currentTime, 0.09, 'square', 0.12);
   }
 
   gunshot() {
@@ -284,17 +284,17 @@ export class RadioAudio {
   // Reload clicks, weapon switch, shop cha-ching, coin.
   reloadClick() {
     if (!this.ready()) return;
-    const t0 = this.ctx.currentTime;
-    this.noise(t0, 0.05, 0.25, 2500);
-    this.note(180, t0 + 0.12, 0.08, 'square', 0.12);
-    this.noise(t0 + 0.28, 0.06, 0.3, 1800);
+    const now = this.ctx.currentTime;
+    this.noise(now, 0.05, 0.25, 2500);
+    this.note(180, now + 0.12, 0.08, 'square', 0.12);
+    this.noise(now + 0.28, 0.06, 0.3, 1800);
   }
 
   weaponSwitch() {
     if (!this.ready()) return;
-    const t0 = this.ctx.currentTime;
-    this.noise(t0, 0.06, 0.3, 3000);
-    this.note(320, t0 + 0.08, 0.06, 'square', 0.1);
+    const now = this.ctx.currentTime;
+    this.noise(now, 0.06, 0.3, 3000);
+    this.note(320, now + 0.08, 0.06, 'square', 0.1);
   }
 
   shopBuy() {

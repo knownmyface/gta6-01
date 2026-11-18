@@ -1,9 +1,9 @@
-// CORAL HEAT v2.4 — main bootstrap and game loop. Wires the city, traffic,
+// CORAL HEAT v2.5 — main bootstrap and game loop. Wires the city, traffic,
 // pedestrians, police, missions, combat, arsenal + viewmodel, side
 // activities (taxi fares, Coral Coins, gun shop), HUD, radio and saves
 // together and runs the game in desktop Chrome from static files, no
-// network requests. v2.4 rewrites v2.3's main.js from scratch: same game,
-// same loop, same wiring, different code. The wiring is split into small
+// network requests. v2.5 rewrites v2.4's main.js from scratch: same game,
+// same loop, same wiring, written as new code. The wiring is split into small
 // setup functions (renderer, world, systems, input, screens) instead of one
 // long top-level script, and the per-frame work is organised as named
 // steps the loop calls in the same order.
@@ -21,79 +21,79 @@ import { applyShot } from './shots.js';
 import { Arsenal, Viewmodel } from './weapons.js';
 import { SideActivities } from './side.js';
 
-const $ = (id) => document.getElementById(id);
-const params = new URLSearchParams(location.search);
-const SHOT = params.get('shot');
-const SEED = parseInt(params.get('seed') || '7', 10) || 7;
+const el = (id) => document.getElementById(id);
+const query = new URLSearchParams(location.search);
+const SHOT_NAME = query.get('shot');
+const SEED_NUM = parseInt(query.get('seed') || '7', 10) || 7;
 // Capture boot errors early: a module that throws mid-evaluation never
 // reaches the listener registered at the end of this file.
 window.addEventListener('error', (e) => { window.__shotError = String(e.message || e.error); });
 
-const CAR_NAMES = {
+const CAR_LABELS = {
   sports: 'COMET GT', sedan: 'BAYSIDE SEDAN', taxi: 'CORAL CAB',
   van: 'HARBOR VAN', truck: 'DOCK HAULER', police: 'CBPD INTERCEPTOR', bus: 'CORAL CITY BUS',
 };
 
-const START_CASH = 1250;
-const START_POS = { x: -160, z: 20, heading: Math.PI / 2 };
+const OPENING_CASH = 1250;
+const OPENING_POS = { x: -160, z: 20, heading: Math.PI / 2 };
 
 // --- renderer + scene -------------------------------------------------------
-function createRenderer() {
-  const canvas = $('game');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12; // a touch brighter — v2's shadowed streets read muddy in the mission shot
-  return { canvas, renderer };
+function makeRenderer() {
+  const canvas = el('game');
+  const gl = new THREE.WebGLRenderer({ canvas, antialias: true });
+  gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  gl.setSize(window.innerWidth, window.innerHeight);
+  gl.outputColorSpace = THREE.SRGBColorSpace;
+  gl.toneMapping = THREE.ACESFilmicToneMapping;
+  gl.toneMappingExposure = 1.12; // a touch brighter — v2's shadowed streets read muddy in the mission shot
+  return { canvas, renderer: gl };
 }
 
-function createCamera() {
-  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2000);
-  camera.position.set(-150, 6, 40);
-  return camera;
+function makeCamera() {
+  const cam = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2000);
+  cam.position.set(-150, 6, 40);
+  return cam;
 }
 
 // --- world + systems --------------------------------------------------------
 // Every subsystem gets its own seeded stream off the same seed, so a
 // screenshot seed reproduces the same city, traffic and pedestrians.
-function createWorld(scene) {
-  const world = buildCity(scene, SEED);
-  world.scene = scene;
-  world.traffic = new Traffic(scene, createRng(SEED + 11), world.colliders);
-  world.peds = new Pedestrians(scene, createRng(SEED + 23), world.colliders);
-  world.police = new Police(scene, createRng(SEED + 37), world.colliders);
-  world.roadblocks = new Roadblocks(scene);
-  world.playerCars = [];
-  return world;
+function makeWorld(stage) {
+  const realm = buildCity(stage, SEED_NUM);
+  realm.scene = stage;
+  realm.traffic = new Traffic(stage, createRng(SEED_NUM + 11), realm.colliders);
+  realm.peds = new Pedestrians(stage, createRng(SEED_NUM + 23), realm.colliders);
+  realm.police = new Police(stage, createRng(SEED_NUM + 37), realm.colliders);
+  realm.roadblocks = new Roadblocks(stage);
+  realm.playerCars = [];
+  return realm;
 }
 
-function createActors(scene) {
-  const player = new Player(scene, createRng(SEED + 51));
-  const audio = new RadioAudio();
-  const hud = new Hud();
-  const arsenal = new Arsenal();
-  return { player, audio, hud, arsenal };
+function makeActors(stage) {
+  const mara = new Player(stage, createRng(SEED_NUM + 51));
+  const sound = new RadioAudio();
+  const overlay = new Hud();
+  const guns = new Arsenal();
+  return { player: mara, audio: sound, hud: overlay, arsenal: guns };
 }
 
-const { canvas, renderer } = createRenderer();
-const scene = new THREE.Scene();
-const camera = createCamera();
-scene.add(camera); // the viewmodel gun is a child of the camera — it only renders if the camera is in the scene
+const { canvas: view, renderer: gl } = makeRenderer();
+const stage = new THREE.Scene();
+const cam = makeCamera();
+stage.add(cam); // the viewmodel gun is a child of the camera — it only renders if the camera is in the scene
 
-const world = createWorld(scene);
-const traffic = world.traffic;
-const peds = world.peds;
-const police = world.police;
-const roadblocks = world.roadblocks;
-const { player, audio, hud, arsenal } = createActors(scene);
-const viewmodel = new Viewmodel(camera);
-const combat = new Combat(scene, audio, arsenal);
+const realm = makeWorld(stage);
+const cars = realm.traffic;
+const walkers = realm.peds;
+const cops = realm.police;
+const blocks = realm.roadblocks;
+const { player: mara, audio: sound, hud: overlay, arsenal: guns } = makeActors(stage);
+const firstPerson = new Viewmodel(cam);
+const fight = new Combat(stage, sound, guns);
 
-const stats = { faresDone: 0, shotsFired: 0, kills: 0, coinsEarned: 0 };
+const tally = { faresDone: 0, shotsFired: 0, kills: 0, coinsEarned: 0 };
 
-const state = {
+const game = {
   mode: 'menu', // menu | playing | paused | busted
   cameraYaw: 0,
   cameraPitch: 0.32,
@@ -108,119 +108,119 @@ const state = {
   bestWanted: 0,
 };
 
-function toast(title, body) { hud.toast(title, body); }
+function toast(title, body) { overlay.toast(title, body); }
 
 function saveGame() {
   writeSave({
-    cash: player.cash,
-    missionIndex: missions.index,
-    missionsDone: missions.done,
-    earned: missions.earned,
-    station: audio.station,
-    muted: audio.muted,
-    bestWanted: state.bestWanted,
-    weapons: arsenal.serialize(),
-    coins: [...side.coinsFound],
-    stats,
+    cash: mara.cash,
+    missionIndex: story.index,
+    missionsDone: story.done,
+    earned: story.earned,
+    station: sound.station,
+    muted: sound.muted,
+    bestWanted: game.bestWanted,
+    weapons: guns.serialize(),
+    coins: [...extras.coinsFound],
+    stats: tally,
   });
 }
 
 // Side activities: taxi fares, Coral Coins, the GUNSMITH shop marker.
-const side = new SideActivities(scene, createRng(SEED + 91), {
+const extras = new SideActivities(stage, createRng(SEED_NUM + 91), {
   onToast: toast,
-  onObjective: (t) => hud.setObjective(t),
+  onObjective: (t) => overlay.setObjective(t),
   onCash: (n) => {
-    player.cash += n;
+    mara.cash += n;
     if (n === 150) {
-      stats.coinsEarned += 1;
-      audio.coinPickup();
+      tally.coinsEarned += 1;
+      sound.coinPickup();
     }
   },
-  onFareDone: () => { stats.faresDone += 1; },
+  onFareDone: () => { tally.faresDone += 1; },
 });
 
-const missions = new MissionManager(scene, createRng(SEED + 71), world.beacon, {
+const story = new MissionManager(stage, createRng(SEED_NUM + 71), realm.beacon, {
   onToast: toast,
-  onObjective: (t) => hud.setObjective(t),
+  onObjective: (t) => overlay.setObjective(t),
   onMissionStart: (m) => {
-    hud.setMission(m, missions.done, missions.earned);
-    hud.showMissionCard(m);
-    audio.missionJingle();
+    overlay.setMission(m, story.done, story.earned);
+    overlay.showMissionCard(m);
+    sound.missionJingle();
   },
   onComplete: (m, cash) => {
-    hud.showComplete(m, cash);
+    overlay.showComplete(m, cash);
     toast(`MISSION COMPLETE — ${m.title}`, `+$${m.reward.toLocaleString()}  •  cash $${cash.toLocaleString()}`);
-    audio.missionJingle();
+    sound.missionJingle();
     saveGame();
   },
   onFail: (reason) => {
     toast('MISSION FAILED', reason);
-    audio.blip(220);
+    sound.blip(220);
   },
   setWanted: (n) => {
-    player.wanted = n;
-    player.wantedTimer = 0;
+    mara.wanted = n;
+    mara.wantedTimer = 0;
   },
 });
-missions.world = world;
+story.world = realm;
 
-combat.onBusted = (cause) => {
-  const fine = Math.min(500, Math.floor(player.cash * 0.15));
-  player.cash -= fine;
-  player.health = 100;
-  player.wanted = 0;
-  police.clear();
-  roadblocks.clear();
-  if (player.inCar) player.exitCar();
-  player.x = START_POS.x;
-  player.z = START_POS.z;
-  player.heading = START_POS.heading;
-  player.mesh.position.set(player.x, 0, player.z);
-  $('bustedText').textContent = `${cause} Bail posted ($${fine}) — back on the Strip.`;
-  state.mode = 'busted';
-  $('bustedScreen').classList.remove('hidden');
+fight.onBusted = (cause) => {
+  const fine = Math.min(500, Math.floor(mara.cash * 0.15));
+  mara.cash -= fine;
+  mara.health = 100;
+  mara.wanted = 0;
+  cops.clear();
+  blocks.clear();
+  if (mara.inCar) mara.exitCar();
+  mara.x = OPENING_POS.x;
+  mara.z = OPENING_POS.z;
+  mara.heading = OPENING_POS.heading;
+  mara.mesh.position.set(mara.x, 0, mara.z);
+  el('bustedText').textContent = `${cause} Bail posted ($${fine}) — back on the Strip.`;
+  game.mode = 'busted';
+  el('bustedScreen').classList.remove('hidden');
   saveGame();
 };
 
 // Every shot lights the viewmodel flash and counts for the stats screen.
-combat.onShotFired = () => {
-  viewmodel.fire();
-  stats.shotsFired += 1;
+fight.onShotFired = () => {
+  firstPerson.fire();
+  tally.shotsFired += 1;
 };
 
 // --- input ------------------------------------------------------------------
-const keys = {};
+const held = {};
 
 function toggleMute() {
-  audio.setMuted(!audio.muted);
-  hud.setRadio(audio.currentStation());
-  toast(audio.muted ? 'RADIO MUTED' : 'RADIO ON', audio.currentStation().name);
+  sound.setMuted(!sound.muted);
+  overlay.setRadio(sound.currentStation());
+  toast(sound.muted ? 'RADIO MUTED' : 'RADIO ON', sound.currentStation().name);
 }
 
-function cycleRadio() { setStation(audio.station + 1); }
+function cycleRadio() { setStation(sound.station + 1); }
 
 function setStation(i) {
-  const st = audio.setStation(i);
-  hud.setRadio(st);
+  const st = sound.setStation(i);
+  overlay.setRadio(st);
   toast(st.name, st.track);
 }
 
 function selectWeapon(type) {
-  if (state.mode !== 'playing' || player.inCar) return;
-  if (!arsenal.owned.has(type)) {
-    toast('NOT OWNED', `${arsenal.defs[type].name} — buy it at the GUNSMITH on the Strip (green marker).`);
+  if (game.mode !== 'playing' || mara.inCar) return;
+  if (!guns.owned.has(type)) {
+    toast('NOT OWNED', `${guns.defs[type].name} — buy it at the GUNSMITH on the Strip (green marker).`);
     return;
   }
-  arsenal.select(type);
-  player.setWeapon(type);
-  viewmodel.setWeapon(type);
-  audio.weaponSwitch();
-  hud.setArsenal(arsenal);
+  guns.select(type);
+  mara.setWeapon(type);
+  firstPerson.setWeapon(type);
+  sound.weaponSwitch();
+  overlay.setArsenal(guns);
 }
 
 function reloadWeapon() {
-  if (arsenal.reload()) audio.reloadClick();
-  else if (arsenal.ammo[arsenal.current].mag === 0) audio.dryFire();
+  if (guns.reload()) sound.reloadClick();
+  else if (guns.ammo[guns.current].mag === 0) sound.dryFire();
 }
 
 // The nearest of Mara's own parked cars, within 4 units — entering a
@@ -228,10 +228,10 @@ function reloadWeapon() {
 function nearestParkedCar() {
   let best = null;
   let bd = 16;
-  for (const c of world.playerCars) {
-    const d = (c.x - player.x) ** 2 + (c.z - player.z) ** 2;
-    if (d < bd) {
-      bd = d;
+  for (const c of realm.playerCars) {
+    const dist = (c.x - mara.x) ** 2 + (c.z - mara.z) ** 2;
+    if (dist < bd) {
+      bd = dist;
       best = c;
     }
   }
@@ -239,31 +239,31 @@ function nearestParkedCar() {
 }
 
 function tryEnterExit() {
-  if (state.mode !== 'playing') return;
-  if (state.shopOpen) {
+  if (game.mode !== 'playing') return;
+  if (game.shopOpen) {
     closeShop();
     return;
   }
-  if (player.inCar) {
-    player.exitCar();
-    audio.blip(440);
+  if (mara.inCar) {
+    mara.exitCar();
+    sound.blip(440);
     return;
   }
   // Own parked car first.
   const best = nearestParkedCar();
   if (best) {
-    player.enterCar(best);
-    audio.blip(660);
+    mara.enterCar(best);
+    sound.blip(660);
   }
 }
 
 function tryStealOrShop() {
-  if (state.mode !== 'playing' || player.inCar) return;
-  if (state.shopOpen) {
+  if (game.mode !== 'playing' || mara.inCar) return;
+  if (game.shopOpen) {
     closeShop();
     return;
   }
-  if (side.nearShop(player)) {
+  if (extras.nearShop(mara)) {
     openShop();
     return;
   }
@@ -271,56 +271,56 @@ function tryStealOrShop() {
 }
 
 function openShop() {
-  state.shopOpen = true;
+  game.shopOpen = true;
   const buyHandler = (type) => {
-    const def = arsenal.defs[type];
-    if (arsenal.owned.has(type)) return;
-    if (!arsenal.buy(type, player.cash)) return; // checks price + ownership
-    player.cash -= def.price;
-    player.setWeapon(type);
-    viewmodel.setWeapon(type);
-    audio.shopBuy();
-    hud.setArsenal(arsenal);
-    hud.renderShop(arsenal, player.cash, buyHandler);
+    const def = guns.defs[type];
+    if (guns.owned.has(type)) return;
+    if (!guns.buy(type, mara.cash)) return; // checks price + ownership
+    mara.cash -= def.price;
+    mara.setWeapon(type);
+    firstPerson.setWeapon(type);
+    sound.shopBuy();
+    overlay.setArsenal(guns);
+    overlay.renderShop(guns, mara.cash, buyHandler);
     toast('PURCHASED', `${def.icon} ${def.name} — press ${def.key} to equip.`);
     saveGame();
   };
-  hud.renderShop(arsenal, player.cash, buyHandler);
-  hud.showShop(true);
-  audio.blip(990);
+  overlay.renderShop(guns, mara.cash, buyHandler);
+  overlay.showShop(true);
+  sound.blip(990);
 }
 
 function closeShop() {
-  state.shopOpen = false;
-  hud.showShop(false);
+  game.shopOpen = false;
+  overlay.showShop(false);
 }
 
 function trySteal() {
-  if (state.mode !== 'playing' || player.inCar) return;
-  const car = traffic.nearest(player.x, player.z, 5);
+  if (game.mode !== 'playing' || mara.inCar) return;
+  const car = cars.nearest(mara.x, mara.z, 5);
   if (!car) {
     toast('NO CAR NEARBY', 'Walk up to a traffic car and press E.');
     return;
   }
-  traffic.remove(car);
-  peds.spawnDriver(car.x + 2, car.z + 2, car.heading + Math.PI / 2);
-  world.playerCars.push(car);
-  player.enterCar(car);
-  player.addWanted(1, 'carjacking');
-  audio.stealJingle();
-  toast('CAR STOLEN', `${CAR_NAMES[car.type] || 'CAR'} is yours — the cops noticed. +1 wanted star.`);
-  if (missions.active?.def.type === 'steal') {
-    hud.setObjective('Stolen! Now deliver it to the garage');
+  cars.remove(car);
+  walkers.spawnDriver(car.x + 2, car.z + 2, car.heading + Math.PI / 2);
+  realm.playerCars.push(car);
+  mara.enterCar(car);
+  mara.addWanted(1, 'carjacking');
+  sound.stealJingle();
+  toast('CAR STOLEN', `${CAR_LABELS[car.type] || 'CAR'} is yours — the cops noticed. +1 wanted star.`);
+  if (story.active?.def.type === 'steal') {
+    overlay.setObjective('Stolen! Now deliver it to the garage');
   }
 }
 
 function shoot() {
-  const targets = combat.buildTargets(player, missions, police, peds);
-  const hit = combat.playerShoot(player, player.heading + state.cameraYaw * 0.15, targets);
-  if (hit) peds.scare(player.x, player.z, 20);
+  const targets = fight.buildTargets(mara, story, cops, walkers);
+  const hit = fight.playerShoot(mara, mara.heading + game.cameraYaw * 0.15, targets);
+  if (hit) walkers.scare(mara.x, mara.z, 20);
 }
 
-// One-shot keys, looked up by code — held keys live in `keys`. Built as a
+// One-shot keys, looked up by code — held keys live in `held`. Built as a
 // list of [code, action] pairs so adding a binding is one row, not a branch.
 const KEY_ACTIONS = new Map([
   ['KeyM', () => toggleMute()],
@@ -334,11 +334,11 @@ const KEY_ACTIONS = new Map([
 ]);
 
 function handleKeyDown(e) {
-  keys[e.code] = true;
-  if (e.code === 'Escape' && state.mode === 'playing') pauseGame();
-  else if (e.code === 'Escape' && state.mode === 'paused') resumeGame();
-  if (e.code === 'KeyR' && state.mode === 'playing' && !player.inCar) reloadWeapon();
-  if (e.code === 'Enter' && state.mode === 'menu') startGame(false);
+  held[e.code] = true;
+  if (e.code === 'Escape' && game.mode === 'playing') pauseGame();
+  else if (e.code === 'Escape' && game.mode === 'paused') resumeGame();
+  if (e.code === 'KeyR' && game.mode === 'playing' && !mara.inCar) reloadWeapon();
+  if (e.code === 'Enter' && game.mode === 'menu') startGame(false);
   const action = KEY_ACTIONS.get(e.code);
   if (action) action();
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
@@ -346,28 +346,28 @@ function handleKeyDown(e) {
 
 function bindInput() {
   window.addEventListener('keydown', handleKeyDown);
-  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
-  canvas.addEventListener('mousedown', (e) => {
-    state.dragging = true;
-    if (state.mode === 'playing' && !player.inCar && e.button === 0) {
-      state.firing = true;
+  window.addEventListener('keyup', (e) => { held[e.code] = false; });
+  view.addEventListener('mousedown', (e) => {
+    game.dragging = true;
+    if (game.mode === 'playing' && !mara.inCar && e.button === 0) {
+      game.firing = true;
       shoot();
     }
   });
   window.addEventListener('mouseup', () => {
-    state.dragging = false;
-    state.firing = false;
+    game.dragging = false;
+    game.firing = false;
   });
   window.addEventListener('mousemove', (e) => {
-    if (!state.dragging) return;
-    state.cameraYaw -= e.movementX * 0.004;
-    state.cameraPitch = clamp(state.cameraPitch + e.movementY * 0.003, 0.08, 1.1);
-    if (!player.inCar) player.heading -= e.movementX * 0.004;
+    if (!game.dragging) return;
+    game.cameraYaw -= e.movementX * 0.004;
+    game.cameraPitch = clamp(game.cameraPitch + e.movementY * 0.003, 0.08, 1.1);
+    if (!mara.inCar) mara.heading -= e.movementX * 0.004;
   });
   window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    cam.aspect = window.innerWidth / window.innerHeight;
+    cam.updateProjectionMatrix();
+    gl.setSize(window.innerWidth, window.innerHeight);
   });
 }
 
@@ -375,7 +375,7 @@ function bindInput() {
 function fillMissionList() {
   const save = loadSave();
   const idx = save?.missionIndex ?? 0;
-  $('missionList').innerHTML = MISSIONS.map((m, i) => {
+  el('missionList').innerHTML = MISSIONS.map((m, i) => {
     const cls = i < idx ? 'done' : i === idx ? 'next' : '';
     const mark = i < idx ? '✓' : i === idx ? '▶' : '·';
     return `<div class="${cls}">${mark} ${m.id}. ${m.title} — $${m.reward.toLocaleString()}</div>`;
@@ -383,87 +383,87 @@ function fillMissionList() {
 }
 
 function startGame(fromContinue) {
-  audio.unlock();
+  sound.unlock();
   const save = loadSave();
-  $('startScreen').classList.add('hidden');
-  state.mode = 'playing';
+  el('startScreen').classList.add('hidden');
+  game.mode = 'playing';
   if (fromContinue && save) {
-    player.cash = save.cash ?? START_CASH;
-    missions.restore({ index: save.missionIndex ?? 0, done: save.missionIndex ?? 0, earned: save.earned ?? 0 });
-    state.bestWanted = save.bestWanted ?? 0;
-    if (save.weapons) arsenal.restore(save.weapons);
-    if (save.coins) side.restoreCoins(save.coins);
-    if (save.stats) Object.assign(stats, save.stats);
-    player.setWeapon(arsenal.current);
-    viewmodel.setWeapon(arsenal.current);
+    mara.cash = save.cash ?? OPENING_CASH;
+    story.restore({ index: save.missionIndex ?? 0, done: save.missionIndex ?? 0, earned: save.earned ?? 0 });
+    game.bestWanted = save.bestWanted ?? 0;
+    if (save.weapons) guns.restore(save.weapons);
+    if (save.coins) extras.restoreCoins(save.coins);
+    if (save.stats) Object.assign(tally, save.stats);
+    mara.setWeapon(guns.current);
+    firstPerson.setWeapon(guns.current);
   } else {
-    player.cash = START_CASH;
+    mara.cash = OPENING_CASH;
   }
-  traffic.spawn(22, player.pos);
-  peds.spawn(40, player.pos);
-  missions.startMission(missions.index);
-  hud.setCash(player.cash);
-  hud.setHealth(player.health);
-  hud.setRadio(audio.currentStation());
-  hud.setArsenal(arsenal);
-  hud.setCoins(side.coinsFound.size);
+  cars.spawn(22, mara.pos);
+  walkers.spawn(40, mara.pos);
+  story.startMission(story.index);
+  overlay.setCash(mara.cash);
+  overlay.setHealth(mara.health);
+  overlay.setRadio(sound.currentStation());
+  overlay.setArsenal(guns);
+  overlay.setCoins(extras.coinsFound.size);
   saveGame();
 }
 
 function pauseGame() {
-  state.mode = 'paused';
-  hud.setStats(stats, side.coinsFound.size, missions.done);
-  $('pauseScreen').classList.remove('hidden');
+  game.mode = 'paused';
+  overlay.setStats(tally, extras.coinsFound.size, story.done);
+  el('pauseScreen').classList.remove('hidden');
   saveGame();
 }
 
 function resumeGame() {
-  state.mode = 'playing';
-  $('pauseScreen').classList.add('hidden');
-  audio.unlock();
+  game.mode = 'playing';
+  el('pauseScreen').classList.add('hidden');
+  sound.unlock();
 }
 
 function bindScreens() {
-  $('startBtn').addEventListener('click', () => startGame(false));
-  $('continueBtn').addEventListener('click', () => startGame(true));
-  $('resumeBtn').addEventListener('click', resumeGame);
-  $('restartBtn').addEventListener('click', () => {
+  el('startBtn').addEventListener('click', () => startGame(false));
+  el('continueBtn').addEventListener('click', () => startGame(true));
+  el('resumeBtn').addEventListener('click', resumeGame);
+  el('restartBtn').addEventListener('click', () => {
     clearSave();
     location.reload();
   });
-  $('bustedBtn').addEventListener('click', () => {
-    $('bustedScreen').classList.add('hidden');
-    state.mode = 'playing';
-    missions.startMission(missions.index);
+  el('bustedBtn').addEventListener('click', () => {
+    el('bustedScreen').classList.add('hidden');
+    game.mode = 'playing';
+    story.startMission(story.index);
   });
 }
 
 // --- camera -----------------------------------------------------------------
 function updateCamera(dt) {
-  if (state.cinematic) {
-    state.cinematic();
+  if (game.cinematic) {
+    game.cinematic();
     return;
   }
-  const p = player.pos;
-  const heading = player.inCar ? player.car.heading : player.heading;
-  const yaw = heading + state.cameraYaw;
-  const dist = player.inCar ? 11 : 8;
-  const height = player.inCar ? 4.4 : 3.6;
+  const p = mara.pos;
+  const heading = mara.inCar ? mara.car.heading : mara.heading;
+  const yaw = heading + game.cameraYaw;
+  const dist = mara.inCar ? 11 : 8;
+  const height = mara.inCar ? 4.4 : 3.6;
   const tx = p.x - Math.sin(yaw) * dist;
   const tz = p.z - Math.cos(yaw) * dist;
   const k = 1 - Math.pow(0.0001, dt);
-  camera.position.x += (tx - camera.position.x) * k;
-  camera.position.y += (height - camera.position.y) * k;
-  camera.position.z += (tz - camera.position.z) * k;
-  camera.lookAt(p.x + Math.sin(heading) * 6, player.inCar ? 1.6 : 1.4, p.z + Math.cos(heading) * 6);
+  cam.position.x += (tx - cam.position.x) * k;
+  cam.position.y += (height - cam.position.y) * k;
+  cam.position.z += (tz - cam.position.z) * k;
+  cam.lookAt(p.x + Math.sin(heading) * 6, mara.inCar ? 1.6 : 1.4, p.z + Math.cos(heading) * 6);
 }
 
 // The equipped weapon stays on the HUD even while driving — it is part of
 // the cover composition, not just the on-foot view.
 function weaponLine() {
-  const w = arsenal.def();
-  const a = arsenal.ammo[arsenal.current];
-  if (player.inCar) {
+  const w = guns.def();
+  const a = guns.ammo[guns.current];
+  if (mara.inCar) {
     return `🚗 Driving • ${w.icon} ${w.name} ${a.mag}/${a.reserve} • F exit • Space brake`;
   }
   return null;
@@ -471,32 +471,32 @@ function weaponLine() {
 
 // --- HUD refresh ------------------------------------------------------------
 function updateHud() {
-  const p = player.pos;
-  hud.setCash(player.cash);
-  hud.setWanted(player.wanted);
-  hud.setHealth(player.health);
-  hud.setDistrict(districtAt(p.x, p.z));
-  const mph = (player.inCar ? player.car.speed : player.speed) * 2.24;
-  hud.setSpeed(mph, player.inCar ? (CAR_NAMES[player.car.type] || 'CAR') : 'ON FOOT');
+  const p = mara.pos;
+  overlay.setCash(mara.cash);
+  overlay.setWanted(mara.wanted);
+  overlay.setHealth(mara.health);
+  overlay.setDistrict(districtAt(p.x, p.z));
+  const mph = (mara.inCar ? mara.car.speed : mara.speed) * 2.24;
+  overlay.setSpeed(mph, mara.inCar ? (CAR_LABELS[mara.car.type] || 'CAR') : 'ON FOOT');
   const driving = weaponLine();
-  if (driving) hud.setWeapon(driving);
-  else hud.setArsenal(arsenal);
-  hud.setCoins(side.coinsFound.size);
-  hud.drawMinimap(world, player, missions);
-  state.bestWanted = Math.max(state.bestWanted, player.wanted);
+  if (driving) overlay.setWeapon(driving);
+  else overlay.setArsenal(guns);
+  overlay.setCoins(extras.coinsFound.size);
+  overlay.drawMinimap(realm, mara, story);
+  game.bestWanted = Math.max(game.bestWanted, mara.wanted);
 }
 
 // --- per-frame world life: ocean, wheel, clouds, traffic lights ------------
 function animateWorld(dt) {
-  world.animated.ocean.offset.x += dt * 0.008;
-  world.animated.ocean.offset.y += dt * 0.003;
-  if (world.animated.wheel) world.animated.wheel.rotation.z += dt * 0.12;
-  for (const cloud of world.animated.clouds) {
+  realm.animated.ocean.offset.x += dt * 0.008;
+  realm.animated.ocean.offset.y += dt * 0.003;
+  if (realm.animated.wheel) realm.animated.wheel.rotation.z += dt * 0.12;
+  for (const cloud of realm.animated.clouds) {
     cloud.position.x += dt * 2.2;
     if (cloud.position.x > 520) cloud.position.x = -520;
   }
   const t = performance.now() / 1000;
-  for (const light of world.animated.lights) {
+  for (const light of realm.animated.lights) {
     const phase = (t + light.phase) % 28;
     const idx = phase < 12 ? 2 : phase < 14 ? 1 : phase < 26 ? 0 : 1;
     light.bulbs.forEach((bulb, i) => {
@@ -508,49 +508,49 @@ function animateWorld(dt) {
 // The driving input for this frame: keyboard plus the staged shot input
 // (screenshots drive the car with a fixed throttle), clamped to [-1, 1].
 function driveInput() {
-  const throttle = (keys.KeyW || keys.ArrowUp ? 1 : 0)
-    + (keys.KeyS || keys.ArrowDown ? -0.7 : 0)
-    + (state.shotInput?.throttle ?? 0);
-  const steer = (keys.KeyA || keys.ArrowLeft ? 1 : 0)
-    - (keys.KeyD || keys.ArrowRight ? 1 : 0)
-    + (state.shotInput?.steer ?? 0);
+  const throttle = (held.KeyW || held.ArrowUp ? 1 : 0)
+    + (held.KeyS || held.ArrowDown ? -0.7 : 0)
+    + (game.shotInput?.throttle ?? 0);
+  const steer = (held.KeyA || held.ArrowLeft ? 1 : 0)
+    - (held.KeyD || held.ArrowRight ? 1 : 0)
+    + (game.shotInput?.steer ?? 0);
   return {
     throttle: clamp(throttle, -1, 1),
     steer: clamp(steer, -1, 1),
-    brake: !!keys.Space,
+    brake: !!held.Space,
   };
 }
 
 function drivePlayerCar(dt) {
-  const car = player.car;
-  const boost = keys.ShiftLeft || keys.ShiftRight ? 1.35 : 1;
+  const car = mara.car;
+  const boost = held.ShiftLeft || held.ShiftRight ? 1.35 : 1;
   const prevMax = car.maxSpeed;
   car.maxSpeed = prevMax * boost;
-  driveCar(car, dt, driveInput(), world.colliders, [...traffic.cars, ...police.cars, ...world.playerCars]);
+  driveCar(car, dt, driveInput(), realm.colliders, [...cars.cars, ...cops.cars, ...realm.playerCars]);
   car.maxSpeed = prevMax;
-  if (car.crashed && state.crashCooldown <= 0) {
-    audio.crash();
-    state.crashCooldown = 0.5;
+  if (car.crashed && game.crashCooldown <= 0) {
+    sound.crash();
+    game.crashCooldown = 0.5;
   }
-  state.crashCooldown = Math.max(0, (state.crashCooldown ?? 0) - dt);
-  const block = roadblocks.hitTest(car.x, car.z);
+  game.crashCooldown = Math.max(0, (game.crashCooldown ?? 0) - dt);
+  const block = blocks.hitTest(car.x, car.z);
   if (block) {
     car.speed *= 0.3;
-    player.addWanted(0);
-    audio.crash();
+    mara.addWanted(0);
+    sound.crash();
   }
 }
 
 function walkPlayer(dt) {
-  player.onFootMove(dt, {
-    forward: !!(keys.KeyW || keys.ArrowUp),
-    back: !!(keys.KeyS || keys.ArrowDown),
-    left: !!(keys.KeyA || keys.ArrowLeft),
-    right: !!(keys.KeyD || keys.ArrowRight),
-    run: !!(keys.ShiftLeft || keys.ShiftRight),
-  }, world.colliders);
+  mara.onFootMove(dt, {
+    forward: !!(held.KeyW || held.ArrowUp),
+    back: !!(held.KeyS || held.ArrowDown),
+    left: !!(held.KeyA || held.ArrowLeft),
+    right: !!(held.KeyD || held.ArrowRight),
+    run: !!(held.ShiftLeft || held.ShiftRight),
+  }, realm.colliders);
   // Hold the mouse to fire the equipped weapon (auto-fire for SMG/rifle).
-  if (state.firing) shoot();
+  if (game.firing) shoot();
 }
 
 // --- main loop --------------------------------------------------------------
@@ -558,27 +558,27 @@ const clock = new THREE.Clock();
 let framesRendered = 0;
 
 function stepWorld(dt) {
-  if (player.inCar) drivePlayerCar(dt);
+  if (mara.inCar) drivePlayerCar(dt);
   else walkPlayer(dt);
 
-  traffic.update(dt, player);
-  peds.update(dt);
-  police.update(dt, player, player.wanted, [...traffic.cars, ...world.playerCars]);
-  roadblocks.placeAhead(player, player.wanted);
-  missions.update(dt, player, world);
-  combat.update(dt, player, missions, police, peds);
-  side.update(dt, player, peds);
-  arsenal.update(dt);
-  player.decayWanted(dt);
-  audio.setEngine(player.inCar ? player.car.speed * 2.24 : 0, player.inCar);
-  audio.setSiren(player.wanted);
+  cars.update(dt, mara);
+  walkers.update(dt);
+  cops.update(dt, mara, mara.wanted, [...cars.cars, ...realm.playerCars]);
+  blocks.placeAhead(mara, mara.wanted);
+  story.update(dt, mara, realm);
+  fight.update(dt, mara, story, cops, walkers);
+  extras.update(dt, mara, walkers);
+  guns.update(dt);
+  mara.decayWanted(dt);
+  sound.setEngine(mara.inCar ? mara.car.speed * 2.24 : 0, mara.inCar);
+  sound.setSiren(mara.wanted);
 
   animateWorld(dt);
-  viewmodel.update(dt, !player.inCar && (keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD), state.firing);
+  firstPerson.update(dt, !mara.inCar && (held.KeyW || held.KeyA || held.KeyS || held.KeyD), game.firing);
 
-  state.saveTimer += dt;
-  if (state.saveTimer > 10) {
-    state.saveTimer = 0;
+  game.saveTimer += dt;
+  if (game.saveTimer > 10) {
+    game.saveTimer = 0;
     saveGame();
   }
   updateHud();
@@ -587,17 +587,17 @@ function stepWorld(dt) {
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
-  const playing = state.mode === 'playing';
+  const playing = game.mode === 'playing';
 
   if (playing) stepWorld(dt);
 
   updateCamera(dt);
-  renderer.render(scene, camera);
+  gl.render(stage, cam);
   framesRendered += 1;
 
   // Screenshot mode: signal readiness after the scene has settled.
-  if (SHOT && state.mode === 'playing' && !window.__shotReady) {
-    if (framesRendered >= 12 && performance.now() - state.shotStart > 2500) {
+  if (SHOT_NAME && game.mode === 'playing' && !window.__shotReady) {
+    if (framesRendered >= 12 && performance.now() - game.shotStart > 2500) {
       window.__shotReady = true;
     }
   }
@@ -610,38 +610,38 @@ fillMissionList();
 {
   const save = loadSave();
   if (save && (save.missionIndex ?? 0) > 0) {
-    $('continueBtn').classList.remove('hidden');
-    $('continueNum').textContent = (save.missionIndex ?? 0) + 1;
+    el('continueBtn').classList.remove('hidden');
+    el('continueNum').textContent = (save.missionIndex ?? 0) + 1;
   }
-  hud.setRadio(audio.currentStation());
-  hud.setMission(MISSIONS[0], 0, 0);
-  hud.setCash(START_CASH);
+  overlay.setRadio(sound.currentStation());
+  overlay.setMission(MISSIONS[0], 0, 0);
+  overlay.setCash(OPENING_CASH);
 }
 
-if (SHOT) {
+if (SHOT_NAME) {
   // Screenshot mode: straight into a staged, playing scene — no menus, no audio.
   // (No random traffic/peds here: each shot stages its own, so a random bus
   // can never land on the cinematic camera.)
-  $('startScreen').classList.add('hidden');
-  state.mode = 'playing';
+  el('startScreen').classList.add('hidden');
+  game.mode = 'playing';
   const ctx = {
-    player, missions, hud, audio, camera, arsenal, side, combat, viewmodel,
-    world, input: null, cameraMode: 'follow', cinematic: null,
+    player: mara, missions: story, hud: overlay, audio: sound, camera: cam, arsenal: guns, side: extras, combat: fight, viewmodel: firstPerson,
+    world: realm, input: null, cameraMode: 'follow', cinematic: null,
   };
-  if (applyShot(SHOT, ctx)) {
-    state.cinematic = ctx.cinematic || null;
-    state.shotInput = ctx.input || null;
-    const m = missions.current();
-    if (m) hud.setMission(m, missions.done, missions.earned);
-    hud.setCash(player.cash);
-    hud.setHealth(player.health);
-    hud.setWanted(player.wanted);
-    hud.setArsenal(arsenal);
-    hud.setCoins(side.coinsFound.size);
+  if (applyShot(SHOT_NAME, ctx)) {
+    game.cinematic = ctx.cinematic || null;
+    game.shotInput = ctx.input || null;
+    const m = story.current();
+    if (m) overlay.setMission(m, story.done, story.earned);
+    overlay.setCash(mara.cash);
+    overlay.setHealth(mara.health);
+    overlay.setWanted(mara.wanted);
+    overlay.setArsenal(guns);
+    overlay.setCoins(extras.coinsFound.size);
   } else {
-    window.__shotError = `unknown shot: ${SHOT}`;
+    window.__shotError = `unknown shot: ${SHOT_NAME}`;
   }
 }
 
-window.__game = { player, missions, traffic, police, peds, state, hud, arsenal, side, combat, viewmodel };
+window.__game = { player: mara, missions: story, traffic: cars, police: cops, peds: walkers, state: game, hud: overlay, arsenal: guns, side: extras, combat: fight, viewmodel: firstPerson };
 animate();

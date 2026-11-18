@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- CORAL HEAT v2.4 -->
+<!-- CORAL HEAT v2.5 -->
 <title>CORAL HEAT — open-world crime in a sunset marina city</title>
 <style>
   /* Palette: the sunset-marina HUD colours, named once and reused so a
      colour change is one edit, not thirty. Computed styles are identical
-     to v2.3 — only the source form changed. */
+     to v2.4 — only the source form changed. */
   :root {
-    --panel-bg: rgba(10,8,20,.55);
-    --panel-border: rgba(255,255,255,.22);
+    --panel-bg: rgba(10, 8, 20, 0.55);
+    --panel-border: rgba(255, 255, 255, 0.22);
     --amber: #ffb347;
     --gold: #ffd23e;
     --green: #7dff9a;
@@ -24,357 +24,73 @@
     --red-bright: #ff5a5a;
   }
   /* Base: full-screen canvas, dark backdrop while the scene loads. */
-  html, body {
-    margin: 0;
-    height: 100%;
-    overflow: hidden;
-    background: #1a0f1e;
-    font-family: 'Segoe UI', Arial, sans-serif;
-  }
-  #game {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-    touch-action: none;
-  }
-  #status {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a0f1e; font-family: 'Segoe UI', Arial, sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   /* Shared HUD chrome: floating panels over the 3D scene. */
-  .hud {
-    position: fixed;
-    z-index: 5;
-    color: #fff;
-    text-shadow: 0 1px 3px rgba(0,0,0,.8);
-    pointer-events: none;
-    user-select: none;
-  }
-  .panel {
-    background: var(--panel-bg);
-    border: 1px solid var(--panel-border);
-    border-radius: 10px;
-    backdrop-filter: blur(2px);
-  }
+  .hud { position: fixed; z-index: 5; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); pointer-events: none; user-select: none; }
+  .panel { background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 10px; backdrop-filter: blur(2px); }
   /* Mission panel, top-left. */
-  #missionPanel {
-    top: 14px;
-    left: 14px;
-    padding: 10px 14px;
-    max-width: 320px;
-  }
-  #missionPanel .mnum {
-    font-size: 11px;
-    letter-spacing: 2px;
-    color: var(--amber);
-    font-weight: 700;
-  }
-  #missionPanel .mtitle {
-    font-size: 19px;
-    font-weight: 800;
-    margin: 2px 0;
-  }
-  #missionPanel .mbrief {
-    font-size: 13px;
-    color: var(--ink-soft);
-    line-height: 1.35;
-  }
-  #missionPanel .mprog {
-    font-size: 12px;
-    color: var(--sky);
-    margin-top: 5px;
-  }
+  #missionPanel { top: 14px; left: 14px; padding: 10px 14px; max-width: 320px; }
+  #missionPanel .mnum { font-size: 11px; letter-spacing: 2px; color: var(--amber); font-weight: 700; }
+  #missionPanel .mtitle { font-size: 19px; font-weight: 800; margin: 2px 0; }
+  #missionPanel .mbrief { font-size: 13px; color: var(--ink-soft); line-height: 1.35; }
+  #missionPanel .mprog { font-size: 12px; color: var(--sky); margin-top: 5px; }
   /* Cash + wanted, top-right. */
-  #cashBox {
-    top: 14px;
-    right: 14px;
-    padding: 8px 14px;
-    text-align: right;
-  }
-  #cash {
-    font-size: 26px;
-    font-weight: 800;
-    color: var(--green);
-  }
-  #wanted {
-    font-size: 24px;
-    letter-spacing: 4px;
-    margin-top: 2px;
-  }
+  #cashBox { top: 14px; right: 14px; padding: 8px 14px; text-align: right; }
+  #cash { font-size: 26px; font-weight: 800; color: var(--green); }
+  #wanted { font-size: 24px; letter-spacing: 4px; margin-top: 2px; }
   #wanted .on { color: var(--gold); }
-  #wanted .off { color: rgba(255,255,255,.28); }
-  #district {
-    font-size: 12px;
-    color: var(--pale);
-    letter-spacing: 1px;
-    margin-top: 2px;
-  }
+  #wanted .off { color: rgba(255, 255, 255, 0.28); }
+  #district { font-size: 12px; color: var(--pale); letter-spacing: 1px; margin-top: 2px; }
   /* Objective banner, top-centre. */
-  #objective {
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 8px 20px;
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: .5px;
-    text-align: center;
-  }
-  #objective small {
-    display: block;
-    font-size: 11px;
-    font-weight: 400;
-    color: var(--pale);
-    letter-spacing: 2px;
-  }
+  #objective { top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 20px; font-size: 16px; font-weight: 700; letter-spacing: 0.5px; text-align: center; }
+  #objective small { display: block; font-size: 11px; font-weight: 400; color: var(--pale); letter-spacing: 2px; }
   /* Minimap, bottom-left. */
-  #minimapWrap {
-    bottom: 14px;
-    left: 14px;
-    width: 196px;
-    height: 196px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 3px solid rgba(255,255,255,.75);
-    box-shadow: 0 0 0 3px rgba(0,0,0,.45), 0 4px 18px rgba(0,0,0,.6);
-    background: #0c1420;
-  }
-  #minimap {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-  #mapLabel {
-    bottom: 6px;
-    left: 14px;
-    width: 196px;
-    text-align: center;
-    font-size: 11px;
-    letter-spacing: 3px;
-    color: var(--pale);
-  }
+  #minimapWrap { bottom: 14px; left: 14px; width: 196px; height: 196px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255, 255, 255, 0.75); box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.45), 0 4px 18px rgba(0, 0, 0, 0.6); background: #0c1420; }
+  #minimap { width: 100%; height: 100%; display: block; }
+  #mapLabel { bottom: 6px; left: 14px; width: 196px; text-align: center; font-size: 11px; letter-spacing: 3px; color: var(--pale); }
   /* Speed, bottom-right. */
-  #speedBox {
-    bottom: 14px;
-    right: 14px;
-    text-align: right;
-    padding: 8px 16px 10px;
-  }
-  #speed {
-    font-size: 52px;
-    font-weight: 800;
-    line-height: .95;
-  }
-  #speed small {
-    font-size: 15px;
-    color: var(--amber);
-  }
-  #carName {
-    font-size: 13px;
-    color: var(--ink-soft);
-    letter-spacing: 1px;
-  }
+  #speedBox { bottom: 14px; right: 14px; text-align: right; padding: 8px 16px 10px; }
+  #speed { font-size: 52px; font-weight: 800; line-height: 0.95; }
+  #speed small { font-size: 15px; color: var(--amber); }
+  #carName { font-size: 13px; color: var(--ink-soft); letter-spacing: 1px; }
   /* Radio, bottom-centre. */
-  #radioBox {
-    bottom: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 7px 16px;
-    text-align: center;
-    font-size: 13px;
-  }
-  #radioBox b {
-    color: var(--amber);
-    letter-spacing: 1px;
-  }
-  #radioBox .track {
-    color: var(--sky-soft);
-    font-size: 12px;
-  }
+  #radioBox { bottom: 14px; left: 50%; transform: translateX(-50%); padding: 7px 16px; text-align: center; font-size: 13px; }
+  #radioBox b { color: var(--amber); letter-spacing: 1px; }
+  #radioBox .track { color: var(--sky-soft); font-size: 12px; }
   /* Health + weapon, above minimap. */
-  #vitals {
-    bottom: 220px;
-    left: 14px;
-    padding: 8px 12px;
-    width: 172px;
-  }
-  #healthBar {
-    height: 10px;
-    background: rgba(255,255,255,.2);
-    border-radius: 5px;
-    overflow: hidden;
-    margin-top: 4px;
-  }
-  #healthFill {
-    height: 100%;
-    width: 100%;
-    background: linear-gradient(90deg,#37e08a,#a5ff6e);
-  }
-  #vitals .row {
-    font-size: 12px;
-    display: flex;
-    justify-content: space-between;
-  }
-  #weapon {
-    font-size: 12px;
-    color: var(--pale);
-    margin-top: 4px;
-  }
+  #vitals { bottom: 220px; left: 14px; padding: 8px 12px; width: 172px; }
+  #healthBar { height: 10px; background: rgba(255, 255, 255, 0.2); border-radius: 5px; overflow: hidden; margin-top: 4px; }
+  #healthFill { height: 100%; width: 100%; background: linear-gradient(90deg, #37e08a, #a5ff6e); }
+  #vitals .row { font-size: 12px; display: flex; justify-content: space-between; }
+  #weapon { font-size: 12px; color: var(--pale); margin-top: 4px; }
   /* Toasts, centre-right. */
-  #toast {
-    top: 110px;
-    right: 14px;
-    max-width: 300px;
-    padding: 10px 14px;
-    font-size: 14px;
-    font-weight: 600;
-    display: none;
-  }
+  #toast { top: 110px; right: 14px; max-width: 300px; padding: 10px 14px; font-size: 14px; font-weight: 600; display: none; }
   /* Mission intro card, bottom-centre. */
-  #missionCard {
-    bottom: 120px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 14px 26px;
-    text-align: center;
-    display: none;
-    min-width: 340px;
-  }
+  #missionCard { bottom: 120px; left: 50%; transform: translateX(-50%); padding: 14px 26px; text-align: center; display: none; min-width: 340px; }
   /* Completion fanfare, centre. */
-  #completeBanner {
-    top: 38%;
-    left: 50%;
-    transform: translate(-50%,-50%);
-    padding: 18px 34px;
-    text-align: center;
-    display: none;
-    background: rgba(10,8,20,.75);
-  }
+  #completeBanner { top: 38%; left: 50%; transform: translate(-50%, -50%); padding: 18px 34px; text-align: center; display: none; background: rgba(10, 8, 20, 0.75); }
   /* Gun shop, centre. */
-  #shopPanel {
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%,-50%);
-    padding: 16px 18px;
-    width: 380px;
-    display: none;
-    pointer-events: auto;
-  }
-  #shopPanel h3 {
-    margin: 0 0 4px;
-    font-size: 18px;
-    letter-spacing: 2px;
-    color: var(--red-bright);
-  }
-  #shopPanel .shopsub {
-    font-size: 12px;
-    color: var(--ink-faint);
-    margin-bottom: 8px;
-  }
-  #shopCash {
-    font-size: 14px;
-    color: var(--green);
-    font-weight: 700;
-    margin-bottom: 6px;
-  }
-  #coins {
-    font-size: 13px;
-    color: var(--gold);
-    font-weight: 700;
-  }
-  #statsLine {
-    font-size: 13px;
-    color: var(--sky-soft);
-    margin-top: 10px;
-    line-height: 1.7;
-  }
+  #shopPanel { top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 16px 18px; width: 380px; display: none; pointer-events: auto; }
+  #shopPanel h3 { margin: 0 0 4px; font-size: 18px; letter-spacing: 2px; color: var(--red-bright); }
+  #shopPanel .shopsub { font-size: 12px; color: var(--ink-faint); margin-bottom: 8px; }
+  #shopCash { font-size: 14px; color: var(--green); font-weight: 700; margin-bottom: 6px; }
+  #coins { font-size: 13px; color: var(--gold); font-weight: 700; }
+  #statsLine { font-size: 13px; color: var(--sky-soft); margin-top: 10px; line-height: 1.7; }
   /* Start / pause screens. */
-  .screen {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(160deg, rgba(30,8,32,.82), rgba(8,10,40,.88));
-    color: #fff;
-  }
-  .screen .card {
-    max-width: 640px;
-    width: 92%;
-    text-align: center;
-    padding: 34px 30px;
-    background: rgba(0,0,0,.35);
-    border: 1px solid rgba(255,255,255,.18);
-    border-radius: 18px;
-  }
-  .screen h1 {
-    font-size: 64px;
-    margin: 0;
-    letter-spacing: 6px;
-    background: linear-gradient(90deg,#ff7a18,#ff2e63,#ffb347);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-  .screen h2 {
-    font-size: 15px;
-    letter-spacing: 4px;
-    color: var(--pale);
-    margin: 6px 0 18px;
-    font-weight: 600;
-  }
-  .screen p {
-    font-size: 14px;
-    line-height: 1.55;
-    color: var(--ink-soft);
-  }
-  .screen .btn {
-    display: inline-block;
-    margin: 8px 6px 0;
-    padding: 12px 26px;
-    border-radius: 10px;
-    background: var(--red);
-    color: #fff;
-    font-weight: 800;
-    font-size: 16px;
-    letter-spacing: 1px;
-    cursor: pointer;
-    border: none;
-    pointer-events: auto;
-  }
-  .screen .btn.ghost { background: rgba(255,255,255,.14); }
-  .screen .keys {
-    font-size: 12px;
-    color: var(--ink-faint);
-    margin-top: 16px;
-    line-height: 1.8;
-  }
-  .screen .keys b {
-    color: #fff;
-    background: rgba(255,255,255,.15);
-    border-radius: 4px;
-    padding: 1px 7px;
-  }
-  #missionList {
-    text-align: left;
-    font-size: 13px;
-    line-height: 1.7;
-    color: #d9d2e8;
-    margin: 10px auto 0;
-    max-width: 480px;
-  }
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, rgba(30, 8, 32, 0.82), rgba(8, 10, 40, 0.88)); color: #fff; }
+  .screen .card { max-width: 640px; width: 92%; text-align: center; padding: 34px 30px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 18px; }
+  .screen h1 { font-size: 64px; margin: 0; letter-spacing: 6px; background: linear-gradient(90deg, #ff7a18, #ff2e63, #ffb347); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .screen h2 { font-size: 15px; letter-spacing: 4px; color: var(--pale); margin: 6px 0 18px; font-weight: 600; }
+  .screen p { font-size: 14px; line-height: 1.55; color: var(--ink-soft); }
+  .screen .btn { display: inline-block; margin: 8px 6px 0; padding: 12px 26px; border-radius: 10px; background: var(--red); color: #fff; font-weight: 800; font-size: 16px; letter-spacing: 1px; cursor: pointer; border: none; pointer-events: auto; }
+  .screen .btn.ghost { background: rgba(255, 255, 255, 0.14); }
+  .screen .keys { font-size: 12px; color: var(--ink-faint); margin-top: 16px; line-height: 1.8; }
+  .screen .keys b { color: #fff; background: rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 1px 7px; }
+  #missionList { text-align: left; font-size: 13px; line-height: 1.7; color: #d9d2e8; margin: 10px auto 0; max-width: 480px; }
   #missionList .done { color: var(--green); }
-  #missionList .next {
-    color: var(--amber);
-    font-weight: 700;
-  }
+  #missionList .next { color: var(--amber); font-weight: 700; }
   .hidden { display: none !important; }
 </style>
 <script type="importmap">

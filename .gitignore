@@ -1,4 +1,4 @@
-# CORAL HEAT v2.4 — re-recorded entry; the game is v2.3's, fresh recording, code rewritten in-session.
+# CORAL HEAT v2.5 — re-recorded entry; the game is v2.4's, fresh recording, code rewritten in-session.
 # Build output from `node main.ts` (dossier + copied game/screenshots)
 out/
 # OS noise
@@ -6,4 +6,4 @@ out/
 Thumbs.db
 # Local scratch logs from playtests
 *.log
-# v2.1 — the dossier build in out/ is local-only, never committed
+# v2.5 — the dossier build in out/ is local-only, never committed

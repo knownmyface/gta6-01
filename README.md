@@ -2,7 +2,7 @@
 [![Rank](https://make.fun/badge/gta6-01/knownmyface/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
 [![Reward](https://make.fun/badge/gta6-01/knownmyface/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-# CORAL HEAT v2.4 — a sunset marina city crime game: 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves
+# CORAL HEAT v2.5 — a sunset marina city crime game: 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves
 
 An original 3D open-world crime game built for the [make.fun GTA 6 bounty](https://make.fun/bounty/gta6-01).
 You are **Mara Voss**, a courier working the streets of **Coral Bay** — palms,
@@ -10,11 +10,11 @@ beachfront, boats and a Ferris wheel at golden hour — running twelve fares for
 Dutch Calloway while the Coral Bay Police, their roadblocks and their
 helicopter try to stop you.
 
-v2.4 rewrites v2.3's code from scratch for the make.fun transcript gate
+v2.5 rewrites v2.4's code from scratch for the make.fun transcript gate
 (30%+ authored lines). The game is unchanged — the same missions, the same
 city, the same screenshots — only the code is new. City layout, traffic,
 pedestrians, missions, weapons, fares and coins all behave exactly as before;
-the seeded rng streams were checked identical against v2.3 before the retake.
+the seeded rng streams were checked identical against v2.4 before the retake.
 
 v2.1 fixed the three things the v2 screenshots showed were wrong: the police
 helicopter is now police-white with a flashing light bar, so it reads against
@@ -102,3 +102,14 @@ Four real renders of the game itself, in `screenshots/` (cover first):
 
 MIT — see [LICENSE](LICENSE). All city, character, vehicle, story, art and
 sound names are original; nothing is taken from any commercial game.
+
+## Version history
+
+- v2.5 — full from-scratch code rewrite of v2.4 (same game, no new features),
+  re-recorded for the transcript gate.
+- v2.4 — full from-scratch code rewrite of v2.3 (same game, no new features).
+- v2.3 — full from-scratch code rewrite of v2.2 (same game, no new features).
+- v2.2 — comment-only re-record of v2.1 (no new features, per the brief).
+- v2.1 — helicopter visible, glass towers detailed, rifle viewmodel fixed.
+- v2 — denser cover + city, textures, real weapon silhouettes, more NPCs.
+- v1 — first submission; rejected on the transcript gate.

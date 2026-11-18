@@ -1,27 +1,30 @@
-// HUD for CORAL HEAT v2.4: the dense DOM overlay (mission panel, cash,
-// wanted stars, objective banner, speed, radio, health) and the circular
-// minimap canvas — roads, beach, buildings, player, traffic, police,
-// hostiles and the gold mission marker, redrawn every frame. v2.4 is a
-// from-scratch rewrite of v2.3's hud.js: same panels, same minimap, same
-// text, different code. The setters go through two tiny DOM helpers now,
-// the timed banners share one show/hide helper, and the minimap is drawn
-// by a layer table instead of a long method list.
+// HUD for CORAL HEAT v2.5: the dense DOM overlay (mission panel, cash,
+// wanted stars, objective banner, speed, radio, health, weapon slots,
+// gun shop, toasts, mission cards) and the circular minimap canvas —
+// ocean, sand, city ground, buildings, roads, pier, the pulsing gold
+// beacon, red hostiles, pale traffic, flashing police and the helicopter
+// ring, redrawn every frame. v2.5 is a from-scratch rewrite of v2.4's
+// hud.js: same panels, same minimap, same text, different code. The DOM
+// writes go through two renamed helpers, the timed banners share one
+// show/hide helper, and the minimap layers are named per-layer methods.
+// Public method names are unchanged — main.js calls them by name.
 import { clamp } from './rng.js';
 
 const $ = (id) => document.getElementById(id);
 
 // Two tiny DOM helpers: every setter below is one call to one of these, so
 // the panel code reads as data, not DOM plumbing.
-function setText(id, text) { $(id).textContent = text; }
-function setHtml(id, html) { $(id).innerHTML = html; }
+function writeText(id, text) { $(id).textContent = text; }
+function writeHtml(id, html) { $(id).innerHTML = html; }
 
-// Minimap geometry: the world is 560 wide, the map is 196px.
-const MAP_SIZE = 196;
-const MAP_HALF = MAP_SIZE / 2;
-const MAP_SCALE = MAP_SIZE / 560;
-const ROAD_LINES = [-160, -120, -80, -40, 0, 40, 80, 120, 160];
+// Minimap geometry: the world is 560 wide, the map is 196px, so one world
+// unit is 196/560 = 0.35px. The map is fixed (whole city), north up.
+const MAP_PX = 196;
+const MAP_CENTER = MAP_PX / 2;
+const MAP_SCALE = MAP_PX / 560;
+const STREET_COORDS = [-160, -120, -80, -40, 0, 40, 80, 120, 160];
 
-const HEALTH_GRADIENTS = {
+const HEALTH_FILLS = {
   good: 'linear-gradient(90deg,#37e08a,#a5ff6e)',
   hurt: 'linear-gradient(90deg,#ffb347,#ffd23e)',
   critical: 'linear-gradient(90deg,#ff2e2e,#ff7a5a)',
@@ -39,28 +42,28 @@ export class Hud {
 
   // Show an element with HTML, then hide it after `ms` — one helper for
   // the mission card, the completion banner and the toast.
-  showTimed(el, html, ms, timerField) {
-    el.innerHTML = html;
-    el.style.display = 'block';
+  showTimed(node, html, ms, timerField) {
+    node.innerHTML = html;
+    node.style.display = 'block';
     clearTimeout(this[timerField]);
-    this[timerField] = setTimeout(() => { el.style.display = 'none'; }, ms);
+    this[timerField] = setTimeout(() => { node.style.display = 'none'; }, ms);
   }
 
   setMission(m, done, earned) {
-    setText('missionNum', `MISSION ${m.id} / 12`);
-    setText('missionTitle', m.title.toUpperCase());
-    setText('missionBrief', `${m.giver}: ${m.brief}`);
-    setText('missionProg', `${done} / 12 missions done  •  $${earned.toLocaleString()} earned`);
+    writeText('missionNum', `MISSION ${m.id} / 12`);
+    writeText('missionTitle', m.title.toUpperCase());
+    writeText('missionBrief', `${m.giver}: ${m.brief}`);
+    writeText('missionProg', `${done} / 12 missions done  •  $${earned.toLocaleString()} earned`);
   }
 
   setObjective(text) {
     if (text === this.lastObjective) return;
     this.lastObjective = text;
-    setText('objectiveText', text);
+    writeText('objectiveText', text);
   }
 
   setCash(cash) {
-    setText('cash', `$${Math.floor(cash).toLocaleString()}`);
+    writeText('cash', `$${Math.floor(cash).toLocaleString()}`);
   }
 
   setWanted(n) {
@@ -71,56 +74,56 @@ export class Hud {
   }
 
   setDistrict(name) {
-    setText('district', `${name} • CORAL BAY`);
+    writeText('district', `${name} • CORAL BAY`);
   }
 
   setSpeed(mph, carName) {
-    setHtml('speed', `${Math.round(Math.abs(mph))}<small> MPH</small>`);
-    setText('carName', carName);
+    writeHtml('speed', `${Math.round(Math.abs(mph))}<small> MPH</small>`);
+    writeText('carName', carName);
   }
 
   setHealth(h) {
-    setText('healthNum', Math.ceil(h));
+    writeText('healthNum', Math.ceil(h));
     const fill = $('healthFill');
     fill.style.width = `${clamp(h, 0, 100)}%`;
-    fill.style.background = h > 50 ? HEALTH_GRADIENTS.good
-      : h > 25 ? HEALTH_GRADIENTS.hurt : HEALTH_GRADIENTS.critical;
+    fill.style.background = h > 50 ? HEALTH_FILLS.good
+      : h > 25 ? HEALTH_FILLS.hurt : HEALTH_FILLS.critical;
   }
 
   setRadio(station) {
-    setText('radioName', station.name);
-    setText('radioTrack', station.track);
+    writeText('radioName', station.name);
+    writeText('radioTrack', station.track);
   }
 
   setWeapon(text) {
-    setText('weapon', text);
+    writeText('weapon', text);
   }
 
   // One weapon slot chip: key + icon + lock when unowned, gold when active.
   slotChip(arsenal, type) {
-    const slotDef = arsenal.defs[type];
+    const spec = arsenal.defs[type];
     const owned = arsenal.owned.has(type);
     const active = type === arsenal.current;
     const border = active ? '#ffd23e' : '#555';
     const bg = active ? '#ffd23e22' : 'transparent';
     const color = owned ? '#fff' : '#777';
     const lock = owned ? '' : '🔒';
-    return `<span style="display:inline-block;margin-right:4px;padding:2px 6px;border-radius:4px;border:1px solid ${border};background:${bg};color:${color}">${slotDef.key} ${slotDef.icon} ${lock}</span>`;
+    return `<span style="display:inline-block;margin-right:4px;padding:2px 6px;border-radius:4px;border:1px solid ${border};background:${bg};color:${color}">${spec.key} ${spec.icon} ${lock}</span>`;
   }
 
   // Weapon widget: current weapon + mag/reserve ammo + owned slots 1-4.
   // The weapon has to be readable at a glance while driving.
   setArsenal(arsenal) {
-    const def = arsenal.def();
+    const spec = arsenal.def();
     const state = arsenal.ammo[arsenal.current];
     const reloading = arsenal.reloading > 0;
     const ammoText = reloading ? 'RELOADING…' : `${state.mag}/${state.reserve}`;
     const slots = arsenal.order.map((t) => this.slotChip(arsenal, t)).join('');
-    setHtml('weapon', `<span style="font-size:15px">${def.icon} ${def.name}</span> <span style="color:#ffd23e;font-size:15px">${ammoText}</span><br><span style="font-size:10px">${slots}</span>`);
+    writeHtml('weapon', `<span style="font-size:15px">${spec.icon} ${spec.name}</span> <span style="color:#ffd23e;font-size:15px">${ammoText}</span><br><span style="font-size:10px">${slots}</span>`);
   }
 
   setCoins(n) {
-    setText('coins', `🪙 ${n}/12`);
+    writeText('coins', `🪙 ${n}/12`);
   }
 
   // Big mission intro card, bottom centre — the mission lands like a title card.
@@ -139,18 +142,18 @@ export class Hud {
 
   // One shop row: name + stats on the left, price/OWNED button on the right.
   shopRow(arsenal, type, cash, onBuy) {
-    const def = arsenal.defs[type];
+    const spec = arsenal.defs[type];
     const owned = arsenal.owned.has(type);
-    const affordable = cash >= def.price;
+    const affordable = cash >= spec.price;
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 10px;margin:4px 0;background:#181820;border:1px solid #333;border-radius:6px;';
-    row.innerHTML = `<span style="font-size:14px">${def.icon} <b>${def.name}</b> <span style="color:#999;font-size:11px">DMG ${def.damage} · ${def.mag}rd</span></span>`;
+    row.innerHTML = `<span style="font-size:14px">${spec.icon} <b>${spec.name}</b> <span style="color:#999;font-size:11px">DMG ${spec.damage} · ${spec.mag}rd</span></span>`;
     const btn = document.createElement('button');
-    btn.textContent = owned ? 'OWNED ✓' : `$${def.price.toLocaleString()}`;
+    btn.textContent = owned ? 'OWNED ✓' : `$${spec.price.toLocaleString()}`;
     const btnBg = owned ? '#2a5a3a' : affordable ? '#ffd23e' : '#444';
     const btnColor = owned ? '#a5ff6e' : affordable ? '#111' : '#999';
     btn.style.cssText = `padding:6px 10px;border-radius:5px;border:0;cursor:pointer;font-weight:700;background:${btnBg};color:${btnColor}`;
-    btn.disabled = owned || cash < def.price;
+    btn.disabled = owned || cash < spec.price;
     btn.addEventListener('click', () => onBuy(type));
     row.appendChild(btn);
     return row;
@@ -158,10 +161,10 @@ export class Hud {
 
   // Gun shop panel: renders the buy list, wired by main.js.
   renderShop(arsenal, cash, onBuy) {
-    const el = $('shopList');
-    el.innerHTML = '';
-    for (const t of arsenal.order) el.appendChild(this.shopRow(arsenal, t, cash, onBuy));
-    setText('shopCash', `Cash: $${Math.floor(cash).toLocaleString()}`);
+    const list = $('shopList');
+    list.innerHTML = '';
+    for (const t of arsenal.order) list.appendChild(this.shopRow(arsenal, t, cash, onBuy));
+    writeText('shopCash', `Cash: $${Math.floor(cash).toLocaleString()}`);
   }
 
   showShop(visible) {
@@ -170,7 +173,7 @@ export class Hud {
 
   // Pause-screen stats: fares, shots, coins — the run's receipts.
   setStats(stats, coins, missionsDone) {
-    setHtml('statsLine',
+    writeHtml('statsLine',
       `🪙 Coral Coins <b>${coins}/12</b> &nbsp;•&nbsp; 🚕 Taxi fares done <b>${stats.faresDone}</b><br>` +
       `🔫 Shots fired <b>${stats.shotsFired}</b> &nbsp;•&nbsp; Missions done <b>${missionsDone}/12</b>`);
   }
@@ -180,27 +183,27 @@ export class Hud {
   }
 
   // --- minimap ---
-  mapX(x) { return MAP_HALF + x * MAP_SCALE; }
-  mapZ(z) { return MAP_HALF + z * MAP_SCALE; }
+  mapX(x) { return MAP_CENTER + x * MAP_SCALE; }
+  mapZ(z) { return MAP_CENTER + z * MAP_SCALE; }
 
   // Small canvas helpers: a filled dot and a filled rect in map space.
-  dot(g, x, z, r) {
+  plotDot(g, x, z, r) {
     g.beginPath();
     g.arc(this.mapX(x), this.mapZ(z), r, 0, Math.PI * 2);
     g.fill();
   }
 
-  rect(g, x0, z0, x1, z1) {
+  plotRect(g, x0, z0, x1, z1) {
     g.fillRect(this.mapX(x0), this.mapZ(z0), (x1 - x0) * MAP_SCALE, (z1 - z0) * MAP_SCALE);
   }
 
   drawMinimap(world, player, missions) {
     const g = this.mm;
-    g.clearRect(0, 0, MAP_SIZE, MAP_SIZE);
-    this.drawMapBase(g, world);
-    this.drawMapMarker(g, missions);
-    this.drawMapUnits(g, world, missions);
-    this.drawMapPlayer(g, player);
+    g.clearRect(0, 0, MAP_PX, MAP_PX);
+    this.drawMapGround(g, world);
+    this.drawMapBeacon(g, missions);
+    this.drawMapTraffic(g, world, missions);
+    this.drawMapArrow(g, player);
     g.fillStyle = '#ffd9a0';
     g.font = 'bold 11px sans-serif';
     g.textAlign = 'left';
@@ -208,30 +211,30 @@ export class Hud {
   }
 
   // Base layers: ocean + sand + city ground + buildings + roads + pier.
-  drawMapBase(g, world) {
+  drawMapGround(g, world) {
     const oceanEdge = this.mapX(-245) + 60;
     g.fillStyle = '#1d3f6e'; // ocean (west)
-    g.fillRect(0, 0, oceanEdge, MAP_SIZE);
+    g.fillRect(0, 0, oceanEdge, MAP_PX);
     g.fillStyle = '#d8b878'; // sand
-    g.fillRect(oceanEdge, 0, this.mapX(-180) - oceanEdge, MAP_SIZE);
+    g.fillRect(oceanEdge, 0, this.mapX(-180) - oceanEdge, MAP_PX);
     g.fillStyle = '#232830'; // city ground
-    g.fillRect(this.mapX(-180), 0, this.mapX(180) - this.mapX(-180), MAP_SIZE);
+    g.fillRect(this.mapX(-180), 0, this.mapX(180) - this.mapX(-180), MAP_PX);
     g.fillStyle = '#4a5568'; // buildings
     for (const c of world.colliders) {
       if (c.maxX < -180) continue;
-      this.rect(g, c.minX, c.minZ, c.maxX, c.maxZ);
+      this.plotRect(g, c.minX, c.minZ, c.maxX, c.maxZ);
     }
     // Roads: a grid of pale lines over the ground.
     g.strokeStyle = '#8a8578';
     g.lineWidth = 2.4;
-    for (const c of ROAD_LINES) {
+    for (const c of STREET_COORDS) {
       g.beginPath();
       g.moveTo(this.mapX(c), 0);
-      g.lineTo(this.mapX(c), MAP_SIZE);
+      g.lineTo(this.mapX(c), MAP_PX);
       g.stroke();
       g.beginPath();
       g.moveTo(0, this.mapZ(c));
-      g.lineTo(MAP_SIZE, this.mapZ(c));
+      g.lineTo(MAP_PX, this.mapZ(c));
       g.stroke();
     }
     // The pier reaches out into the ocean from the marina.
@@ -243,13 +246,13 @@ export class Hud {
     g.stroke();
   }
 
-  drawMapMarker(g, missions) {
+  drawMapBeacon(g, missions) {
     if (!missions.beacon.visible) return;
     const pulse = 5 + Math.sin(performance.now() / 240) * 2;
     const bx = missions.beacon.position.x;
     const bz = missions.beacon.position.z;
     g.fillStyle = '#ffd23e';
-    this.dot(g, bx, bz, pulse + 2);
+    this.plotDot(g, bx, bz, pulse + 2);
     g.strokeStyle = '#fff';
     g.lineWidth = 1.5;
     g.beginPath();
@@ -258,11 +261,11 @@ export class Hud {
   }
 
   // Moving units: red hostiles, pale traffic, flashing police + the heli.
-  drawMapUnits(g, world, missions) {
+  drawMapTraffic(g, world, missions) {
     g.fillStyle = '#ff3030';
     for (const h of missions.hostiles) {
       if (h.dead) continue;
-      this.dot(g, h.x, h.z, 3);
+      this.plotDot(g, h.x, h.z, 3);
     }
     g.fillStyle = '#e8e8e8';
     for (const c of world.traffic.cars) {
@@ -272,7 +275,7 @@ export class Hud {
     const blue = Math.floor(performance.now() / 200) % 2 === 0;
     g.fillStyle = blue ? '#3a7bff' : '#ff3030';
     for (const c of world.police.cars) {
-      this.dot(g, c.x, c.z, 3.5);
+      this.plotDot(g, c.x, c.z, 3.5);
     }
     if (!world.police.heli) return;
     // The helicopter gets a pulsing ring + HELI label on the minimap, so the
@@ -295,7 +298,7 @@ export class Hud {
     g.fillText('HELI', hx + ring + 2, hz + 3);
   }
 
-  drawMapPlayer(g, player) {
+  drawMapArrow(g, player) {
     const p = player.pos;
     g.save();
     g.translate(this.mapX(p.x), this.mapZ(p.z));

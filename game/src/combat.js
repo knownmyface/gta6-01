@@ -1,44 +1,44 @@
-// Combat for CORAL HEAT v2.4: hitscan shooting on foot, tracers, muzzle
+// Combat for CORAL HEAT v2.5: hitscan shooting on foot, tracers, muzzle
 // flash, hostiles and police shooting back, health, and getting busted.
 // Shots go through the arsenal — damage, pellets, spread and fire rate come
 // from the equipped weapon, and every shot lights the viewmodel + the gun in
-// Mara's hand. v2.4 is a from-scratch rewrite of v2.3's combat.js: same
+// Mara's hand. v2.5 is a from-scratch rewrite of v2.4's combat.js: same
 // shooting, same return fire, same busted rules, different code. The pellet
-// loop is split into a per-pellet resolver now, and the target list is built
-// by one builder per target kind.
+// loop is a per-pellet resolver now, and the target list is built by one
+// builder per target kind.
 // Spread and return fire use Math.random, not the seeded stream — the draws
-// happen in the same order as v2.3, so the odds stay identical.
+// happen in the same order as v2.4, so the odds stay identical.
 import * as THREE from 'three';
 import { clamp } from './rng.js';
 import { makeFlashSprite } from './weapons.js';
 
-const TRACER_COLOR = 0xffe08a;
-const FLASH_COLOR = 0xffe08a;
-const TRACER_LIFE = 0.09;
-const HOSTILE_RANGE = 34;
-const POLICE_RANGE = 26;
-const HEALTH_REGEN = 2.5;
+const TRACE_COLOR = 0xffe08a;
+const FLASH_HUE = 0xffe08a;
+const TRACE_TTL = 0.09;
+const FOE_RANGE = 34;
+const COP_RANGE = 26;
+const REGEN_RATE = 2.5;
 
-function makeLine(from, to, opacity) {
+function buildTraceLine(from, to, opacity) {
   const geo = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(from.x, from.y, from.z),
     new THREE.Vector3(to.x, to.y, to.z),
   ]);
   return new THREE.Line(geo, new THREE.LineBasicMaterial({
-    color: TRACER_COLOR, transparent: true, opacity,
+    color: TRACE_COLOR, transparent: true, opacity,
   }));
 }
 
 // One ray against one target: returns the distance along the ray when the
 // target is hit, or null when the ray misses or passes behind.
-function rayHitTarget(ox, oz, dx, dz, t, maxT) {
-  if (!t.alive()) return null;
-  const rx = t.x - ox;
-  const rz = t.z - oz;
-  const along = rx * dx + rz * dz;
+function rayHits(ox, oz, dirX, dirZ, target, maxT) {
+  if (!target.alive()) return null;
+  const relX = target.x - ox;
+  const relZ = target.z - oz;
+  const along = relX * dirX + relZ * dirZ;
   if (along < 0 || along > maxT) return null;
-  const perp = Math.abs(rx * dz - rz * dx);
-  if (perp >= (t.radius ?? 1.2)) return null;
+  const perp = Math.abs(relX * dirZ - relZ * dirX);
+  if (perp >= (target.radius ?? 1.2)) return null;
   return along;
 }
 
@@ -48,7 +48,7 @@ export class Combat {
     this.audio = audio;
     this.arsenal = arsenal;
     this.tracers = [];
-    this.flash = new THREE.PointLight(FLASH_COLOR, 0, 12);
+    this.flash = new THREE.PointLight(FLASH_HUE, 0, 12);
     this.scene.add(this.flash);
     this.shootCooldown = 0;
     this.policeShootTimer = 0;
@@ -59,89 +59,89 @@ export class Combat {
   // A persistent muzzle flash + tracer for staged screenshots: never fades.
   // Scale lets a shot size the flash to the weapon (rifle > pistol).
   stageFlash(from, to, scale = 0.9) {
-    const flash = makeFlashSprite(scale);
-    flash.position.set(from.x, from.y, from.z);
-    flash.visible = true;
-    this.scene.add(flash);
-    const line = makeLine(from, to, 0.95);
-    this.scene.add(line);
-    return { flash, line };
+    const burst = makeFlashSprite(scale);
+    burst.position.set(from.x, from.y, from.z);
+    burst.visible = true;
+    this.scene.add(burst);
+    const beam = buildTraceLine(from, to, 0.95);
+    this.scene.add(beam);
+    return { flash: burst, line: beam };
   }
 
   // Where Mara's muzzle is in the world, for the tracer start + flash.
   muzzleWorld(player) {
-    const out = new THREE.Vector3();
-    if (player.muzzle) player.muzzle.getWorldPosition(out);
-    else out.set(player.x, 1.4, player.z);
-    return out;
+    const pos = new THREE.Vector3();
+    if (player.muzzle) player.muzzle.getWorldPosition(pos);
+    else pos.set(player.x, 1.4, player.z);
+    return pos;
   }
 
   // Fire one pellet along a spread heading; returns the target it hit and
   // the distance it flew, or null when it hit nothing.
-  firePellet(ox, oz, heading, w, targets) {
-    const spreadHeading = heading + (Math.random() - 0.5) * 2 * w.spread;
-    const dx = Math.sin(spreadHeading);
-    const dz = Math.cos(spreadHeading);
-    let best = null;
-    let bestT = w.range;
-    for (const t of targets) {
-      const along = rayHitTarget(ox, oz, dx, dz, t, bestT);
-      if (along === null) continue;
-      best = t;
-      bestT = along;
+  firePellet(ox, oz, heading, gun, targets) {
+    const aim = heading + (Math.random() - 0.5) * 2 * gun.spread;
+    const dirX = Math.sin(aim);
+    const dirZ = Math.cos(aim);
+    let hit = null;
+    let bestDist = gun.range;
+    for (const target of targets) {
+      const dist = rayHits(ox, oz, dirX, dirZ, target, bestDist);
+      if (dist === null) continue;
+      hit = target;
+      bestDist = dist;
     }
-    if (!best) return null;
-    best.hit(w.damage);
-    return { target: best, dist: bestT };
+    if (!hit) return null;
+    hit.hit(gun.damage);
+    return { target: hit, dist: bestDist };
   }
 
   // Player shoots from their position along their heading (mouse aim
   // adjusts it). Returns the target hit, or null.
   playerShoot(player, aimHeading, targets) {
     if (player.inCar) return null;
-    const w = this.arsenal.def();
+    const gun = this.arsenal.def();
     if (!this.arsenal.pullTrigger()) return null; // cooldown, dry mag or reloading
     this.audio.gunshot();
-    const muzzle = this.muzzleWorld(player);
-    const ox = player.x;
-    const oz = player.z;
-    let anyHit = null;
-    let farT = w.range;
-    for (let p = 0; p < w.pellets; p++) {
-      const shot = this.firePellet(ox, oz, aimHeading, w, targets);
-      if (shot === null) continue;
+    const tip = this.muzzleWorld(player);
+    const px = player.x;
+    const pz = player.z;
+    let hitTarget = null;
+    let stopDist = gun.range;
+    for (let p = 0; p < gun.pellets; p++) {
+      const pellet = this.firePellet(px, pz, aimHeading, gun, targets);
+      if (pellet === null) continue;
       // The tracer stops at the closest hit across all pellets.
-      farT = Math.min(farT, shot.dist);
-      anyHit = shot.target;
+      stopDist = Math.min(stopDist, pellet.dist);
+      hitTarget = pellet.target;
     }
-    const dx = Math.sin(aimHeading);
-    const dz = Math.cos(aimHeading);
-    const ex = ox + dx * farT;
-    const ez = oz + dz * farT;
-    this.spawnTracer(muzzle.x, muzzle.y, muzzle.z, ex, 1.3, ez);
-    this.flash.position.set(muzzle.x + dx * 0.6, muzzle.y, muzzle.z + dz * 0.6);
+    const dirX = Math.sin(aimHeading);
+    const dirZ = Math.cos(aimHeading);
+    const endX = px + dirX * stopDist;
+    const endZ = pz + dirZ * stopDist;
+    this.spawnTracer(tip.x, tip.y, tip.z, endX, 1.3, endZ);
+    this.flash.position.set(tip.x + dirX * 0.6, tip.y, tip.z + dirZ * 0.6);
     this.flash.intensity = 14;
     setTimeout(() => { this.flash.intensity = 0; }, 60);
     player.showGunFlash();
     this.onShotFired?.();
-    return anyHit;
+    return hitTarget;
   }
 
-  spawnTracer(x1, y1, z1, x2, y2, z2) {
-    const line = makeLine({ x: x1, y: y1, z: z1 }, { x: x2, y: y2, z: z2 }, 0.9);
+  spawnTracer(ax, ay, az, bx, by, bz) {
+    const line = buildTraceLine({ x: ax, y: ay, z: az }, { x: bx, y: by, z: bz }, 0.9);
     this.scene.add(line);
-    this.tracers.push({ line, life: TRACER_LIFE });
+    this.tracers.push({ line, life: TRACE_TTL });
   }
 
   // Age the tracers out: a tracer lives 0.09s, then its line is removed
   // from the scene and its geometry disposed.
   cleanTracers(dt) {
     for (let i = this.tracers.length - 1; i >= 0; i--) {
-      const t = this.tracers[i];
-      t.life -= dt;
-      if (t.life > 0) continue;
-      this.scene.remove(t.line);
-      t.line.geometry.dispose();
+      const trace = this.tracers[i];
+      trace.life -= dt;
+      if (trace.life > 0) continue;
+      this.scene.remove(trace.line);
+      trace.line.geometry.dispose();
       this.tracers.splice(i, 1);
     }
   }
@@ -153,30 +153,30 @@ export class Combat {
     this.policeFire(dt, player, police);
     // Slow health regen out of danger.
     if (player.wanted === 0 && player.health < 100 && player.health > 0) {
-      player.health = Math.min(100, player.health + HEALTH_REGEN * dt);
+      player.health = Math.min(100, player.health + REGEN_RATE * dt);
     }
     void peds;
   }
 
   // Hostiles shoot back at the player.
   hostileFire(dt, player, missions) {
-    for (const h of missions.hostiles) {
-      if (h.dead) continue;
-      const d = Math.hypot(player.pos.x - h.x, player.pos.z - h.z);
-      h.shootTimer -= dt;
-      if (d >= HOSTILE_RANGE || h.shootTimer > 0) {
+    for (const foe of missions.hostiles) {
+      if (foe.dead) continue;
+      const dist = Math.hypot(player.pos.x - foe.x, player.pos.z - foe.z);
+      foe.shootTimer -= dt;
+      if (dist >= FOE_RANGE || foe.shootTimer > 0) {
         // Health bar faces the camera-ish: keep it level.
-        h.hpMesh.scale.x = clamp(h.health / 3, 0, 1);
+        foe.hpMesh.scale.x = clamp(foe.health / 3, 0, 1);
         continue;
       }
-      h.shootTimer = 1.4 + Math.random() * 0.8;
-      h.mesh.lookAt(player.pos.x, 1.1, player.pos.z);
-      this.spawnTracer(h.x, 1.3, h.z, player.pos.x, 1.2, player.pos.z);
+      foe.shootTimer = 1.4 + Math.random() * 0.8;
+      foe.mesh.lookAt(player.pos.x, 1.1, player.pos.z);
+      this.spawnTracer(foe.x, 1.3, foe.z, player.pos.x, 1.2, player.pos.z);
       this.audio.gunshot();
       if (Math.random() < 0.45) {
         this.damagePlayer(player, 7, "A rival's bullet found you.");
       }
-      h.hpMesh.scale.x = clamp(h.health / 3, 0, 1);
+      foe.hpMesh.scale.x = clamp(foe.health / 3, 0, 1);
     }
   }
 
@@ -185,83 +185,83 @@ export class Combat {
     this.policeShootTimer -= dt;
     if (player.wanted <= 0 || this.policeShootTimer > 0) return;
     this.policeShootTimer = 1.1 - player.wanted * 0.1;
-    let nearest = null;
-    let nd = 1e9;
-    for (const c of police.cars) {
-      const d = Math.hypot(player.pos.x - c.x, player.pos.z - c.z);
-      if (d < nd) {
-        nd = d;
-        nearest = c;
+    let closest = null;
+    let best = 1e9;
+    for (const car of police.cars) {
+      const d = Math.hypot(player.pos.x - car.x, player.pos.z - car.z);
+      if (d < best) {
+        best = d;
+        closest = car;
       }
     }
-    if (!nearest || nd >= POLICE_RANGE) return;
-    this.spawnTracer(nearest.x, 1.2, nearest.z, player.pos.x, 1.2, player.pos.z);
+    if (!closest || best >= COP_RANGE) return;
+    this.spawnTracer(closest.x, 1.2, closest.z, player.pos.x, 1.2, player.pos.z);
     if (Math.random() < 0.25 + player.wanted * 0.05) {
       this.damagePlayer(player, 5, 'The police shot you down.');
     }
   }
 
-  damagePlayer(player, dmg, cause) {
+  damagePlayer(player, amount, reason) {
     if (player.health <= 0) return;
-    player.health -= dmg;
+    player.health -= amount;
     if (player.health > 0) return;
     player.health = 0;
-    this.onBusted?.(cause);
+    this.onBusted?.(reason);
   }
 
   // --- target builders: one per kind the player's shots can hit ---
   hostileTargets(player, missions) {
-    const targets = [];
-    for (const h of missions.hostiles) {
-      if (h.dead) continue;
-      targets.push({
-        x: h.x, z: h.z, radius: 1.4, alive: () => !h.dead,
+    const list = [];
+    for (const foe of missions.hostiles) {
+      if (foe.dead) continue;
+      list.push({
+        x: foe.x, z: foe.z, radius: 1.4, alive: () => !foe.dead,
         hit: (dmg) => {
-          h.health -= dmg;
-          if (h.health > 0) return;
-          h.dead = true;
-          h.mesh.rotation.x = Math.PI / 2;
-          h.mesh.position.y = 0.3;
+          foe.health -= dmg;
+          if (foe.health > 0) return;
+          foe.dead = true;
+          foe.mesh.rotation.x = Math.PI / 2;
+          foe.mesh.position.y = 0.3;
           missions.active.killed += 1;
           player.addWanted(1, 'shooting');
         },
       });
     }
-    return targets;
+    return list;
   }
 
   policeTargets(player, police) {
-    const targets = [];
-    for (const c of police.cars) {
-      targets.push({
-        x: c.x, z: c.z, radius: 2.2, alive: () => !c.dead,
+    const list = [];
+    for (const car of police.cars) {
+      list.push({
+        x: car.x, z: car.z, radius: 2.2, alive: () => !car.dead,
         hit: (dmg) => {
-          c.speed *= 0.4;
-          c.health = (c.health ?? 4) - dmg;
-          if (c.health > 0) return;
-          c.dead = true;
-          c.speed = 0;
+          car.speed *= 0.4;
+          car.health = (car.health ?? 4) - dmg;
+          if (car.health > 0) return;
+          car.dead = true;
+          car.speed = 0;
           player.addWanted(1, 'shooting at police');
         },
       });
     }
-    return targets;
+    return list;
   }
 
   pedTargets(player, peds) {
-    const targets = [];
-    for (const p of peds.peds) {
-      if (p.dead) continue;
-      targets.push({
-        x: p.x, z: p.z, radius: 1.0, alive: () => !p.dead,
+    const list = [];
+    for (const walker of peds.peds) {
+      if (walker.dead) continue;
+      list.push({
+        x: walker.x, z: walker.z, radius: 1.0, alive: () => !walker.dead,
         hit: () => {
-          peds.kill(p);
+          peds.kill(walker);
           player.addWanted(1, 'hitting a pedestrian');
-          peds.scare(p.x, p.z, 25);
+          peds.scare(walker.x, walker.z, 25);
         },
       });
     }
-    return targets;
+    return list;
   }
 
   // Build the target list the player's shots can hit this frame.

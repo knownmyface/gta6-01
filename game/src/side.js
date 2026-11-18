@@ -1,13 +1,12 @@
-// Side activities for CORAL HEAT v2.4 — the stuff that makes Coral Bay a
+// Side activities for CORAL HEAT v2.5 — the stuff that makes Coral Bay a
 // game you keep playing after the story missions: taxi fares, 12 hidden
 // Coral Coins, and the GUNSMITH weapon shop. All three run alongside the
-// mission manager, pay cash, and feed the stats on the start screen. v2.4
-// is a from-scratch rewrite of v2.3's side.js: same coins, same fares, same
-// shop, different code. The fare state machine is split into one method per
-// stage now (offer, pickup, ride), and the coin + marker builders are
-// table-driven.
+// mission manager, pay cash, and feed the stats on the start screen. v2.5
+// is a from-scratch rewrite of v2.4's side.js: same coins, same fares, same
+// shop, different code. The fare state machine is one method per stage now
+// (offer, pickup, ride), and the coin + marker builders are table-driven.
 // One rule governs this file: the seeded rng calls happen in exactly the
-// same order as v2.3, so the same seed deals the same passengers.
+// same order as v2.4, so the same seed deals the same passengers.
 import * as THREE from 'three';
 import { pick } from './rng.js';
 
@@ -46,33 +45,33 @@ const FARE_COOLDOWN = -240; // frames of quiet after a fare ends
 // A small coloured light-column marker (gold for missions is elsewhere;
 // cyan = taxi, green = shop, gold coin = collectible handled separately).
 function makeMarker(color) {
-  const g = new THREE.Group();
-  const beam = new THREE.Mesh(
+  const group = new THREE.Group();
+  const shaft = new THREE.Mesh(
     new THREE.CylinderGeometry(1.6, 2.4, 40, 10, 1, true),
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }),
   );
-  beam.position.y = 20;
-  g.add(beam);
-  const ring = new THREE.Mesh(
+  shaft.position.y = 20;
+  group.add(shaft);
+  const halo = new THREE.Mesh(
     new THREE.TorusGeometry(3, 0.28, 8, 28),
     new THREE.MeshBasicMaterial({ color }),
   );
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.25;
-  g.add(ring);
-  return g;
+  halo.rotation.x = Math.PI / 2;
+  halo.position.y = 0.25;
+  group.add(halo);
+  return group;
 }
 
 // One Coral Coin: a gold disc with a pale centre, standing on edge.
-function makeCoinMesh(mats) {
-  const g = new THREE.Group();
-  const coin = new THREE.Mesh(mats.discGeo, mats.disc);
-  coin.rotation.x = Math.PI / 2;
-  g.add(coin);
-  const dot = new THREE.Mesh(mats.dotGeo, mats.inner);
-  dot.rotation.x = Math.PI / 2;
-  g.add(dot);
-  return g;
+function makeCoinMesh(materials) {
+  const group = new THREE.Group();
+  const disc = new THREE.Mesh(materials.discGeo, materials.disc);
+  disc.rotation.x = Math.PI / 2;
+  group.add(disc);
+  const hub = new THREE.Mesh(materials.dotGeo, materials.inner);
+  hub.rotation.x = Math.PI / 2;
+  group.add(hub);
+  return group;
 }
 
 export class SideActivities {
@@ -98,7 +97,7 @@ export class SideActivities {
   }
 
   spawnCoins() {
-    const mats = {
+    const materials = {
       discGeo: new THREE.CylinderGeometry(0.9, 0.9, 0.22, 20),
       dotGeo: new THREE.CylinderGeometry(0.45, 0.45, 0.26, 12),
       disc: new THREE.MeshStandardMaterial({
@@ -106,20 +105,20 @@ export class SideActivities {
       }),
       inner: new THREE.MeshStandardMaterial({ color: 0xfff2b0, metalness: 0.7, roughness: 0.3 }),
     };
-    COIN_POSITIONS.forEach((p, i) => {
-      const g = makeCoinMesh(mats);
-      g.position.set(p.x, 1.4, p.z);
-      this.scene.add(g);
-      this.coinMeshes.push({ mesh: g, x: p.x, z: p.z, id: i, taken: false, label: p.label });
+    COIN_POSITIONS.forEach((spot, i) => {
+      const group = makeCoinMesh(materials);
+      group.position.set(spot.x, 1.4, spot.z);
+      this.scene.add(group);
+      this.coinMeshes.push({ mesh: group, x: spot.x, z: spot.z, id: i, taken: false, label: spot.label });
     });
   }
 
   restoreCoins(foundIds) {
     for (const id of foundIds || []) {
-      const c = this.coinMeshes[id];
-      if (!c || c.taken) continue;
-      c.taken = true;
-      this.scene.remove(c.mesh);
+      const coin = this.coinMeshes[id];
+      if (!coin || coin.taken) continue;
+      coin.taken = true;
+      this.scene.remove(coin.mesh);
       this.coinsFound.add(id);
     }
   }
@@ -135,10 +134,10 @@ export class SideActivities {
     this.fareTimer = 0;
     // Passenger waits on the nearest sidewalk — one rng draw for x, one
     // for z, in that order.
-    const px = player.car.x + pick(this.rng, [-8, 8]);
-    const pz = player.car.z + pick(this.rng, [-8, 8]);
-    this.fare = { stage: 'pickup', x: px, z: pz, dest: null, timer: 0, payout: 0 };
-    this.taxiMarker.position.set(px, 0, pz);
+    const x = player.car.x + pick(this.rng, [-8, 8]);
+    const z = player.car.z + pick(this.rng, [-8, 8]);
+    this.fare = { stage: 'pickup', x, z, dest: null, timer: 0, payout: 0 };
+    this.taxiMarker.position.set(x, 0, z);
     this.taxiMarker.visible = true;
     this.hooks.onObjective('TAXI FARE: pick up the passenger at the blue marker');
     this.hooks.onToast('TAXI FARE', 'A passenger is waving you down — pick them up.');
@@ -147,41 +146,41 @@ export class SideActivities {
   // Pickup stage: drive to the blue marker; the passenger hops in and the
   // destination + payout are dealt.
   pickupFare(dt, player, p) {
-    const f = this.fare;
+    const fare = this.fare;
     if (!player.inCar || !player.car || player.car.type !== 'taxi') {
       this.cancelFare('Fare cancelled — you left the taxi.');
       return;
     }
-    if (Math.hypot(p.x - f.x, p.z - f.z) >= 5) return;
-    f.stage = 'ride';
-    f.timer = FARE_TIME;
-    f.dest = pick(this.rng, TAXI_DESTINATIONS);
-    f.payout = FARE_BASE + Math.floor(Math.hypot(f.dest.x - f.x, f.dest.z - f.z) * FARE_PER_UNIT);
+    if (Math.hypot(p.x - fare.x, p.z - fare.z) >= 5) return;
+    fare.stage = 'ride';
+    fare.timer = FARE_TIME;
+    fare.dest = pick(this.rng, TAXI_DESTINATIONS);
+    fare.payout = FARE_BASE + Math.floor(Math.hypot(fare.dest.x - fare.x, fare.dest.z - fare.z) * FARE_PER_UNIT);
     this.taxiMarker.visible = false;
-    this.destMarker.position.set(f.dest.x, 0, f.dest.z);
+    this.destMarker.position.set(fare.dest.x, 0, fare.dest.z);
     this.destMarker.visible = true;
-    this.hooks.onObjective(`TAXI: drop them off at the gold marker — ${Math.ceil(f.timer)}s`);
+    this.hooks.onObjective(`TAXI: drop them off at the gold marker — ${Math.ceil(fare.timer)}s`);
     this.hooks.onToast('PASSENGER ABOARD', 'Drive smooth — the meter is running.');
     void dt;
   }
 
   // Ride stage: the meter runs down; reach the gold marker in time to get paid.
   rideFare(dt, player, p) {
-    const f = this.fare;
-    f.timer -= dt;
-    this.hooks.onObjective(`TAXI: drop them off at the gold marker — ${Math.max(0, Math.ceil(f.timer))}s`);
+    const fare = this.fare;
+    fare.timer -= dt;
+    this.hooks.onObjective(`TAXI: drop them off at the gold marker — ${Math.max(0, Math.ceil(fare.timer))}s`);
     if (!player.inCar) {
       this.cancelFare('Fare cancelled — the passenger walked out.');
       return;
     }
-    if (f.timer <= 0) {
+    if (fare.timer <= 0) {
       this.cancelFare('Too slow — the passenger hailed another cab.');
       return;
     }
-    if (Math.hypot(p.x - f.dest.x, p.z - f.dest.z) >= 6) return;
+    if (Math.hypot(p.x - fare.dest.x, p.z - fare.dest.z) >= 6) return;
     this.destMarker.visible = false;
-    this.hooks.onCash(f.payout);
-    this.hooks.onToast('FARE COMPLETE', `+$${f.payout.toLocaleString()} — the passenger tipped well.`);
+    this.hooks.onCash(fare.payout);
+    this.hooks.onToast('FARE COMPLETE', `+$${fare.payout.toLocaleString()} — the passenger tipped well.`);
     this.hooks.onObjective('Fare done — keep driving for the next one');
     this.fare = null;
     this.fareTimer = FARE_COOLDOWN; // cooldown before the next offer
@@ -189,24 +188,24 @@ export class SideActivities {
   }
 
   collectCoins(player, p) {
-    for (const c of this.coinMeshes) {
-      if (c.taken) continue;
-      if (Math.hypot(p.x - c.x, p.z - c.z) >= 3.5) continue;
-      c.taken = true;
-      this.scene.remove(c.mesh);
-      this.coinsFound.add(c.id);
+    for (const coin of this.coinMeshes) {
+      if (coin.taken) continue;
+      if (Math.hypot(p.x - coin.x, p.z - coin.z) >= 3.5) continue;
+      coin.taken = true;
+      this.scene.remove(coin.mesh);
+      this.coinsFound.add(coin.id);
       this.hooks.onCash(COIN_REWARD);
-      this.hooks.onToast(`CORAL COIN ${this.coinsFound.size}/12 — ${c.label}`, '+$150 — keep hunting, 12 are hidden around Coral Bay.');
+      this.hooks.onToast(`CORAL COIN ${this.coinsFound.size}/12 — ${coin.label}`, '+$150 — keep hunting, 12 are hidden around Coral Bay.');
       this.hooks.onObjective(`Coral Coins ${this.coinsFound.size}/12 found`);
     }
   }
 
   // Spin + bob the coins, and pulse the shop marker ring.
   animateMarkers(dt) {
-    for (const c of this.coinMeshes) {
-      if (c.taken) continue;
-      c.mesh.rotation.y += dt * 2.2;
-      c.mesh.position.y = 1.4 + Math.sin(performance.now() / 500 + c.id) * 0.25;
+    for (const coin of this.coinMeshes) {
+      if (coin.taken) continue;
+      coin.mesh.rotation.y += dt * 2.2;
+      coin.mesh.position.y = 1.4 + Math.sin(performance.now() / 500 + coin.id) * 0.25;
     }
     this.shopMarker.children[1].scale.setScalar(1 + Math.sin(performance.now() / 300) * 0.08);
   }
