@@ -1,4 +1,5 @@
-// Procedural audio for CORAL HEAT: no audio files, every sound is synthesized
+// Procedural audio for CORAL HEAT v2.2: no audio files, every sound is synthesized
+// with WebAudio. v2.2 is a re-record; the mix from v2.1 is kept as-is.
 // with WebAudio. Engine hum, police siren, gunshots, UI blips and three radio
 // stations of sequenced synth music. Safe to call before any user gesture: the
 // context is created lazily and everything no-ops while it is suspended.

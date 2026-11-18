@@ -1,5 +1,6 @@
 // The player — Mara Voss on foot and behind the wheel — plus the pedestrians
-// who fill Coral Bay's sidewalks. Carjacking, entering and exiting cars,
+// who fill Coral Bay's sidewalks. v2.2: re-recorded; Mara keeps her red bandana.
+// Carjacking, entering and exiting cars,
 // on-foot movement and the wanted-level consequences of stealing.
 import * as THREE from 'three';
 import { createRng, pick, range, clamp, angleLerp } from './rng.js';

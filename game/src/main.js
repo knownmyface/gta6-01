@@ -1,9 +1,10 @@
-// CORAL HEAT v2.1 — main bootstrap and game loop. Wires the city, traffic,
+// CORAL HEAT v2.2 — main bootstrap and game loop. Wires the city, traffic,
 // pedestrians, police, missions, combat, arsenal + viewmodel, side
 // activities (taxi fares, Coral Coins, gun shop), HUD, radio and saves
 // together and runs the game in desktop Chrome from static files, no
-// network requests. v2.1: visible police helicopter in the cover, detailed
-// glass towers, and a rifle viewmodel that reads as a rifle.
+// network requests. v2.2 is a re-record of v2.1 (same game, fresh recording);
+// v2.1 added the visible police helicopter, detailed glass towers, and a
+// rifle viewmodel that reads as a rifle.
 import * as THREE from 'three';
 import { createRng, clamp } from './rng.js';
 import { buildCity, districtAt } from './city.js';

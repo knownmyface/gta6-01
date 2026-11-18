@@ -1,6 +1,7 @@
-// Save / load for CORAL HEAT v2.1: missions, cash, weapons, coins and stats in
+// Save / load for CORAL HEAT v2.2: missions, cash, weapons, coins and stats in
 // localStorage. Nothing leaves the browser; a fresh player starts on mission 1
 // with $1,250 and a pistol. v2.1 moved the key to v2; v1 saves still load.
+// v2.2 is a re-record — the save format is unchanged (still the v2 key).
 const KEY = 'coralheat.save.v2';
 const OLD_KEY = 'coralheat.save.v1';
 

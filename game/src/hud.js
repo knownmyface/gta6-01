@@ -1,4 +1,4 @@
-// HUD for CORAL HEAT: the dense DOM overlay (mission panel, cash, wanted
+// HUD for CORAL HEAT v2.2: the dense DOM overlay (mission panel, cash, wanted
 // stars, objective banner, speed, radio, health) and the circular minimap
 // canvas — roads, beach, buildings, player, traffic, police, hostiles and
 // the gold mission marker, redrawn every frame.

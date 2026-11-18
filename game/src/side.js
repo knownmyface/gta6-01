@@ -1,4 +1,4 @@
-// Side activities for CORAL HEAT v2.1 — the stuff that makes Coral Bay a game
+// Side activities for CORAL HEAT v2.2 — the stuff that makes Coral Bay a game
 // you keep playing after the story missions: taxi fares, 12 hidden Coral
 // Coins, and the GUNSMITH weapon shop. All three run alongside the mission
 // manager, pay cash, and feed the stats on the start screen. v2.1: two more

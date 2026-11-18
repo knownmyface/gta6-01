@@ -1,4 +1,4 @@
-// Weapons for CORAL HEAT v2: four buyable guns with REAL silhouettes — a
+// Weapons for CORAL HEAT v2.2: four buyable guns with REAL silhouettes — a
 // pistol, an SMG, a rifle and a pump shotgun, each built from boxes and
 // cylinders so its shape reads at a glance. The same meshes serve three
 // places: the first-person viewmodel on the camera, the gun in Mara's hand

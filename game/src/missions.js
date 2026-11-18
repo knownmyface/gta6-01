@@ -1,4 +1,4 @@
-// The story of CORAL HEAT: 12 missions for Mara Voss, from her first fare for
+// The story of CORAL HEAT v2.2: 12 missions for Mara Voss, from her first fare for
 // Dutch Calloway to the last run out of Coral Bay. Each mission names its
 // giver, its objective and its payout; the manager moves the gold beacon,
 // spawns pickups and hostiles, and pays out on completion. v2.1: rivals wear

@@ -1,4 +1,4 @@
-// Screenshot staging for CORAL HEAT v2: ?shot=<name>&seed=<n> teleports the
+// Screenshot staging for CORAL HEAT v2.2: ?shot=<name>&seed=<n> teleports the
 // game into a composed, fully-playing scene and drives a cinematic camera,
 // so every screenshot is a real render of the game's own code — never edited
 // or faked. v2 staging is denser than v1: closer/lower cameras, buildings on

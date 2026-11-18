@@ -1,6 +1,7 @@
 // Seeded RNG (mulberry32) + helpers shared by every system of CORAL HEAT.
 // Every world layout decision flows through one seeded stream so a screenshot
-// seed reproduces the same city, traffic and pedestrians. v2.1 adds pickN.
+// seed reproduces the same city, traffic and pedestrians. v2.1 adds pickN;
+// v2.2 is a re-record and keeps pickN.
 export function createRng(seed) {
   let a = seed >>> 0;
   return function next() {

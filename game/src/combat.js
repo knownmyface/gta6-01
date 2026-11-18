@@ -1,4 +1,4 @@
-// Combat for CORAL HEAT v2: hitscan shooting on foot, tracers, muzzle flash,
+// Combat for CORAL HEAT v2.2: hitscan shooting on foot, tracers, muzzle flash,
 // hostiles and police shooting back, health, and getting busted. Shots now
 // go through the arsenal — damage, pellets, spread and fire rate come from
 // the equipped weapon, and every shot lights the viewmodel + the gun in

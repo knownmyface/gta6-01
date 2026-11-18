@@ -1,4 +1,4 @@
-// CORAL HEAT v2.1 — a 3D open-world crime game in a sunset marina city.
+// CORAL HEAT v2.2 — a 3D open-world crime game in a sunset marina city.
 // This program hands the entry in: it copies game/ and screenshots/ from
 // beside this file to /output and writes /output/dossier.json with the
 // vendored make.fun library, exactly as the kit's starter does. Outside the

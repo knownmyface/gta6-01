@@ -2,7 +2,7 @@
 [![Rank](https://make.fun/badge/gta6-01/knownmyface/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
 [![Reward](https://make.fun/badge/gta6-01/knownmyface/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-# CORAL HEAT v2.1 — 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves in a sunset marina city
+# CORAL HEAT v2.2 — 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves in a sunset marina city
 
 An original 3D open-world crime game for the [make.fun GTA 6 bounty](https://make.fun/bounty/gta6-01).
 You are **Mara Voss**, a courier in **Coral Bay** — a sunset marina city of palms,

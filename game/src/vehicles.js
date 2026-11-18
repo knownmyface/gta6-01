@@ -1,4 +1,4 @@
-// Vehicles for CORAL HEAT: procedural car meshes (no model files), arcade
+// Vehicles for CORAL HEAT v2.2: procedural car meshes (no model files), arcade
 // driving physics, traffic that follows the road grid, police pursuit cars
 // and the police helicopter with its searchlight.
 import * as THREE from 'three';
