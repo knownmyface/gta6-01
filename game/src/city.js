@@ -1,4 +1,6 @@
-// Coral Bay v2.2: the sunset marina city of CORAL HEAT, rebuilt with TEXTURE.
+// Coral Bay v2.3: the sunset marina city of CORAL HEAT, rebuilt with TEXTURE.
+// v2.3 is a re-record — this file is untouched except for this header, so the
+// city layout and its seeded rng stream stay exactly as v2.2 dealt them.
 // Every surface is a canvas texture generated at runtime — asphalt with cracks
 // and patches, tiled sidewalks, brick and glass facades, ground-floor shops
 // with awnings and neon signs, billboards, traffic lights, clouds, beach

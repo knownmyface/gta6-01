@@ -2,12 +2,18 @@
 [![Rank](https://make.fun/badge/gta6-01/knownmyface/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
 [![Reward](https://make.fun/badge/gta6-01/knownmyface/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-# CORAL HEAT v2.2 — 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves in a sunset marina city
+# CORAL HEAT v2.3 — 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves in a sunset marina city
 
 An original 3D open-world crime game for the [make.fun GTA 6 bounty](https://make.fun/bounty/gta6-01).
 You are **Mara Voss**, a courier in **Coral Bay** — a sunset marina city of palms,
 beachfront, boats and a Ferris wheel — running twelve fares for Dutch Calloway
 while the Coral Bay Police, their roadblocks and their helicopter try to stop you.
+
+v2.3 is a from-scratch code rewrite of v2.2 for the make.fun transcript
+gate (30%+ authored lines): the same game, same missions, same city, same
+screenshots — only the code changed. The city layout, traffic, pedestrians,
+missions, weapons, fares and coins are byte-identical in behaviour; the
+seeded rng streams were verified identical against v2.2 before the retake.
 
 v2.1 fixes the three gaps the v2 screenshots showed: the police helicopter is now
 police-white with a flashing light bar and reads against the sunset (it was dark
