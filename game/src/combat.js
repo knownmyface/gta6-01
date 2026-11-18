@@ -1,43 +1,76 @@
-// Combat for CORAL HEAT: hitscan shooting on foot, tracers, muzzle flash,
-// hostiles and police shooting back, health, and getting busted.
+// Combat for CORAL HEAT v2: hitscan shooting on foot, tracers, muzzle flash,
+// hostiles and police shooting back, health, and getting busted. Shots now
+// go through the arsenal — damage, pellets, spread and fire rate come from
+// the equipped weapon, and every shot lights the viewmodel + the gun in
+// Mara's hand.
 import * as THREE from 'three';
 import { clamp } from './rng.js';
+import { makeFlashSprite } from './weapons.js';
 
 export class Combat {
-  constructor(scene, audio) {
+  constructor(scene, audio, arsenal) {
     this.scene = scene;
     this.audio = audio;
+    this.arsenal = arsenal;
     this.tracers = [];
     this.flash = new THREE.PointLight(0xffe08a, 0, 12);
     this.scene.add(this.flash);
     this.shootCooldown = 0;
     this.policeShootTimer = 0;
+    this.onShotFired = null; // wired by main.js: viewmodel flash + sound
+  }
+
+  // A persistent muzzle flash + tracer for staged screenshots: never fades.
+  stageFlash(from, to) {
+    const flash = makeFlashSprite(0.9);
+    flash.position.set(from.x, from.y, from.z);
+    flash.visible = true;
+    this.scene.add(flash);
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(from.x, from.y, from.z),
+      new THREE.Vector3(to.x, to.y, to.z),
+    ]);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95 }));
+    this.scene.add(line);
+    return { flash, line };
   }
 
   // Player shoots from their position along their heading (mouse aim adjusts it).
   playerShoot(player, aimHeading, targets) {
-    if (this.shootCooldown > 0 || player.inCar) return null;
-    this.shootCooldown = 0.28;
+    if (player.inCar) return null;
+    const w = this.arsenal.def();
+    if (!this.arsenal.pullTrigger()) return null; // cooldown, dry mag or reloading
     this.audio.gunshot();
+    // muzzle world position (the gun in Mara's hand), else chest height
+    const m = new THREE.Vector3();
+    if (player.muzzle) player.muzzle.getWorldPosition(m);
+    else m.set(player.x, 1.4, player.z);
     const ox = player.x, oz = player.z;
-    const dx = Math.sin(aimHeading), dz = Math.cos(aimHeading);
-    let best = null, bestT = 42;
-    // targets: { x, z, radius, hit(dmg), alive() }
-    for (const t of targets) {
-      if (!t.alive()) continue;
-      const rx = t.x - ox, rz = t.z - oz;
-      const along = rx * dx + rz * dz;
-      if (along < 0 || along > bestT) continue;
-      const perp = Math.abs(rx * dz - rz * dx);
-      if (perp < (t.radius ?? 1.2)) { best = t; bestT = along; }
+    let anyHit = null;
+    let farT = w.range;
+    for (let p = 0; p < w.pellets; p++) {
+      const h = aimHeading + (Math.random() - 0.5) * 2 * w.spread;
+      const dx = Math.sin(h), dz = Math.cos(h);
+      let best = null, bestT = w.range;
+      for (const t of targets) {
+        if (!t.alive()) continue;
+        const rx = t.x - ox, rz = t.z - oz;
+        const along = rx * dx + rz * dz;
+        if (along < 0 || along > bestT) continue;
+        const perp = Math.abs(rx * dz - rz * dx);
+        if (perp < (t.radius ?? 1.2)) { best = t; bestT = along; }
+      }
+      if (best) { best.hit(w.damage); anyHit = best; farT = Math.min(farT, bestT); }
     }
-    const ex = ox + dx * bestT, ez = oz + dz * bestT;
-    this.spawnTracer(ox, 1.4, oz, ex, 1.3, ez);
-    this.flash.position.set(ox + dx * 1.2, 1.5, oz + dz * 1.2);
+    const dx = Math.sin(aimHeading), dz = Math.cos(aimHeading);
+    const ex = ox + dx * farT, ez = oz + dz * farT;
+    this.spawnTracer(m.x, m.y, m.z, ex, 1.3, ez);
+    this.flash.position.set(m.x + dx * 0.6, m.y, m.z + dz * 0.6);
     this.flash.intensity = 14;
     setTimeout(() => { this.flash.intensity = 0; }, 60);
-    if (best) best.hit(1);
-    return best;
+    player.showGunFlash();
+    this.onShotFired?.();
+    return anyHit;
   }
 
   spawnTracer(x1, y1, z1, x2, y2, z2) {
@@ -111,8 +144,8 @@ export class Combat {
       if (h.dead) continue;
       targets.push({
         x: h.x, z: h.z, radius: 1.4, alive: () => !h.dead,
-        hit: () => {
-          h.health -= 1;
+        hit: (dmg) => {
+          h.health -= dmg;
           if (h.health <= 0) {
             h.dead = true;
             h.mesh.rotation.x = Math.PI / 2;
@@ -126,8 +159,10 @@ export class Combat {
     for (const c of police.cars) {
       targets.push({
         x: c.x, z: c.z, radius: 2.2, alive: () => !c.dead,
-        hit: () => {
+        hit: (dmg) => {
           c.speed *= 0.4;
+          c.health = (c.health ?? 4) - dmg;
+          if (c.health <= 0) { c.dead = true; c.speed = 0; }
           player.addWanted(1, 'shooting at police');
         },
       });

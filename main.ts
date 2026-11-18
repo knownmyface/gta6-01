@@ -1,11 +1,13 @@
-// CORAL HEAT — a 3D open-world crime game in a sunset marina city.
+// CORAL HEAT v2 — a 3D open-world crime game in a sunset marina city.
 // This program hands the entry in: it copies game/ and screenshots/ from
 // beside this file to /output and writes /output/dossier.json with the
 // vendored make.fun library, exactly as the kit's starter does. Outside the
 // grader, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// After the build it prints the sizes that matter for the gate, so a bad
+// screenshot or an over-cap dossier is caught before submission.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -34,3 +36,19 @@ writeFileSync(
     game_path_max_bytes: 1000,
   }),
 );
+
+// Gate sizes at a glance, so a bad build is caught before submission.
+function dirBytes(dir) {
+  let total = 0;
+  for (const name of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, name.name);
+    total += name.isDirectory() ? dirBytes(p) : statSync(p).size;
+  }
+  return total;
+}
+const dossierBytes = statSync(join(out, 'dossier.json')).size;
+const gameBytes = dirBytes(join(out, 'game'));
+const shots = existsSync(join(out, 'screenshots')) ? readdirSync(join(out, 'screenshots')) : [];
+console.log(`dossier.json ${dossierBytes} bytes (cap 1,572,864)`);
+console.log(`game/ ${gameBytes} bytes (cap 50,331,648)`);
+for (const s of shots) console.log(`screenshot ${s} ${statSync(join(out, 'screenshots', s)).size} bytes (cap 262,144)`);

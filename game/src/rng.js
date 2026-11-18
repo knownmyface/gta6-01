@@ -12,6 +12,26 @@ export function createRng(seed) {
 }
 
 export function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+
+export function shuffle(rng, arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Pick a weighted option: [[weight, value], ...] — used by traffic mix and drops.
+export function weighted(rng, entries) {
+  const total = entries.reduce((s, [w]) => s + w, 0);
+  let roll = rng() * total;
+  for (const [w, v] of entries) {
+    roll -= w;
+    if (roll <= 0) return v;
+  }
+  return entries[entries.length - 1][1];
+}
 export function range(rng, min, max) { return min + rng() * (max - min); }
 export function rangeInt(rng, min, max) { return Math.floor(range(rng, min, max + 1)); }
 export function chance(rng, p) { return rng() < p; }

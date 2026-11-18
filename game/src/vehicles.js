@@ -4,20 +4,22 @@
 import * as THREE from 'three';
 import { createRng, pick, range, clamp, angleLerp } from './rng.js';
 import { ROAD_COORDS } from './city.js';
+import { buildGunMesh } from './weapons.js';
 
 const CAR_COLORS = [0xd8d8e0, 0x2a2a30, 0x37b6ff, 0xffb347, 0x7dff9a, 0xff7ad9, 0xc9a06a, 0x5a8a6a, 0xb03a2e];
 
-// Build one car from boxes and cylinders. type: sports | sedan | taxi | truck | van | police
+// Build one car from boxes and cylinders. type: sports | sedan | taxi | truck | van | police | bus
 export function buildCarMesh(type, color) {
   const g = new THREE.Group();
   const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.55 });
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x101828, roughness: 0.15, metalness: 0.7 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x101828, roughness: 0.15, metalness: 0.7, transparent: true, opacity: 0.72 });
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x181820, roughness: 0.7 });
   const isTruck = type === 'truck';
   const isVan = type === 'van';
-  const len = isTruck ? 6.4 : isVan ? 5.6 : type === 'sports' ? 4.6 : 4.4;
-  const wid = isTruck || isVan ? 2.3 : 2.0;
-  const bodyH = isTruck ? 1.5 : 0.85;
+  const isBus = type === 'bus';
+  const len = isTruck ? 6.4 : isBus ? 9.0 : isVan ? 5.6 : type === 'sports' ? 4.6 : 4.4;
+  const wid = isTruck || isVan || isBus ? 2.5 : 2.0;
+  const bodyH = isBus ? 2.2 : isTruck ? 1.5 : 0.85;
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(wid, bodyH, len), bodyMat);
   body.position.y = 0.62;
@@ -33,6 +35,16 @@ export function buildCarMesh(type, color) {
     shield.position.set(0, 1.85, len / 2 - 0.55); g.add(shield);
     const bed = new THREE.Mesh(new THREE.BoxGeometry(wid * 0.9, 0.7, len - 2.6), trimMat);
     bed.position.set(0, 1.5, -len / 2 + 1.6); g.add(bed);
+  } else if (isBus) {
+    // city bus: tall body, full window strip, route sign, 6 wheels
+    const windows = new THREE.Mesh(new THREE.BoxGeometry(wid * 0.96, 0.9, len * 0.8), glassMat);
+    windows.position.set(0, 1.6, 0); g.add(windows);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(wid * 1.01, 0.3, len * 0.98), new THREE.MeshStandardMaterial({ color: 0xffd23e, roughness: 0.5 }));
+    stripe.position.set(0, 0.95, 0); g.add(stripe);
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.4, 0.08), new THREE.MeshBasicMaterial({ color: 0xffd23e }));
+    sign.position.set(0, 2.1, len / 2 + 0.02); g.add(sign);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.9, 0.06), glassMat);
+    door.position.set(wid / 2 + 0.01, 1.1, len / 2 - 1.6); g.add(door);
   } else if (isVan) {
     const cab = new THREE.Mesh(new THREE.BoxGeometry(wid * 0.94, 1.3, len * 0.72), glassMat);
     cab.position.set(0, 1.5, -0.2); g.add(cab);
@@ -48,13 +60,15 @@ export function buildCarMesh(type, color) {
     }
   }
 
-  // wheels
+  // wheels (bus gets a third axle)
   const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.32, 12);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 0.9 });
   const hubGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.34, 8);
   const hubMat = new THREE.MeshStandardMaterial({ color: 0xb8bcc8, roughness: 0.3, metalness: 0.8 });
   const wheels = [];
-  for (const [wx, wz] of [[-wid / 2, len / 2 - 1.1], [wid / 2, len / 2 - 1.1], [-wid / 2, -len / 2 + 1.1], [wid / 2, -len / 2 + 1.1]]) {
+  const wheelSpots = [[-wid / 2, len / 2 - 1.1], [wid / 2, len / 2 - 1.1], [-wid / 2, -len / 2 + 1.1], [wid / 2, -len / 2 + 1.1]];
+  if (isBus) wheelSpots.push([-wid / 2, 0], [wid / 2, 0]);
+  for (const [wx, wz] of wheelSpots) {
     const w = new THREE.Mesh(wheelGeo, wheelMat);
     w.rotation.z = Math.PI / 2;
     w.position.set(wx, 0.42, wz);
@@ -88,6 +102,30 @@ export function buildCarMesh(type, color) {
     g.userData.lightBar = { red, blue };
     const door = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 1.6), new THREE.MeshBasicMaterial({ color: 0x111111 }));
     door.position.set(wid / 2 + 0.01, 0.7, 0); g.add(door);
+  }
+
+  // bumpers + side mirrors, so cars read as cars from every angle
+  const bumperMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.5, metalness: 0.6 });
+  for (const s of [-1, 1]) {
+    const fb = new THREE.Mesh(new THREE.BoxGeometry(wid * 0.96, 0.28, 0.18), bumperMat);
+    fb.position.set(0, 0.42, len / 2 + 0.05); g.add(fb);
+    const rb = new THREE.Mesh(new THREE.BoxGeometry(wid * 0.96, 0.28, 0.18), bumperMat);
+    rb.position.set(0, 0.42, -len / 2 - 0.05); g.add(rb);
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.24), trimMat);
+    mirror.position.set(s * (wid / 2 + 0.08), 1.15, len / 2 - 1.5); g.add(mirror);
+  }
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.22, 0.04), new THREE.MeshBasicMaterial({ color: 0xf0ead8 }));
+  plate.position.set(0, 0.5, -len / 2 - 0.14); g.add(plate);
+
+  // a visible driver in the cabin — the city feels populated, not remote-controlled
+  if (!isTruck && !isBus) {
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xc98a5a, roughness: 0.8 });
+    const driverHead = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), skinMat);
+    driverHead.position.set(-wid * 0.22, 1.35, type === 'sports' ? -0.1 : 0.05);
+    g.add(driverHead);
+    const driverBody = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.3), new THREE.MeshStandardMaterial({ color: 0x4a6a8a, roughness: 0.9 }));
+    driverBody.position.set(-wid * 0.22, 0.95, type === 'sports' ? -0.1 : 0.05);
+    g.add(driverBody);
   }
 
   g.userData.wheels = wheels;
@@ -167,7 +205,7 @@ export class Traffic {
     this.colliders = colliders;
     this.rng = rng;
     this.cars = [];
-    this.types = ['sedan', 'sedan', 'taxi', 'van', 'truck', 'sports'];
+    this.types = ['sedan', 'sedan', 'taxi', 'van', 'truck', 'sports', 'sedan', 'bus'];
   }
 
   spawn(n, avoid) {
@@ -378,6 +416,36 @@ export class Police {
 }
 
 // --- roadblocks: police barriers that appear ahead of the player at high wanted ---
+// A foot officer: dark-blue uniform, cap, pistol in hand — roadblocks are
+// manned, not just striped plastic.
+function buildOfficerMesh() {
+  const g = new THREE.Group();
+  const uniform = new THREE.MeshStandardMaterial({ color: 0x1a2a4a, roughness: 0.85 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xc98a5a, roughness: 0.8 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), skin);
+  head.position.y = 1.6; g.add(head);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 0.12, 10), uniform);
+  cap.position.y = 1.78; g.add(cap);
+  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.2), uniform);
+  brim.position.set(0, 1.73, 0.24); g.add(brim);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.32), uniform);
+  torso.position.y = 1.05; g.add(torso);
+  const badge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.02), new THREE.MeshStandardMaterial({ color: 0xffd23e, metalness: 0.8, roughness: 0.3 }));
+  badge.position.set(-0.15, 1.2, 0.17); g.add(badge);
+  for (const s of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.7, 0.24), uniform);
+    leg.position.set(s * 0.15, 0.35, 0); g.add(leg);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.18), uniform);
+    arm.position.set(s * 0.4, 1.08, 0); g.add(arm);
+  }
+  const gun = buildGunMesh('pistol');
+  gun.group.scale.setScalar(1.15);
+  gun.group.position.set(0.42, 1.0, 0.25);
+  gun.group.rotation.x = -0.15;
+  g.add(gun.group);
+  return g;
+}
+
 export class Roadblocks {
   constructor(scene) {
     this.scene = scene;
@@ -394,6 +462,13 @@ export class Roadblocks {
       }
       const light = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
       light.position.set(0, 1.6, 0); g.add(light);
+      // two foot officers manning the barrier, pistols in hand
+      for (const s of [-1, 1]) {
+        const officer = buildOfficerMesh();
+        officer.position.set(s * 4.4, 0, 1.6);
+        officer.rotation.y = s * 0.5;
+        g.add(officer);
+      }
       g.visible = false;
       this.scene.add(g);
       this.blocks.push({ mesh: g, x: 0, z: 0, active: false, light });

@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { createRng, pick, range, clamp, angleLerp } from './rng.js';
 import { ROAD_COORDS, CITY_MIN, CITY_MAX } from './city.js';
 import { buildCarMesh, collideCircle } from './vehicles.js';
+import { buildGunMesh, makeFlashSprite } from './weapons.js';
 
 const SHIRT_COLORS = [0xe05a5a, 0x5a9ae0, 0x7ad95a, 0xe0c95a, 0xc95ae0, 0x5ad9c9, 0xe08a3a, 0x9a9a9a];
 const SKIN_COLORS = [0xf0c8a0, 0xc98a5a, 0x8a5a34, 0xffd9b0];
@@ -28,8 +29,32 @@ export function buildPersonMesh(rng, opts = {}) {
   const armL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.62, 0.2), shirt);
   armL.position.set(-0.42, 1.1, 0); g.add(armL);
   const armR = armL.clone(); armR.position.x = 0.42; g.add(armR);
-  g.userData = { legL, legR, armL, armR, head };
+  // a cap on some heads, so the crowd is not clones
+  if (opts.cap || (rng && rng() < 0.35)) {
+    const capMat = new THREE.MeshStandardMaterial({ color: opts.capColor ?? pick(rng, [0xd83a2e, 0x37b6ff, 0xffd23e, 0x2a2a30]), roughness: 0.9 });
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.28, 0.1, 10), capMat);
+    cap.position.y = 1.82; g.add(cap);
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.22), capMat);
+    brim.position.set(0, 1.78, 0.26); g.add(brim);
+  }
+  // gun anchor: the right hand holds the current weapon, pointing forward (+Z)
+  const gunAnchor = new THREE.Group();
+  gunAnchor.position.set(0.42, 1.05, 0.22);
+  g.add(gunAnchor);
+  g.userData = { legL, legR, armL, armR, head, gunAnchor };
   return g;
+}
+
+// Swap the gun in a person's right hand. Returns the muzzle Object3D.
+export function setPersonGun(personMesh, type) {
+  const anchor = personMesh.userData.gunAnchor;
+  if (!anchor) return null;
+  while (anchor.children.length) anchor.remove(anchor.children[0]);
+  if (!type) return null;
+  const gun = buildGunMesh(type);
+  gun.group.rotation.x = 0; // points +Z, the person's facing
+  anchor.add(gun.group);
+  return gun.muzzle;
 }
 
 export function walkCycle(mesh, phase, speed) {
@@ -59,6 +84,23 @@ export class Player {
     this.mesh.position.set(this.x, 0, this.z);
     scene.add(this.mesh);
     this.muzzle = null;
+    // Mara carries her pistol in her right hand — visible in third person
+    this.gunType = 'pistol';
+    this.gunFlash = makeFlashSprite(0.5);
+    this.setWeapon('pistol');
+  }
+
+  setWeapon(type) {
+    this.gunType = type;
+    this.muzzle = setPersonGun(this.mesh, type);
+    if (this.muzzle) this.muzzle.add(this.gunFlash);
+    this.gunFlash.visible = false;
+  }
+
+  showGunFlash() {
+    this.gunFlash.visible = true;
+    this.gunFlash.material.rotation = Math.random() * Math.PI;
+    setTimeout(() => { this.gunFlash.visible = false; }, 70);
   }
 
   get pos() { return this.inCar && this.car ? { x: this.car.x, z: this.car.z } : { x: this.x, z: this.z }; }
@@ -136,6 +178,8 @@ export class Pedestrians {
   spawn(n, avoid) {
     for (let i = 0; i < n; i++) {
       const mesh = buildPersonMesh(this.rng);
+      // the crowd is not clones: height and cap variety
+      mesh.scale.setScalar(range(this.rng, 0.92, 1.08));
       this.scene.add(mesh);
       const road = pick(this.rng, ROAD_COORDS);
       const along = range(this.rng, -170, 170);

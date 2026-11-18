@@ -192,4 +192,37 @@ export class RadioAudio {
     const t0 = this.ctx.currentTime;
     [392, 311, 466].forEach((f, i) => this.note(f, t0 + i * 0.07, 0.2, 'sawtooth', 0.12));
   }
+
+  // --- v2 one-shots: reload clicks, weapon switch, shop cha-ching, coin ---
+  reloadClick() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    const t0 = this.ctx.currentTime;
+    this.noise(t0, 0.05, 0.25, 2500);
+    this.note(180, t0 + 0.12, 0.08, 'square', 0.12);
+    this.noise(t0 + 0.28, 0.06, 0.3, 1800);
+  }
+
+  weaponSwitch() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    const t0 = this.ctx.currentTime;
+    this.noise(t0, 0.06, 0.3, 3000);
+    this.note(320, t0 + 0.08, 0.06, 'square', 0.1);
+  }
+
+  shopBuy() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    const t0 = this.ctx.currentTime;
+    [1046.5, 1318.5].forEach((f, i) => this.note(f, t0 + i * 0.08, 0.22, 'triangle', 0.18));
+  }
+
+  coinPickup() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    const t0 = this.ctx.currentTime;
+    [987.77, 1318.5].forEach((f, i) => this.note(f, t0 + i * 0.06, 0.16, 'sine', 0.2));
+  }
+
+  dryFire() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    this.noise(this.ctx.currentTime, 0.04, 0.2, 3500);
+  }
 }

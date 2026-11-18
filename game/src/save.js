@@ -1,5 +1,6 @@
-// Save / load for CORAL HEAT: missions, cash and settings in localStorage.
-// Nothing leaves the browser; a fresh player starts on mission 1 with $1,250.
+// Save / load for CORAL HEAT v2: missions, cash, weapons, coins and stats in
+// localStorage. Nothing leaves the browser; a fresh player starts on mission 1
+// with $1,250 and a pistol.
 const KEY = 'coralheat.save.v1';
 
 export function loadSave() {
@@ -22,6 +23,9 @@ export function writeSave(state) {
       station: state.station,
       muted: state.muted,
       bestWanted: state.bestWanted,
+      weapons: state.weapons ?? null,   // { owned: [...], current, ammo: {...} }
+      coins: state.coins ?? [],         // found Coral Coin ids
+      stats: state.stats ?? null,       // { faresDone, shotsFired, kills, coinsEarned }
       savedAt: Date.now(),
     }));
   } catch { /* storage full or blocked — the game still runs */ }

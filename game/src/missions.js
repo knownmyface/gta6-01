@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { createRng, pick, range } from './rng.js';
 import { buildCarMesh, driveCar } from './vehicles.js';
+import { buildGunMesh } from './weapons.js';
 
 export const MISSIONS = [
   { id: 1, title: 'First Fare', giver: 'Dutch Calloway', type: 'drive',
@@ -114,8 +115,14 @@ export class MissionManager {
       body.position.y = 1.0; g.add(body);
       const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), new THREE.MeshStandardMaterial({ color: 0xc98a5a, roughness: 0.8 }));
       head.position.y = 1.75; g.add(head);
-      const gun = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.8), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-      gun.position.set(0.3, 1.1, 0.4); g.add(gun);
+      // a real rifle in their hands, not a box — you can see what you're up against
+      const gun = buildGunMesh('rifle');
+      gun.group.position.set(0.28, 1.15, 0.3);
+      g.add(gun.group);
+      for (const s of [-1, 1]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.72, 0.26), new THREE.MeshStandardMaterial({ color: 0x222226, roughness: 0.9 }));
+        leg.position.set(s * 0.16, 0.36, 0); g.add(leg);
+      }
       const hp = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.1), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
       hp.position.y = 2.15; g.add(hp);
       const a = (i / n) * Math.PI * 2;

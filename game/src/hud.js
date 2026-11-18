@@ -58,6 +58,71 @@ export class Hud {
 
   setWeapon(text) { $('weapon').textContent = text; }
 
+  // Weapon widget: current weapon + mag/reserve ammo + owned slots 1-4.
+  // The weapon has to be readable at a glance while driving.
+  setArsenal(arsenal) {
+    const d = arsenal.def();
+    const state = arsenal.ammo[arsenal.current];
+    const reloading = arsenal.reloading > 0;
+    const slots = arsenal.order.map((t) => {
+      const def = arsenal.defs[t];
+      const owned = arsenal.owned.has(t);
+      const active = t === arsenal.current;
+      return `<span style="display:inline-block;margin-right:4px;padding:2px 6px;border-radius:4px;border:1px solid ${active ? '#ffd23e' : '#555'};background:${active ? '#ffd23e22' : 'transparent'};color:${owned ? '#fff' : '#777'}">${def.key} ${def.icon} ${owned ? '' : '🔒'}</span>`;
+    }).join('');
+    $('weapon').innerHTML = `<span style="font-size:15px">${d.icon} ${d.name}</span> <span style="color:#ffd23e;font-size:15px">${reloading ? 'RELOADING…' : `${state.mag}/${state.reserve}`}</span><br><span style="font-size:10px">${slots}</span>`;
+  }
+
+  setCoins(n) { $('coins').textContent = `🪙 ${n}/12`; }
+
+  // Big mission intro card, bottom centre — the mission lands like a title card.
+  showMissionCard(m) {
+    const el = $('missionCard');
+    el.innerHTML = `<div style="font-size:11px;letter-spacing:3px;color:#ff9a3d">MISSION ${m.id} / 12</div><div style="font-size:26px;font-weight:900;letter-spacing:1px">${m.title.toUpperCase()}</div><div style="font-size:13px;color:#d8d8e0">${m.giver}: ${m.brief}</div><div style="font-size:12px;color:#ffd23e;margin-top:4px">REWARD $${m.reward.toLocaleString()}</div>`;
+    el.style.display = 'block';
+    clearTimeout(this._cardTimer);
+    this._cardTimer = setTimeout(() => { el.style.display = 'none'; }, 4200);
+  }
+
+  // Completion fanfare banner, centre — mission complete + payout.
+  showComplete(m, cash) {
+    const el = $('completeBanner');
+    el.innerHTML = `<div style="font-size:30px;font-weight:900;color:#ffd23e;text-shadow:0 2px 12px #000">MISSION COMPLETE</div><div style="font-size:15px">${m.title} — <b>+$${m.reward.toLocaleString()}</b></div><div style="font-size:13px;color:#a5ff6e">Cash: $${Math.floor(cash).toLocaleString()}</div>`;
+    el.style.display = 'block';
+    clearTimeout(this._bannerTimer);
+    this._bannerTimer = setTimeout(() => { el.style.display = 'none'; }, 3600);
+  }
+
+  // Gun shop panel: renders the buy list, wired by main.js.
+  renderShop(arsenal, cash, onBuy) {
+    const el = $('shopList');
+    el.innerHTML = '';
+    for (const t of arsenal.order) {
+      const def = arsenal.defs[t];
+      const owned = arsenal.owned.has(t);
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 10px;margin:4px 0;background:#181820;border:1px solid #333;border-radius:6px;';
+      row.innerHTML = `<span style="font-size:14px">${def.icon} <b>${def.name}</b> <span style="color:#999;font-size:11px">DMG ${def.damage} · ${def.mag}rd</span></span>`;
+      const btn = document.createElement('button');
+      btn.textContent = owned ? 'OWNED ✓' : `$${def.price.toLocaleString()}`;
+      btn.style.cssText = `padding:6px 10px;border-radius:5px;border:0;cursor:pointer;font-weight:700;background:${owned ? '#2a5a3a' : cash >= def.price ? '#ffd23e' : '#444'};color:${owned ? '#a5ff6e' : cash >= def.price ? '#111' : '#999'}`;
+      btn.disabled = owned || cash < def.price;
+      btn.addEventListener('click', () => onBuy(t));
+      row.appendChild(btn);
+      el.appendChild(row);
+    }
+    $('shopCash').textContent = `Cash: $${Math.floor(cash).toLocaleString()}`;
+  }
+
+  showShop(visible) { $('shopPanel').style.display = visible ? 'block' : 'none'; }
+
+  // Pause-screen stats: fares, shots, coins — the run's receipts.
+  setStats(stats, coins, missionsDone) {
+    $('statsLine').innerHTML =
+      `🪙 Coral Coins <b>${coins}/12</b> &nbsp;•&nbsp; 🚕 Taxi fares done <b>${stats.faresDone}</b><br>` +
+      `🔫 Shots fired <b>${stats.shotsFired}</b> &nbsp;•&nbsp; Missions done <b>${missionsDone}/12</b>`;
+  }
+
   toast(title, body) {
     const el = $('toast');
     el.innerHTML = `<b style="color:#ffb347">${title}</b><br>${body}`;

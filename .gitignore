@@ -1,1 +1,7 @@
+# Build output from `node main.ts` (dossier + copied game/screenshots)
 out/
+# OS noise
+.DS_Store
+Thumbs.db
+# Local scratch logs from playtests
+*.log
