@@ -1,509 +1,90 @@
-// Weapons for CORAL HEAT v2.6: four buyable guns with REAL silhouettes —
-// a pistol, an SMG, a rifle and a pump shotgun, each assembled from boxes
-// and cylinders so its shape reads at a glance. One mesh builder serves
-// three places: the first-person viewmodel on the camera, the gun in Mara's
-// hand in third person, and the guns hostiles and police officers carry.
-// No model files, no network — pure procedural geometry.
-// v2.6 rewrites v2.5's weapons.js from scratch: same guns, same stats,
-// same meshes, written as new code. Each gun is a list of named part
-// records now (size, material, position, tilt), and the arsenal is written
-// as small state transitions around one ammo-state helper.
-// The part dimensions are the v2.5 ones — the silhouettes are unchanged.
-import * as THREE from 'three';
+// Coral Heat — the arsenal. Three original weapons, three HUD slots, honest
+// trade-offs: the pistol never runs dry, the SMG sprays, the Boomstick ends
+// arguments at close range.
 
-// The catalogue. Every number here is gameplay: price, damage, magazine,
-// reserve, rate of fire, spread, auto, pellets, range and kick all feed the
-// combat code and the HUD, so they must match v2.5 exactly.
-export const WEAPONS = {
-  pistol: {
-    id: 'pistol',
-    key: '1',
-    icon: '🔫',
-    name: 'PISTOL',
-    price: 0,
-    damage: 1,
-    mag: 12,
-    reserve: -1,
-    rof: 0.26,
-    spread: 0.012,
-    auto: false,
-    pellets: 1,
-    range: 42,
-    kick: 0.05,
-    desc: 'Standard sidearm. Infinite reserve, quick draw.',
+export const WEAPON_DEFS = [
+  {
+    key: 'pistol', slot: 0, name: 'P9 PISTOL', short: 'P9',
+    damage: 34, rate: 0.28, spread: 0.02, range: 70, pellets: 1,
+    auto: false, ammo: Infinity, kick: 0.012, sound: 'pop',
+    blurb: 'Marta’s old service pistol. Never jams, never runs dry.',
   },
-  smg: {
-    id: 'smg',
-    key: '2',
-    icon: '🔫',
-    name: 'SMG',
-    price: 800,
-    damage: 1,
-    mag: 32,
-    reserve: 160,
-    rof: 0.085,
-    spread: 0.03,
-    auto: true,
-    pellets: 1,
-    range: 38,
-    kick: 0.03,
-    desc: 'Full-auto spray. Burns ammo, wins close fights.',
+  {
+    key: 'smg', slot: 1, name: 'STINGER SMG', short: 'STG',
+    damage: 16, rate: 0.09, spread: 0.06, range: 55, pellets: 1,
+    auto: true, ammo: 120, kick: 0.008, sound: 'crack',
+    blurb: 'Sprays nine-millimetre confetti. Eats bullets like candy.',
   },
-  rifle: {
-    id: 'rifle',
-    key: '3',
-    icon: '🎯',
-    name: 'RIFLE',
-    price: 1800,
-    damage: 2,
-    mag: 24,
-    reserve: 96,
-    rof: 0.13,
-    spread: 0.008,
-    auto: true,
-    pellets: 1,
-    range: 55,
-    kick: 0.07,
-    desc: 'Scoped, hard-hitting, accurate at range.',
+  {
+    key: 'shotgun', slot: 2, name: 'BOOMSTICK 12', short: 'BST',
+    damage: 13, rate: 0.85, spread: 0.11, range: 26, pellets: 7,
+    auto: false, ammo: 24, kick: 0.05, sound: 'boom',
+    blurb: 'Seven pellets, one conversation. Reloads slow, forgives nothing.',
   },
-  shotgun: {
-    id: 'shotgun',
-    key: '4',
-    icon: '💥',
-    name: 'PUMP SHOTGUN',
-    price: 2600,
-    damage: 1,
-    mag: 6,
-    reserve: 30,
-    rof: 0.75,
-    spread: 0.06,
-    auto: false,
-    pellets: 6,
-    range: 26,
-    kick: 0.16,
-    desc: 'Six pellets a shell. Devastating up close.',
-  },
-};
-
-export const WEAPON_ORDER = ['pistol', 'smg', 'rifle', 'shotgun'];
-
-// Shared materials — one instance per finish, reused by every gun.
-const FINISHES = {
-  dark: new THREE.MeshStandardMaterial({
-    color: 0x1c1e24,
-    roughness: 0.35,
-    metalness: 0.85,
-  }),
-  light: new THREE.MeshStandardMaterial({
-    color: 0x3a3e48,
-    roughness: 0.3,
-    metalness: 0.85,
-  }),
-  wood: new THREE.MeshStandardMaterial({
-    color: 0x6a4a26,
-    roughness: 0.7,
-  }),
-  grip: new THREE.MeshStandardMaterial({
-    color: 0x2a1c12,
-    roughness: 0.9,
-  }),
-  brass: new THREE.MeshStandardMaterial({
-    color: 0xc9a227,
-    roughness: 0.3,
-    metalness: 0.9,
-  }),
-};
-
-// A gun part: a box (size + tilt) or a tube (radius + length, laid along Z
-// like a barrel), in a finish, at a position. `tip` is the barrel-tip z,
-// where the muzzle marker (and the flash) will sit.
-const GUN_PARTS = {
-  pistol: {
-    tip: 0.32,
-    parts: [
-      // slide
-      { mat: 'dark', kind: 'box', size: [0.09, 0.07, 0.34], at: [0, 0.03, 0.06] },
-      { mat: 'light', kind: 'box', size: [0.07, 0.03, 0.3], at: [0, 0.075, 0.06] },
-      // barrel
-      { mat: 'dark', kind: 'tube', radius: 0.026, len: 0.1, at: [0, 0.03, 0.27] },
-      // raked grip
-      { mat: 'grip', kind: 'box', size: [0.075, 0.22, 0.1], at: [0, -0.09, -0.07], tilt: 0.28 },
-      // trigger guard
-      { mat: 'dark', kind: 'box', size: [0.07, 0.02, 0.12], at: [0, -0.045, 0.08] },
-      // trigger
-      { mat: 'dark', kind: 'box', size: [0.02, 0.05, 0.02], at: [0, -0.07, 0.05] },
-      // rear sight
-      { mat: 'brass', kind: 'box', size: [0.03, 0.025, 0.02], at: [0, 0.075, -0.09] },
-      // front sight
-      { mat: 'brass', kind: 'box', size: [0.02, 0.02, 0.015], at: [0, 0.075, 0.2] },
-    ],
-  },
-  smg: {
-    tip: 0.56,
-    parts: [
-      // long body
-      { mat: 'dark', kind: 'box', size: [0.1, 0.11, 0.5], at: [0, 0, 0] },
-      // shroud
-      { mat: 'light', kind: 'box', size: [0.12, 0.12, 0.22], at: [0, 0, 0.3] },
-      // barrel
-      { mat: 'dark', kind: 'tube', radius: 0.032, len: 0.16, at: [0, 0, 0.48] },
-      // curved mag
-      { mat: 'light', kind: 'box', size: [0.07, 0.3, 0.1], at: [0, -0.2, 0.05], tilt: 0.16 },
-      // stock
-      { mat: 'grip', kind: 'box', size: [0.08, 0.1, 0.28], at: [0, -0.01, -0.36] },
-      // foregrip
-      { mat: 'grip', kind: 'box', size: [0.07, 0.16, 0.09], at: [0, -0.12, 0.22] },
-      // rear sight
-      { mat: 'dark', kind: 'box', size: [0.03, 0.05, 0.12], at: [0, 0.08, -0.08] },
-      // front post
-      { mat: 'dark', kind: 'box', size: [0.05, 0.03, 0.08], at: [0, 0.07, 0.38] },
-    ],
-  },
-  rifle: {
-    tip: 0.78,
-    parts: [
-      // receiver
-      { mat: 'dark', kind: 'box', size: [0.09, 0.12, 0.55], at: [0, 0, 0] },
-      // barrel
-      { mat: 'dark', kind: 'tube', radius: 0.03, len: 0.5, at: [0, 0.01, 0.5] },
-      // handguard
-      { mat: 'wood', kind: 'box', size: [0.1, 0.1, 0.4], at: [0, -0.01, 0.32] },
-      // mag
-      { mat: 'light', kind: 'box', size: [0.07, 0.28, 0.12], at: [0, -0.19, 0.02], tilt: -0.28 },
-      // stock
-      { mat: 'wood', kind: 'box', size: [0.08, 0.12, 0.35], at: [0, -0.01, -0.42] },
-      // scope
-      { mat: 'light', kind: 'tube', radius: 0.035, len: 0.22, at: [0, 0.11, -0.05] },
-      // scope mount
-      { mat: 'dark', kind: 'box', size: [0.04, 0.04, 0.04], at: [0, 0.08, -0.05] },
-      // front sight
-      { mat: 'brass', kind: 'box', size: [0.02, 0.04, 0.02], at: [0, 0.09, 0.72] },
-    ],
-  },
-  shotgun: {
-    tip: 0.72,
-    parts: [
-      // thick barrel
-      { mat: 'dark', kind: 'tube', radius: 0.045, len: 0.55, at: [0, 0.01, 0.42] },
-      // pump
-      { mat: 'wood', kind: 'box', size: [0.11, 0.09, 0.3], at: [0, -0.06, 0.35] },
-      // receiver
-      { mat: 'dark', kind: 'box', size: [0.1, 0.13, 0.4], at: [0, 0, 0] },
-      // stock
-      { mat: 'wood', kind: 'box', size: [0.09, 0.13, 0.32], at: [0, -0.01, -0.35] },
-      // bead
-      { mat: 'brass', kind: 'box', size: [0.02, 0.03, 0.02], at: [0, 0.07, 0.66] },
-    ],
-  },
-};
-
-// Turn one part record into a mesh and add it to the gun group.
-function assemblePart(grp, part) {
-  const mat = FINISHES[part.mat];
-  const [x, y, z] = part.at;
-  let piece;
-  if (part.kind === 'tube') {
-    const geo = new THREE.CylinderGeometry(part.radius, part.radius, part.len, 10);
-    piece = new THREE.Mesh(geo, mat);
-    piece.rotation.x = Math.PI / 2;
-  } else {
-    const [w, h, d] = part.size;
-    piece = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    if (part.tilt) piece.rotation.x = part.tilt;
-  }
-  piece.position.set(x, y, z);
-  grp.add(piece);
-  return piece;
-}
-
-// Build a gun mesh pointing along +Z. Returns { group, muzzle } where muzzle
-// is an Object3D at the barrel tip (world position = where shots + flash start).
-export function buildGunMesh(type) {
-  const grp = new THREE.Group();
-  const spec = GUN_PARTS[type] ?? GUN_PARTS.shotgun;
-  for (const part of spec.parts) assemblePart(grp, part);
-  const muzzle = new THREE.Object3D();
-  muzzle.position.set(0, type === 'pistol' ? 0.03 : 0.01, spec.tip);
-  grp.add(muzzle);
-  return { group: grp, muzzle };
-}
-
-// --- star-shaped muzzle flash texture, drawn once, shared by all guns ---
-let cachedFlashTexture = null;
-
-function starTexture() {
-  if (cachedFlashTexture) return cachedFlashTexture;
-  const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d');
-  ctx.translate(64, 64);
-  const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 60);
-  glow.addColorStop(0, 'rgba(255,250,220,1)');
-  glow.addColorStop(0.35, 'rgba(255,200,90,0.9)');
-  glow.addColorStop(1, 'rgba(255,120,20,0)');
-  ctx.fillStyle = glow;
-  // Four-point star: eight vertices, long/short radii alternating.
-  ctx.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2;
-    const radius = i % 2 === 0 ? 62 : 14;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fill();
-  // Hot core.
-  ctx.beginPath();
-  ctx.arc(0, 0, 20, 0, Math.PI * 2);
-  ctx.fill();
-  cachedFlashTexture = new THREE.CanvasTexture(canvas);
-  cachedFlashTexture.colorSpace = THREE.SRGBColorSpace;
-  return cachedFlashTexture;
-}
-
-export function makeFlashSprite(scale = 0.55) {
-  const material = new THREE.SpriteMaterial({
-    map: starTexture(),
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(scale, scale, 1);
-  sprite.visible = false;
-  return sprite;
-}
-
-// --- the arsenal: owned weapons, current weapon, ammo ---
-const RELOAD_SECONDS = 1.15;
+];
 
 export class Arsenal {
   constructor() {
-    this.owned = new Set(['pistol']);
-    this.current = 'pistol';
-    this.ammo = this.freshAmmo();
-    this.reloading = 0;
+    this.slots = WEAPON_DEFS.map((d) => ({ def: d, ammo: d.ammo, owned: d.key === 'pistol' }));
+    this.slots[1].owned = true; // Kai starts with the SMG too — Marta insists
+    this.current = 0;
     this.cooldown = 0;
-  }
-
-  freshAmmo() {
-    const table = {};
-    for (const id of WEAPON_ORDER) {
-      table[id] = {
-        mag: WEAPONS[id].mag,
-        reserve: WEAPONS[id].reserve,
-      };
-    }
-    return table;
-  }
-
-  def() { return WEAPONS[this.current]; }
-
-  // HUD + main.js read the catalogue through the arsenal, not the raw table.
-  get order() { return WEAPON_ORDER; }
-  get defs() { return WEAPONS; }
-
-  // Short aliases used by main.js / shots.js.
-  select(id) { return this.switchTo(id); }
-  reload() { return this.startReload(); }
-  update(dt) { this.tick(dt); }
-
-  // The ammo state of the current weapon, plus its spec — one lookup for
-  // every method that touches ammo.
-  state() {
-    return {
-      spec: this.def(),
-      ammo: this.ammo[this.current],
-    };
-  }
-
-  canBuy(id) {
-    return !this.owned.has(id);
-  }
-
-  buy(id, cash) {
-    const spec = WEAPONS[id];
-    if (!spec) return false;
-    if (this.owned.has(id)) return false;
-    if (cash < spec.price) return false;
-    this.owned.add(id);
-    this.current = id;
-    return true;
-  }
-
-  switchTo(id) {
-    if (!this.owned.has(id)) return false;
-    this.current = id;
     this.reloading = 0;
+  }
+  active() { return this.slots[this.current]; }
+  select(slot) {
+    if (slot < 0 || slot > 2) return false;
+    if (!this.slots[slot].owned) return false;
+    this.current = slot;
+    this.cooldown = Math.max(this.cooldown, 0.12);
     return true;
   }
-
-  startReload() {
-    const { spec, ammo } = this.state();
-    const magFull = ammo.mag >= spec.mag;
-    const noReserve = spec.reserve !== -1 && ammo.reserve <= 0;
-    if (this.reloading > 0 || magFull || noReserve) return false;
-    this.reloading = RELOAD_SECONDS;
+  canFire() {
+    const s = this.active();
+    if (this.cooldown > 0 || this.reloading > 0) return false;
+    if (!s.owned) return false;
+    if (s.ammo !== Infinity && s.ammo <= 0) return false;
     return true;
   }
-
-  finishReload() {
-    const { spec, ammo } = this.state();
-    if (spec.reserve === -1) {
-      ammo.mag = spec.mag;
-      return;
-    }
-    const needed = spec.mag - ammo.mag;
-    const moved = Math.min(needed, ammo.reserve);
-    ammo.mag += moved;
-    ammo.reserve -= moved;
+  // returns the weapon def if a shot left the barrel, else null
+  fire() {
+    if (!this.canFire()) return null;
+    const s = this.active();
+    this.cooldown = s.def.rate;
+    if (s.ammo !== Infinity) s.ammo -= 1;
+    return s.def;
   }
-
-  // Consume one trigger pull; returns false when the mag is dry.
-  pullTrigger() {
-    if (this.cooldown > 0) return false;
-    if (this.reloading > 0) return false;
-    const { spec, ammo } = this.state();
-    if (ammo.mag <= 0) return false;
-    ammo.mag -= 1;
-    this.cooldown = spec.rof;
-    return true;
-  }
-
   tick(dt) {
     this.cooldown = Math.max(0, this.cooldown - dt);
-    if (this.reloading <= 0) return;
-    this.reloading -= dt;
-    if (this.reloading <= 0) {
-      this.reloading = 0;
-      this.finishReload();
+    if (this.reloading > 0) {
+      this.reloading -= dt;
+      if (this.reloading <= 0) {
+        const s = this.active();
+        s.ammo = s.def.ammo;
+      }
     }
   }
-
-  ammoText() {
-    const { spec, ammo } = this.state();
-    if (this.reloading > 0) return 'RELOADING…';
-    const reserveText = spec.reserve === -1 ? '∞' : String(ammo.reserve);
-    return `${ammo.mag} / ${reserveText}`;
+  reload() {
+    const s = this.active();
+    if (s.ammo === Infinity || s.ammo === s.def.ammo || this.reloading > 0) return false;
+    this.reloading = s.def.key === 'shotgun' ? 1.6 : 1.0;
+    return true;
   }
-
-  serialize() {
-    return {
-      owned: [...this.owned],
-      current: this.current,
-      ammo: this.ammo,
-    };
+  buyAmmo(slot, n) {
+    const s = this.slots[slot];
+    if (!s.owned || s.def.ammo === Infinity) return false;
+    s.ammo = Math.min(s.def.ammo * 3, s.ammo + n);
+    return true;
   }
-
-  restore(saved) {
-    if (!saved) return;
-    if (Array.isArray(saved.owned)) {
-      this.owned = new Set(saved.owned.filter((id) => WEAPONS[id]));
-    }
-    if (WEAPONS[saved.current] && this.owned.has(saved.current)) {
-      this.current = saved.current;
-    }
-    if (!saved.ammo) return;
-    for (const id of Object.keys(this.ammo)) {
-      const entry = saved.ammo[id];
-      if (!entry) continue;
-      this.ammo[id] = {
-        mag: entry.mag ?? WEAPONS[id].mag,
-        reserve: entry.reserve ?? WEAPONS[id].reserve,
-      };
-    }
+  unlock(slot) {
+    if (slot < 0 || slot > 2) return false;
+    this.slots[slot].owned = true;
+    if (this.slots[slot].ammo === 0) this.slots[slot].ammo = this.slots[slot].def.ammo;
+    return true;
   }
-}
-
-// --- first-person viewmodel: the gun on the camera, bottom-right ---
-const VIEWMODEL_POS = { x: 0.42, y: -0.36, z: -0.95 };
-const VIEWMODEL_TILT = { x: 0.06, y: -0.12, z: 0 };
-const VIEWMODEL_SCALE = {
-  pistol: 1.5,
-  smg: 1.25,
-  rifle: 1.1,
-  shotgun: 1.1,
-};
-
-export class Viewmodel {
-  constructor(camera) {
-    this.camera = camera;
-    this.group = new THREE.Group();
-    this.group.position.set(VIEWMODEL_POS.x, VIEWMODEL_POS.y, VIEWMODEL_POS.z);
-    this.group.rotation.set(VIEWMODEL_TILT.x, VIEWMODEL_TILT.y, VIEWMODEL_TILT.z);
-    this.camera.add(this.group);
-    this.current = null;
-    this.gun = null;
-    this.flash = makeFlashSprite(0.6);
-    this.flashLight = new THREE.PointLight(0xffe08a, 0, 9);
-    this.group.add(this.flash);
-    this.group.add(this.flashLight);
-    this.flashTimer = 0;
-    this.recoil = 0;
-    this.bobPhase = 0;
-    this.basePos = this.group.position.clone();
-    // A warm fill light rides with the camera so the viewmodel gun is never
-    // a black blob — the dusk scene leaves it unlit otherwise.
-    this.fill = new THREE.PointLight(0xffe0b0, 3, 4, 1.5);
-    this.fill.position.set(0.25, 0.15, -0.4);
-    this.camera.add(this.fill);
-  }
-
-  // Point the flash at the barrel tip: the gun is flipped to point
-  // down-range, so the muzzle's +Z becomes -Z in viewmodel space.
-  placeFlash() {
-    const muzzle = this.gun.muzzle.position;
-    const scale = VIEWMODEL_SCALE[this.current] ?? 1.1;
-    this.flash.position.set(0, muzzle.y * scale, -muzzle.z * scale);
-  }
-
-  setWeapon(type) {
-    if (type === this.current) return;
-    if (this.gun) {
-      this.group.remove(this.gun.group);
-      this.gun = null;
-    }
-    this.gun = buildGunMesh(type);
-    // Viewmodel scale: big enough to read, small enough to not block the road.
-    const scale = VIEWMODEL_SCALE[type] ?? 1.1;
-    this.gun.group.scale.setScalar(scale);
-    // The gun is built pointing +Z (toward the camera) — v2 showed the stock
-    // as a dark blob. Turn it around so the muzzle points down-range and the
-    // rifle reads as a rifle: barrel, handguard, magazine, stock.
-    this.gun.group.rotation.set(0.04, Math.PI - 0.18, 0.02);
-    this.group.add(this.gun.group);
-    this.current = type;
-    this.placeFlash();
-  }
-
-  fire() {
-    this.flash.visible = true;
-    this.flash.material.rotation = Math.random() * Math.PI;
-    this.flashTimer = 0.06;
-    this.flashLight.intensity = 10;
-    this.recoil = 1;
-  }
-
-  update(dt, moving, firing) {
-    if (moving) this.bobPhase += dt * 9;
-    const bobY = Math.sin(this.bobPhase) * 0.012;
-    const bobX = Math.cos(this.bobPhase * 0.5) * 0.008;
-    this.recoil = Math.max(0, this.recoil - dt * 7);
-    const kick = this.recoil * 0.09;
-    this.group.position.set(
-      this.basePos.x + bobX,
-      this.basePos.y + bobY,
-      this.basePos.z + kick,
-    );
-    this.group.rotation.x = 0.06 + this.recoil * 0.22;
-    if (this.flashTimer <= 0) return;
-    this.flashTimer -= dt;
-    if (this.flashTimer > 0) return;
-    this.flash.visible = false;
-    this.flashLight.intensity = 0;
-    void firing;
+  ammoText(slot) {
+    const s = this.slots[slot];
+    if (!s.owned) return 'LOCKED';
+    return s.ammo === Infinity ? '∞ ammo' : `${s.ammo} rounds`;
   }
 }

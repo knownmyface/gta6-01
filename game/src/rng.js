@@ -1,106 +1,72 @@
-// Seeded RNG (mulberry32) + helpers shared by every system of CORAL HEAT.
-// Every world layout decision flows through one seeded stream so a screenshot
-// seed reproduces the same city, traffic and pedestrians. v2.6 is a
-// from-scratch rewrite of v2.5's rng.js: same mulberry32 sequence, same
-// helpers, same draw order, different code. The sequence is the contract —
-// a different stream would deal a different city, so it is verified by a
-// differential test against v2.5's implementation before any screenshot.
-const STEP = 0x6D2B79F5;
-const MODULUS = 4294967296;
+// Coral Heat — deterministic dice. Every random choice in the city (building
+// heights, traffic colours, pedestrian routes, radio jingles) flows through one
+// seeded generator so the same seed always rebuilds the same Coral Bay.
 
-// Mulberry32: a small, fast seeded PRNG. `seed` is taken unsigned; each
-// call advances the state by the golden-ratio step and scrambles it.
-export function createRng(seed) {
-  let state = seed >>> 0;
-  return function next() {
-    state |= 0;
-    state = (state + STEP) | 0;
-    let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
-    mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
-    return ((mixed ^ (mixed >>> 14)) >>> 0) / MODULUS;
+export function hashSeed(text) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+export function makeDice(seed) {
+  let a = seed >>> 0;
+  if (a === 0) a = 0x9e3779b9;
+  const next = () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return {
+    // float in [0, 1)
+    roll: next,
+    // float in [lo, hi)
+    span(lo, hi) { return lo + next() * (hi - lo); },
+    // integer in [lo, hi]
+    whole(lo, hi) { return lo + Math.floor(next() * (hi - lo + 1)); },
+    // one item from a list
+    pick(list) { return list[Math.floor(next() * list.length)]; },
+    // true with probability p
+    chance(p) { return next() < p; },
+    // -1 or 1
+    sign() { return next() < 0.5 ? -1 : 1; },
+    // gaussian-ish around 0, range about [-1, 1]
+    wobble() { return (next() + next() + next() - 1.5) / 1.5; },
   };
 }
 
-// One random element — one draw from the stream.
-export function pick(rng, arr) {
-  const idx = Math.floor(rng() * arr.length);
-  return arr[idx];
+export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+export const lerp = (a, b, t) => a + (b - a) * t;
+export const damp = (a, b, lambda, dt) => lerp(a, b, 1 - Math.exp(-lambda * dt));
+
+// Shortest signed difference between two headings, in radians.
+export function angleGap(from, to) {
+  let d = (to - from) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
 }
 
-// Pick n distinct items, in random order — used for hostile jacket variety.
-export function pickN(rng, arr, n) {
-  const deck = arr.slice();
-  const picked = [];
-  while (deck.length > 0 && picked.length < n) {
-    const idx = Math.floor(rng() * deck.length);
-    picked.push(deck.splice(idx, 1)[0]);
-  }
-  return picked;
+export function headingTo(x, z, tx, tz) {
+  return Math.atan2(tx - x, tz - z);
 }
 
-// Fisher-Yates, in place on a copy: one draw per swap, from the end down.
-export function shuffle(rng, arr) {
-  const copy = arr.slice();
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    const tmp = copy[i];
-    copy[i] = copy[j];
-    copy[j] = tmp;
-  }
-  return copy;
+export function dist2d(ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  return Math.sqrt(dx * dx + dz * dz);
 }
 
-// Pick a weighted option: [[weight, value], ...] — used by traffic mix and drops.
-export function weighted(rng, entries) {
-  let total = 0;
-  for (const entry of entries) total += entry[0];
-  let cursor = rng() * total;
-  for (const entry of entries) {
-    cursor -= entry[0];
-    if (cursor <= 0) return entry[1];
-  }
-  return entries[entries.length - 1][1];
+// Format cash the way the HUD shows it: $12,450
+export function cashText(n) {
+  return '$' + Math.floor(n).toLocaleString('en-US');
 }
 
-// A float in [min, max) — one draw.
-export function range(rng, min, max) {
-  return min + rng() * (max - min);
-}
-
-// An integer in [min, max] — one draw, inclusive on both ends.
-export function rangeInt(rng, min, max) {
-  return Math.floor(range(rng, min, max + 1));
-}
-
-// A coin flip with probability p — one draw.
-export function chance(rng, p) {
-  return rng() < p;
-}
-
-// Clamp a value into [min, max] — no draws.
-export function clamp(v, min, max) {
-  if (v < min) return min;
-  if (v > max) return max;
-  return v;
-}
-
-// Linear interpolation between a and b.
-export function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-
-// Interpolate an angle along the shortest arc, so a heading never spins
-// the long way round when it crosses -π/π.
-export function angleLerp(a, b, t) {
-  let delta = (b - a) % (Math.PI * 2);
-  if (delta > Math.PI) delta -= Math.PI * 2;
-  if (delta < -Math.PI) delta += Math.PI * 2;
-  return a + delta * t;
-}
-
-// Squared distance on the ground plane — no square root, for comparisons.
-export function dist2(ax, az, bx, bz) {
-  const dx = ax - bx;
-  const dz = az - bz;
-  return dx * dx + dz * dz;
+// Turn a heading into a compass-ish district label for the minimap corner.
+export function compassLabel(heading) {
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const idx = Math.round(((-heading % (Math.PI * 2)) + Math.PI * 2) / (Math.PI / 4)) % 8;
+  return dirs[idx];
 }

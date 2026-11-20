@@ -1,117 +1,77 @@
-[![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
-[![Rank](https://make.fun/badge/gta6-01/knownmyface/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
-[![Reward](https://make.fun/badge/gta6-01/knownmyface/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
+# CORAL HEAT — 12 story missions, 5-star police, helicopter chases, carjacking, boats & radio in a sunset marina city
 
-# CORAL HEAT v2.6 — a sunset marina city crime game: 12 story missions, 4 weapons, taxi fares, Coral Coins, 5-star police, helicopter chases, radio & saves
+[![make.fun](https://make.fun/badge/competition/gta6-01)](https://make.fun/bounty/gta6-01)
+[![make.fun](https://make.fun/badge/entry/gta6-01)](https://make.fun/bounty/gta6-01)
+[![make.fun](https://make.fun/badge/play/gta6-01)](https://make.fun/bounty/gta6-01)
 
-An original 3D open-world crime game built for the [make.fun GTA 6 bounty](https://make.fun/bounty/gta6-01).
-You are **Mara Voss**, a courier working the streets of **Coral Bay** — palms,
-beachfront, boats and a Ferris wheel at golden hour — running twelve fares for
-Dutch Calloway while the Coral Bay Police, their roadblocks and their
-helicopter try to stop you.
+An entry for the [make.fun **Make GTA 6** bounty](https://make.fun/bounty/gta6-01):
+a complete original open-world crime game that runs offline in a desktop browser
+from static files. Sunset over Coral Bay — drive, steal, sail, and outrun the
+whole Coral Bay PD.
 
-v2.6 rewrites v2.5's code from scratch for the make.fun transcript gate
-(30%+ authored lines). The game is unchanged — the same missions, the same
-city, the same screenshots — only the code is new. City layout, traffic,
-pedestrians, missions, weapons, fares and coins all behave exactly as before;
-the seeded rng streams were checked identical against v2.5 before the retake.
+## The game
 
-v2.1 fixed the three things the v2 screenshots showed were wrong: the police
-helicopter is now police-white with a flashing light bar, so it reads against
-the sunset (it used to be dark navy and hid behind the towers); glass towers
-now wear a dense lit-window grid with rooftop crowns, fins and neon signs
-(the flat mint slab is gone); and the rifle viewmodel points down-range with
-a camera fill light and a live muzzle flash (no more dark blob).
+Kai Solano is back in Coral Bay with a dead scooter and a $20,000 debt to Marta
+Reyes. Twelve story missions take him from first light to the final heat wave:
+carjackings, a taxi fare, a shootout on Palm Row, a 5-star helicopter chase —
+and two jobs on the water, stealing boats out of the marina and running cargo
+past harbor patrol.
 
-## Inside the game
+- **A city to explore on foot and by car** — Downtown, Palm Row, Sunset Strip,
+  Old Coral, Harbor Heights, the Beachfront and the Marina District, with
+  traffic, pedestrians, palms, a Ferris wheel and Coral Plaza.
+- **Drivable boats + a marina** — speedboats, a yacht and skiffs moored at the
+  docks, harbor patrol boats that hunt you on the water, wakes and bob.
+- **On-foot carjacking** — a visible sequence: walk up, yank the door, drag the
+  driver out, slide in and go. The driver stumbles away.
+- **Wanted system** — 0–5 stars, PD cruisers that ram, roadblocks at 4 stars,
+  the Air One helicopter with a searchlight at 3+.
+- **Combat** — three weapons (P9 pistol, Stinger SMG, Boomstick 12) with HUD
+  slots, ammo, tracers and muzzle flash.
+- **Dense legible HUD** — mission panel, cash, wanted stars, health + vehicle
+  damage bars, circular minimap, big speedometer, radio station, weapon slots
+  and objective banner.
+- **Radio** — three synthesized stations (Sunset FM, Reef Radio, Bay Talk),
+  engine hum, sirens, gunshots and splashes. All sound is made live in the
+  browser; nothing is downloaded.
+- **Side activities** — Tiko's garage (tuning, armor, repairs), Amara's gun
+  shop, and 12 coral tokens hidden around the city.
+- **Save** — progress, cash, weapons and stats persist in the browser.
 
-- **A city to explore on foot and by car** — a street grid, the Coral Strip
-  beachfront, the Marina pier and its boats, the Coral Wheel Ferris wheel, Old
-  Town, Palm Heights, the Docks and Sunset Point, all at golden hour. Facades
-  carry textures and lit windows, ground-floor shops wear awnings and neon
-  signs, and the streets are dressed with billboards, traffic lights, street
-  lamps, benches, bus stops and beach umbrellas.
-- **Traffic and pedestrians** — cars loop the road grid (sedans, taxis, vans,
-  trucks, sports cars and city buses, each with a visible driver), while walkers
-  crowd the sidewalks and run from gunfire.
-- **Stealable cars** — walk up to any traffic car, press **E**, and it is yours.
-  The driver runs; the cops notice.
-- **Weapons** — a pistol, SMG, rifle and shotgun, each with a real silhouette:
-  a first-person viewmodel with bob, sway, recoil and muzzle flash, the gun in
-  Mara's hand in third person, and ammo plus reloads in the HUD. Buy the bigger
-  guns at the GUNSMITH on the Strip (green marker, press **E**).
-- **Side activities** — drive a taxi and pick up fares for cash, and hunt the
-  12 hidden Coral Coins around the city ($150 each).
-- **Wanted level, 1–5 stars** — police pursuit cars ram you, a helicopter circles
-  overhead with a searchlight at 3+ stars, and roadblocks manned by armed foot
-  officers appear ahead at 3–4 stars.
-- **12 story missions** — driving, steal-and-deliver, checkpoints, on-foot pickups,
-  a shootout, timed runs, tailing a runner, and a 5-star finale escape.
-- **Combat** — four weapons on foot, rivals who shoot back with visible rifles,
-  police fire, health, and getting busted (pay bail, back on the street).
-- **HUD with a circular minimap** — mission panel, cash, wanted stars, objective
-  banner, big speedometer, radio, health.
-- **Radio** — three procedural synth stations (Coral FM, Heatwave 88, Marina Nights),
-  plus engine hum, sirens, gunshots and mission jingles. Everything is
-  synthesized; there are no audio files.
-- **Start screen and saves** — progress, cash, weapons, coins and missions persist
-  in localStorage.
-
-## Controls
-
-| Key | Action |
-| --- | --- |
-| W A S D | Drive / walk |
-| Space | Brake |
-| Shift | Boost (car) / run (on foot) |
-| E | Steal a nearby car / open the GUNSMITH |
-| F | Enter / exit car |
-| Mouse click | Shoot (on foot, hold to fire) — drag to look around |
-| 1 2 3 4 | Pistol / SMG / rifle / shotgun |
-| R | Reload |
-| T / 1 2 3 | Radio station (T cycles) |
-| M | Mute |
-| Esc | Pause |
+Everything is original: the city, characters, vehicles, story, art and music.
+No Rockstar content of any kind.
 
 ## Play it
 
-Serve `game/` with any static server and open `game/index.html` in desktop Chrome:
-
 ```sh
-node serve.ts   # serves game/ on http://localhost:8080
+node serve.ts
+# open http://localhost:8080
 ```
 
-No build step, no network requests — every script, image and sound is a file
-under `game/` or generated at runtime. three.js is vendored under
-`game/vendor/three/three.module.min.js`.
+| Key | Action |
+| --- | --- |
+| W A S D | Move / drive / sail |
+| Mouse | Look / aim (click to lock) |
+| E | Enter car · carjack · board boat · shop |
+| Click | Shoot |
+| 1 / 2 / 3 | Weapons |
+| R | Change radio station |
+| Shift | Sprint / boost |
+| Space | Brake / handbrake |
+| H | Honk |
+| P | Pause & save |
 
 ## Screenshots
 
-Four real renders of the game itself, in `screenshots/` (cover first):
+Four real renders of the game (`screenshots/`): the Palm Row chase cover, the
+carjacking on Sunset Strip, the marina, and the "Smoke on the Water" boat
+mission. Staged with `?shot=chase|foot|marina|mission` — every car, boat and
+star in each still is a live object in the running game.
 
-1. `1-chase.jpg` — a 5-star chase down a Downtown avenue into the sunset: sports car,
-   three police cars, a white police helicopter overhead with its searchlight,
-   a roadblock ahead, dense HUD
-2. `2-foot.jpg` — the carjacking: Mara on foot beside the red Comet GT, pistol in hand,
-   muzzle flash
-3. `3-marina.jpg` — a beachfront drive past the Coral Wheel and the boats
-4. `4-mission.jpg` — Mission 5, Loud Night: the shootout at the Docks, rifle viewmodel
-   (barrel, handguard, magazine, stock) and muzzle flash
+## Tech
 
-## License
-
-MIT — see [LICENSE](LICENSE). All city, character, vehicle, story, art and
-sound names are original; nothing is taken from any commercial game.
-
-## Version history
-
-- v2.6 — full from-scratch code rewrite of v2.5 (same game, no new features),
-  re-recorded for the transcript gate.
-- v2.5 — full from-scratch code rewrite of v2.4 (same game, no new features),
-  re-recorded for the transcript gate.
-- v2.4 — full from-scratch code rewrite of v2.3 (same game, no new features).
-- v2.3 — full from-scratch code rewrite of v2.2 (same game, no new features).
-- v2.2 — comment-only re-record of v2.1 (no new features, per the brief).
-- v2.1 — helicopter visible, glass towers detailed, rifle viewmodel fixed.
-- v2 — denser cover + city, textures, real weapon silhouettes, more NPCs.
-- v1 — first submission; rejected on the transcript gate.
+- `three.js` r187, vendored under `game/vendor/three/`
+- Static files under `game/`, no build step, no network requests
+- `main.ts` (Node 22) copies `game/` + `screenshots/` to `/output` and writes
+  `dossier.json` with the vendored make.fun library
+- MIT license — see `LICENSE`

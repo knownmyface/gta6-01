@@ -1,474 +1,173 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- CORAL HEAT v2.6 -->
-<title>CORAL HEAT — open-world crime in a sunset marina city</title>
+<title>CORAL HEAT — Sunset Marina City</title>
 <style>
-  /* Palette: the sunset-marina HUD colours, named once and reused so a
-     colour change is one edit, not thirty. Computed styles are identical
-     to v2.5 — only the source form changed. */
-  :root {
-    --panel-bg: rgba(10, 8, 20, 0.55);
-    --panel-border: rgba(255, 255, 255, 0.22);
-    --amber: #ffb347;
-    --gold: #ffd23e;
-    --green: #7dff9a;
-    --pale: #ffd9a0;
-    --ink-soft: #e8e2f0;
-    --ink-faint: #b9b3c9;
-    --sky: #9fd8ff;
-    --sky-soft: #cfe6ff;
-    --red: #ff2e63;
-    --red-bright: #ff5a5a;
-  }
-  /* Base: full-screen canvas, dark backdrop while the scene loads. */
-  html, body {
-    margin: 0;
-    height: 100%;
-    overflow: hidden;
-    background: #1a0f1e;
-    font-family: 'Segoe UI', Arial, sans-serif;
-  }
-  #game {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-    touch-action: none;
-  }
-  #status {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  /* Shared HUD chrome: floating panels over the 3D scene. */
-  .hud {
-    position: fixed;
-    z-index: 5;
-    color: #fff;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-    pointer-events: none;
-    user-select: none;
-  }
-  .panel {
-    background: var(--panel-bg);
-    border: 1px solid var(--panel-border);
-    border-radius: 10px;
-    backdrop-filter: blur(2px);
-  }
-  /* Mission panel, top-left. */
-  #missionPanel {
-    top: 14px;
-    left: 14px;
-    padding: 10px 14px;
-    max-width: 320px;
-  }
-  #missionPanel .mnum {
-    font-size: 11px;
-    letter-spacing: 2px;
-    color: var(--amber);
-    font-weight: 700;
-  }
-  #missionPanel .mtitle {
-    font-size: 19px;
-    font-weight: 800;
-    margin: 2px 0;
-  }
-  #missionPanel .mbrief {
-    font-size: 13px;
-    color: var(--ink-soft);
-    line-height: 1.35;
-  }
-  #missionPanel .mprog {
-    font-size: 12px;
-    color: var(--sky);
-    margin-top: 5px;
-  }
-  /* Cash + wanted, top-right. */
-  #cashBox {
-    top: 14px;
-    right: 14px;
-    padding: 8px 14px;
-    text-align: right;
-  }
-  #cash {
-    font-size: 26px;
-    font-weight: 800;
-    color: var(--green);
-  }
-  #wanted {
-    font-size: 24px;
-    letter-spacing: 4px;
-    margin-top: 2px;
-  }
-  #wanted .on { color: var(--gold); }
-  #wanted .off { color: rgba(255, 255, 255, 0.28); }
-  #district {
-    font-size: 12px;
-    color: var(--pale);
-    letter-spacing: 1px;
-    margin-top: 2px;
-  }
-  /* Objective banner, top-centre. */
-  #objective {
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 8px 20px;
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-align: center;
-  }
-  #objective small {
-    display: block;
-    font-size: 11px;
-    font-weight: 400;
-    color: var(--pale);
-    letter-spacing: 2px;
-  }
-  /* Minimap, bottom-left. */
-  #minimapWrap {
-    bottom: 14px;
-    left: 14px;
-    width: 196px;
-    height: 196px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 3px solid rgba(255, 255, 255, 0.75);
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.45), 0 4px 18px rgba(0, 0, 0, 0.6);
-    background: #0c1420;
-  }
-  #minimap {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-  #mapLabel {
-    bottom: 6px;
-    left: 14px;
-    width: 196px;
-    text-align: center;
-    font-size: 11px;
-    letter-spacing: 3px;
-    color: var(--pale);
-  }
-  /* Speed, bottom-right. */
-  #speedBox {
-    bottom: 14px;
-    right: 14px;
-    text-align: right;
-    padding: 8px 16px 10px;
-  }
-  #speed {
-    font-size: 52px;
-    font-weight: 800;
-    line-height: 0.95;
-  }
-  #speed small {
-    font-size: 15px;
-    color: var(--amber);
-  }
-  #carName {
-    font-size: 13px;
-    color: var(--ink-soft);
-    letter-spacing: 1px;
-  }
-  /* Radio, bottom-centre. */
-  #radioBox {
-    bottom: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 7px 16px;
-    text-align: center;
-    font-size: 13px;
-  }
-  #radioBox b {
-    color: var(--amber);
-    letter-spacing: 1px;
-  }
-  #radioBox .track {
-    color: var(--sky-soft);
-    font-size: 12px;
-  }
-  /* Health + weapon, above minimap. */
-  #vitals {
-    bottom: 220px;
-    left: 14px;
-    padding: 8px 12px;
-    width: 172px;
-  }
-  #healthBar {
-    height: 10px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 5px;
-    overflow: hidden;
-    margin-top: 4px;
-  }
-  #healthFill {
-    height: 100%;
-    width: 100%;
-    background: linear-gradient(90deg, #37e08a, #a5ff6e);
-  }
-  #vitals .row {
-    font-size: 12px;
-    display: flex;
-    justify-content: space-between;
-  }
-  #weapon {
-    font-size: 12px;
-    color: var(--pale);
-    margin-top: 4px;
-  }
-  /* Toasts, centre-right. */
-  #toast {
-    top: 110px;
-    right: 14px;
-    max-width: 300px;
-    padding: 10px 14px;
-    font-size: 14px;
-    font-weight: 600;
-    display: none;
-  }
-  /* Mission intro card, bottom-centre. */
-  #missionCard {
-    bottom: 120px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 14px 26px;
-    text-align: center;
-    display: none;
-    min-width: 340px;
-  }
-  /* Completion fanfare, centre. */
-  #completeBanner {
-    top: 38%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    padding: 18px 34px;
-    text-align: center;
-    display: none;
-    background: rgba(10, 8, 20, 0.75);
-  }
-  /* Gun shop, centre. */
-  #shopPanel {
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    padding: 16px 18px;
-    width: 380px;
-    display: none;
-    pointer-events: auto;
-  }
-  #shopPanel h3 {
-    margin: 0 0 4px;
-    font-size: 18px;
-    letter-spacing: 2px;
-    color: var(--red-bright);
-  }
-  #shopPanel .shopsub {
-    font-size: 12px;
-    color: var(--ink-faint);
-    margin-bottom: 8px;
-  }
-  #shopCash {
-    font-size: 14px;
-    color: var(--green);
-    font-weight: 700;
-    margin-bottom: 6px;
-  }
-  #coins {
-    font-size: 13px;
-    color: var(--gold);
-    font-weight: 700;
-  }
-  #statsLine {
-    font-size: 13px;
-    color: var(--sky-soft);
-    margin-top: 10px;
-    line-height: 1.7;
-  }
-  /* Start / pause screens. */
-  .screen {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(160deg, rgba(30, 8, 32, 0.82), rgba(8, 10, 40, 0.88));
-    color: #fff;
-  }
-  .screen .card {
-    max-width: 640px;
-    width: 92%;
-    text-align: center;
-    padding: 34px 30px;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 18px;
-  }
-  .screen h1 {
-    font-size: 64px;
-    margin: 0;
-    letter-spacing: 6px;
-    background: linear-gradient(90deg, #ff7a18, #ff2e63, #ffb347);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-  .screen h2 {
-    font-size: 15px;
-    letter-spacing: 4px;
-    color: var(--pale);
-    margin: 6px 0 18px;
-    font-weight: 600;
-  }
-  .screen p {
-    font-size: 14px;
-    line-height: 1.55;
-    color: var(--ink-soft);
-  }
-  .screen .btn {
-    display: inline-block;
-    margin: 8px 6px 0;
-    padding: 12px 26px;
-    border-radius: 10px;
-    background: var(--red);
-    color: #fff;
-    font-weight: 800;
-    font-size: 16px;
-    letter-spacing: 1px;
-    cursor: pointer;
-    border: none;
-    pointer-events: auto;
-  }
-  .screen .btn.ghost { background: rgba(255, 255, 255, 0.14); }
-  .screen .keys {
-    font-size: 12px;
-    color: var(--ink-faint);
-    margin-top: 16px;
-    line-height: 1.8;
-  }
-  .screen .keys b {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    padding: 1px 7px;
-  }
-  #missionList {
-    text-align: left;
-    font-size: 13px;
-    line-height: 1.7;
-    color: #d9d2e8;
-    margin: 10px auto 0;
-    max-width: 480px;
-  }
-  #missionList .done { color: var(--green); }
-  #missionList .next {
-    color: var(--amber);
-    font-weight: 700;
-  }
-  .hidden { display: none !important; }
+  :root { --coral:#ff6b4a; --amber:#ffb347; --teal:#2fd4c4; --ink:#0d0b16; --panel:rgba(10,8,20,.62); }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#1a0f2e; }
+  body { font-family:"Segoe UI", "Helvetica Neue", Arial, sans-serif; color:#fff; }
+  #stage { position:fixed; inset:0; }
+  #stage canvas { display:block; width:100%; height:100%; }
+  .hud { position:fixed; z-index:5; pointer-events:none; user-select:none; }
+  .panel { background:var(--panel); border:1px solid rgba(255,180,120,.45); border-radius:10px;
+    box-shadow:0 2px 14px rgba(0,0,0,.45); }
+  /* top-left mission panel */
+  #hud-mission { top:14px; left:14px; width:340px; padding:10px 12px; }
+  #hud-mission .m-label { font-size:11px; letter-spacing:2px; color:var(--amber); font-weight:700; }
+  #hud-mission .m-name { font-size:19px; font-weight:800; letter-spacing:.5px; margin-top:2px; }
+  #hud-mission .m-obj { font-size:13px; color:#ffe9c9; margin-top:4px; line-height:1.35; }
+  #hud-mission .m-prog { margin-top:7px; height:7px; background:rgba(255,255,255,.16); border-radius:4px; overflow:hidden; }
+  #hud-mission .m-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--coral),var(--amber)); }
+  /* top-right status cluster */
+  #hud-status { top:14px; right:14px; width:250px; padding:10px 12px; text-align:right; }
+  #hud-cash { font-size:24px; font-weight:800; color:#7dffb0; letter-spacing:.5px; }
+  #hud-stars { font-size:22px; letter-spacing:3px; color:#ffd23f; margin-top:2px; min-height:26px; }
+  #hud-stars .off { color:rgba(255,255,255,.28); }
+  .bar-row { display:flex; align-items:center; gap:8px; margin-top:6px; justify-content:flex-end; }
+  .bar-row .b-label { font-size:11px; font-weight:700; letter-spacing:1px; color:#ffd9c2; }
+  .bar { flex:1; height:9px; background:rgba(255,255,255,.16); border-radius:5px; overflow:hidden; max-width:150px; }
+  .bar > div { height:100%; }
+  #hud-health-fill { background:linear-gradient(90deg,#37e08b,#a8ffce); width:100%; }
+  #hud-damage-fill { background:linear-gradient(90deg,#ff5a3c,#ffb347); width:0%; }
+  #hud-heat-label { font-size:11px; letter-spacing:2px; color:#ffb0a0; margin-top:6px; font-weight:700; }
+  /* bottom-left minimap */
+  #hud-map { left:14px; bottom:14px; width:196px; height:196px; border-radius:50%;
+    border:3px solid rgba(255,180,120,.65); box-shadow:0 0 0 4px rgba(10,8,20,.5), 0 4px 18px rgba(0,0,0,.5); }
+  #minimap { width:100%; height:100%; display:block; background:transparent; }
+  #hud-loc { left:14px; bottom:216px; padding:5px 10px; font-size:12px; font-weight:700; letter-spacing:1px; }
+  /* bottom-right speed cluster */
+  #hud-drive { right:14px; bottom:14px; width:210px; padding:10px 14px; text-align:right; }
+  #hud-speed { font-size:46px; font-weight:800; line-height:.95; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.6); }
+  #hud-speed small { font-size:15px; color:var(--amber); }
+  #hud-vehicle { font-size:13px; font-weight:700; letter-spacing:1px; color:#ffe9c9; margin-top:2px; }
+  #hud-gear { font-size:11px; color:#9fe8ff; letter-spacing:2px; margin-top:2px; }
+  /* bottom-centre radio + weapons + objective */
+  #hud-bottom { left:50%; bottom:14px; transform:translateX(-50%); width:430px; text-align:center; }
+  #hud-radio { display:inline-block; padding:6px 14px; font-size:13px; font-weight:700; letter-spacing:1px; }
+  #hud-radio b { color:var(--teal); }
+  #hud-weapons { display:flex; gap:8px; justify-content:center; margin-top:8px; }
+  .slot { width:104px; padding:6px 4px; font-size:12px; font-weight:700; border-radius:8px;
+    background:var(--panel); border:1px solid rgba(255,255,255,.25); color:#cfd2e0; }
+  .slot.active { border-color:var(--amber); color:#fff; background:rgba(255,107,74,.35); }
+  .slot .ammo { display:block; font-size:11px; color:#9fe8ff; font-weight:600; margin-top:2px; }
+  #hud-objective { margin-top:8px; padding:7px 12px; font-size:14px; font-weight:700; letter-spacing:.5px; }
+  #hud-prompt { left:50%; top:58%; transform:translateX(-50%); padding:9px 18px; font-size:16px;
+    font-weight:800; letter-spacing:1px; color:#fff; background:rgba(255,107,74,.85); border-radius:8px;
+    border:1px solid #ffd9c2; display:none; }
+  #hud-banner { left:50%; top:22%; transform:translateX(-50%); padding:12px 26px; font-size:22px;
+    font-weight:800; letter-spacing:2px; color:#ffe9c9; text-align:center; display:none;
+    background:rgba(20,8,30,.78); border:1px solid var(--amber); border-radius:12px; }
+  #hud-banner small { display:block; font-size:13px; color:#9fe8ff; letter-spacing:1px; margin-top:4px; }
+  #crosshair { left:50%; top:50%; width:22px; height:22px; transform:translate(-50%,-50%); display:none; }
+  #crosshair::before, #crosshair::after { content:""; position:absolute; background:#fff;
+    box-shadow:0 0 4px #000; }
+  #crosshair::before { left:10px; top:0; width:2px; height:22px; }
+  #crosshair::after { left:0; top:10px; width:22px; height:2px; }
+  #vignette { position:fixed; inset:0; z-index:4; pointer-events:none; opacity:0;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(255,30,10,.55) 100%); }
+  #toast { left:50%; bottom:150px; transform:translateX(-50%); padding:8px 16px; font-size:14px;
+    font-weight:700; display:none; }
+  /* menu + pause overlays */
+  .overlay { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(180deg, rgba(26,8,40,.82), rgba(120,40,10,.78)); }
+  .card { width:640px; max-width:92vw; padding:30px 34px; text-align:center; border-radius:18px;
+    background:rgba(12,8,24,.88); border:2px solid rgba(255,180,120,.55); box-shadow:0 10px 50px rgba(0,0,0,.6); }
+  .card h1 { font-size:52px; letter-spacing:4px; font-weight:900;
+    background:linear-gradient(90deg,#ff6b4a,#ffb347,#2fd4c4); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .card h2 { font-size:15px; letter-spacing:3px; color:#ffd9c2; margin-top:4px; font-weight:700; }
+  .card p { font-size:14px; line-height:1.55; color:#f2e7ff; margin-top:14px; text-align:left; }
+  .card .keys { display:grid; grid-template-columns:1fr 1fr; gap:4px 18px; text-align:left;
+    font-size:13px; margin-top:14px; color:#d8ecff; }
+  .card .keys b { color:var(--amber); }
+  .big-btn { margin-top:20px; padding:13px 34px; font-size:18px; font-weight:800; letter-spacing:2px;
+    color:#1a0f2e; background:linear-gradient(90deg,#ffb347,#ff6b4a); border:0; border-radius:10px; cursor:pointer; }
+  .big-btn:hover { filter:brightness(1.12); }
+  .fine { font-size:11px; color:#9a8fb5; margin-top:14px; }
+  #pause-overlay { display:none; }
+  #loading { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
+    background:#1a0f2e; color:#ffb347; font-size:18px; font-weight:700; letter-spacing:2px; }
 </style>
+</head>
+<body>
+<div id="loading">LOADING CORAL HEAT…</div>
+<div id="stage"></div>
+<div id="vignette"></div>
+
+<div id="hud-mission" class="hud panel">
+  <div class="m-label" id="hud-mission-label">MISSION 1 / 12</div>
+  <div class="m-name" id="hud-mission-name">First Light</div>
+  <div class="m-obj" id="hud-mission-obj">Drive to Marta's rooftop on Palm Row.</div>
+  <div class="m-prog"><div class="m-fill" id="hud-mission-fill"></div></div>
+</div>
+
+<div id="hud-status" class="hud panel">
+  <div id="hud-cash">$2,450</div>
+  <div id="hud-stars"><span class="off">★★★★★</span></div>
+  <div class="bar-row"><span class="b-label">HEALTH</span><div class="bar"><div id="hud-health-fill"></div></div></div>
+  <div class="bar-row"><span class="b-label">DAMAGE</span><div class="bar"><div id="hud-damage-fill"></div></div></div>
+  <div id="hud-heat-label">CORAL BAY PD — CLEAR</div>
+</div>
+
+<div id="hud-loc" class="hud panel">PALM ROW</div>
+<div id="hud-map" class="hud"><canvas id="minimap" width="196" height="196"></canvas></div>
+
+<div id="hud-drive" class="hud panel">
+  <div id="hud-speed">0 <small>MPH</small></div>
+  <div id="hud-vehicle">ON FOOT</div>
+  <div id="hud-gear">KAI SOLANO</div>
+</div>
+
+<div id="hud-bottom" class="hud">
+  <div id="hud-radio" class="panel">♪ <b>SUNSET FM 101.9</b> — “Golden Hour Drive”</div>
+  <div id="hud-weapons">
+    <div class="slot active" id="slot-0">1 · P9 PISTOL<span class="ammo">∞ ammo</span></div>
+    <div class="slot" id="slot-1">2 · STINGER SMG<span class="ammo">120</span></div>
+    <div class="slot" id="slot-2">3 · BOOMSTICK<span class="ammo">24</span></div>
+  </div>
+  <div id="hud-objective" class="panel">Reach the marker — follow the yellow diamond.</div>
+</div>
+
+<div id="hud-prompt" class="hud">E — CARJACK</div>
+<div id="hud-banner" class="hud">MISSION COMPLETE<small>+$1,500 — next job unlocked</small></div>
+<div id="crosshair" class="hud"></div>
+<div id="toast" class="hud panel"></div>
+
+<div id="menu-overlay" class="overlay">
+  <div class="card">
+    <h1>CORAL HEAT</h1>
+    <h2>12 STORY MISSIONS · 5-STAR POLICE · HELICOPTER CHASES · CARJACKING · BOATS &amp; RADIO</h2>
+    <p>Sunset over Coral Bay. Kai Solano is back in the marina city with nothing but a busted
+    scooter and a debt to Marta Reyes. Steal cars, outrun the Coral Bay PD, dodge the police
+    helicopter, and run boats out of the marina — twelve jobs from first light to the final
+    heat wave. Everything here is original: the city, the people, the cars, the boats, the story.</p>
+    <div class="keys">
+      <div><b>W A S D</b> — move / drive / sail</div><div><b>MOUSE</b> — look / aim</div>
+      <div><b>E</b> — enter car · carjack · board boat</div><div><b>CLICK</b> — shoot</div>
+      <div><b>1 / 2 / 3</b> — weapons</div><div><b>R</b> — change radio station</div>
+      <div><b>SHIFT</b> — sprint / boost</div><div><b>SPACE</b> — brake / handbrake</div>
+      <div><b>P</b> — pause &amp; save</div><div><b>H</b> — honk horn</div>
+    </div>
+    <button class="big-btn" id="play-btn">▶ &nbsp;START ENGINE</button>
+    <div class="fine">CORAL HEAT v2.7 — an original open-world crime game. No Rockstar content.
+    Saves to this browser. Best played with sound on.</div>
+  </div>
+</div>
+
+<div id="pause-overlay" class="overlay">
+  <div class="card">
+    <h1 style="font-size:38px">PAUSED</h1>
+    <p style="text-align:center">Progress is saved to this browser automatically.</p>
+    <button class="big-btn" id="resume-btn">RESUME</button>
+    <div class="fine">P — resume · progress, cash and unlocked missions are kept.</div>
+  </div>
+</div>
+
 <script type="importmap">
 { "imports": { "three": "./vendor/three/three.module.min.js" } }
 </script>
-</head>
-<body>
-<canvas id="game" aria-label="CORAL HEAT: open-world crime game in a sunset marina city"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
-
-<div id="missionPanel" class="hud panel">
-  <div id="missionNum" class="mnum">MISSION 1 / 12</div>
-  <div id="missionTitle" class="mtitle">First Fare</div>
-  <div id="missionBrief" class="mbrief">Dutch needs a package run to the Marina. Get in a car and follow the gold marker.</div>
-  <div id="missionProg" class="mprog">0 / 12 missions done &nbsp;•&nbsp; $0 earned</div>
-</div>
-
-<div id="cashBox" class="hud panel">
-  <div id="cash">$1,250</div>
-  <div id="wanted"><span class="on">★</span><span class="off">★</span><span class="off">★</span><span class="off">★</span><span class="off">★</span></div>
-  <div id="district">CORAL STRIP • CORAL BAY</div>
-  <div id="coins">🪙 0/12</div>
-</div>
-
-<div id="objective" class="hud panel"><small>OBJECTIVE</small><span id="objectiveText">Drive to the gold marker</span></div>
-
-<div id="minimapWrap" class="hud"><canvas id="minimap" width="196" height="196"></canvas></div>
-<div id="mapLabel" class="hud">CORAL BAY</div>
-
-<div id="speedBox" class="hud panel">
-  <div id="speed">0<small> MPH</small></div>
-  <div id="carName">ON FOOT</div>
-</div>
-
-<div id="radioBox" class="hud panel"><b id="radioName">CORAL FM 92.1</b> <span id="radioTrack" class="track">Sunset Drive — The Palms</span><br><span style="font-size:11px;color:#b9b3c9">1/2/3 change station • M mute</span></div>
-
-<div id="vitals" class="hud panel">
-  <div class="row"><span>HEALTH</span><span id="healthNum">100</span></div>
-  <div id="healthBar"><div id="healthFill"></div></div>
-  <svg width="72" height="26" viewBox="0 0 72 26" style="margin-top:6px;display:block" aria-hidden="true"><path d="M4 6 h52 v6 h-14 l-2 8 h-8 l1-8 h-8 v8 h-9 l-2-8 h-6 v-2 h-4 z" fill="#e8e2f0"/><rect x="56" y="7" width="12" height="4" fill="#ffb347"/><circle cx="20" cy="9" r="2" fill="#1a0f1e"/></svg>
-  <div id="weapon">🔫 Pistol • 12/∞ &nbsp;•&nbsp; F enter car • E steal</div>
-</div>
-
-<div id="toast" class="hud panel"></div>
-
-<div id="missionCard" class="hud panel"></div>
-<div id="completeBanner" class="hud panel"></div>
-
-<div id="shopPanel" class="hud panel">
-  <h3>🔫 GUNSMITH</h3>
-  <div class="shopsub">Coral Strip — press E to leave. Weapons save with your game.</div>
-  <div id="shopCash">Cash: $1,250</div>
-  <div id="shopList"></div>
-</div>
-
-<div id="startScreen" class="screen">
-  <div class="card">
-    <h1>CORAL HEAT</h1>
-    <h2>12 STORY MISSIONS • 4 WEAPONS • TAXI FARES • 12 CORAL COINS • 5-STAR POLICE • HELICOPTER CHASES • RADIO &amp; SAVES</h2>
-    <p>You are <b>Mara Voss</b>, a courier in <b>Coral Bay</b> — a sunset marina city run by the
-    Broker, the docks, and the Coral Bay Police. Drive, steal cars, outrun the heat,
-    and run all twelve fares for Dutch Calloway. Between missions, drive a taxi, hunt
-    the 12 hidden Coral Coins, and buy bigger guns at the GUNSMITH on the Strip.
-    The city never sleeps, and neither does the wanted level.</p>
-    <button id="startBtn" class="btn">▶ START ENGINE</button>
-    <button id="continueBtn" class="btn ghost hidden">CONTINUE — MISSION <span id="continueNum">1</span></button>
-    <div class="keys">
-      <b>W A S D</b> drive / walk &nbsp; <b>Space</b> brake &nbsp; <b>Shift</b> boost &nbsp;
-      <b>E</b> steal car / shop &nbsp; <b>F</b> enter / exit &nbsp; <b>Mouse</b> aim &amp; shoot on foot<br>
-      <b>1 2 3 4</b> weapons &nbsp; <b>R</b> reload &nbsp; <b>T</b> radio &nbsp; <b>1 2 3</b> stations &nbsp; <b>M</b> mute &nbsp; <b>Esc</b> pause
-    </div>
-    <div id="missionList"></div>
-  </div>
-</div>
-
-<div id="pauseScreen" class="screen hidden">
-  <div class="card">
-    <h1 style="font-size:44px">PAUSED</h1>
-    <p>Progress saves automatically to this browser. Missions, cash, weapons and coins are kept.</p>
-    <div id="statsLine">—</div>
-    <button id="resumeBtn" class="btn">RESUME</button>
-    <button id="restartBtn" class="btn ghost">RESTART DAY</button>
-    <div class="keys">Esc resumes • your save is in localStorage</div>
-  </div>
-</div>
-
-<div id="bustedScreen" class="screen hidden">
-  <div class="card">
-    <h1 style="font-size:44px">BUSTED</h1>
-    <p id="bustedText">The Coral Bay Police caught up with you. Bail posted — back on the Strip.</p>
-    <button id="bustedBtn" class="btn">BACK ON THE STREET</button>
-  </div>
-</div>
-
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
