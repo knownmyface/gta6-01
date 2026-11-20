@@ -1,45 +1,48 @@
-// Coral Heat — side activities: Tiko's garage, Amara's gun shop, and the coral
-// tokens hidden around the city. The story pays the bills; the side stuff pays
-// for the fun.
+// CORAL HEAT v2.8 — side hustles: Tiko's garage, Amara's gun shop, and the
+// coral tokens hidden around the city. The story pays the bills; the side
+// stuff pays for the fun. Buying is a switch on the offer id now, so each
+// purchase reads as one line of intent.
 
 import * as THREE from 'three';
-import { dist2d } from './rng.js';
+import { gap2d } from './rng.js';
 
-export const SHOPS = [
+export const STORES = [
   {
     id: 'garage', name: "TIKO'S GARAGE", x: 150, z: -150,
     blurb: 'Tune-ups, armor and a faster engine. Cash only, no questions.',
     offers: [
-      { id: 'tune1', name: 'Tuned engine (+15% top speed)', price: 1500, once: true },
-      { id: 'armor1', name: 'Reinforced frame (half crash damage)', price: 1200, once: true },
-      { id: 'repair', name: 'Full repair', price: 300, once: false },
+      { id: 'tune1', name: 'Tuned engine (+15% top speed)', price: 1600, once: true },
+      { id: 'nitro1', name: 'Nitro tank (bigger boost meter)', price: 950, once: true },
+      { id: 'armor1', name: 'Reinforced frame (half crash damage)', price: 1300, once: true },
+      { id: 'repair', name: 'Full repair', price: 350, once: false },
     ],
   },
   {
-    id: 'gunshop', name: "AMARA'S GUN SHOP", x: 90, z: 90,
+    id: 'gunshop', name: "AMARA'S GUN SHOP", x: 88, z: 92,
     blurb: 'Licensed, mostly. Amara sells to anyone with cash and a steady hand.',
     offers: [
-      { id: 'boomstick', name: 'BOOMSTICK 12 (unlock slot 3)', price: 1800, once: true },
-      { id: 'smg-ammo', name: 'SMG ammo +120', price: 400, once: false },
-      { id: 'shells', name: 'Shotgun shells +24', price: 350, once: false },
+      { id: 'boomstick', name: 'BOOMSTICK 12 (unlock slot 3)', price: 1900, once: true },
+      { id: 'smg-ammo', name: 'SMG ammo +150', price: 450, once: false },
+      { id: 'shells', name: 'Shotgun shells +28', price: 380, once: false },
     ],
   },
 ];
 
-export class SideActivities {
+const TOKEN_SPOTS = [
+  [-36, -196], [204, 44], [-116, -176], [44, 204], [224, -76],
+  [-156, 44], [124, -216], [-76, 164], [236, 204], [-196, -16],
+  [4, -236], [164, 124],
+];
+
+export class SideHustle {
   constructor(scene) {
     this.scene = scene;
     this.bought = new Set();
     this.tokenMeshes = [];
     // coral tokens: glowing rings tucked around the map
-    const spots = [
-      [-40, -200], [200, 40], [-120, -180], [40, 200], [220, -80],
-      [-160, 40], [120, -220], [-80, 160], [240, 200], [-200, -20],
-      [0, -240], [160, 120],
-    ];
     const geo = new THREE.TorusGeometry(0.9, 0.18, 8, 20);
     const mat = new THREE.MeshBasicMaterial({ color: 0xff7ad9 });
-    for (const [x, z] of spots) {
+    for (const [x, z] of TOKEN_SPOTS) {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, 1.4, z);
       scene.add(m);
@@ -47,28 +50,30 @@ export class SideActivities {
     }
     // shop markers: floating signs above the two shops
     this.signs = [];
-    for (const shop of SHOPS) {
+    for (const shop of STORES) {
       const sign = new THREE.Mesh(
-        new THREE.BoxGeometry(6, 1.2, 0.4),
-        new THREE.MeshBasicMaterial({ color: 0x2fd4c4 }),
+        new THREE.BoxGeometry(6.4, 1.3, 0.4),
+        new THREE.MeshBasicMaterial({ color: 0xffb347 }),
       );
-      sign.position.set(shop.x, 7.5, shop.z);
+      sign.position.set(shop.x, 7.8, shop.z);
       scene.add(sign);
       this.signs.push(sign);
     }
   }
-  nearestShop(x, z, maxD) {
-    let best = null, bestD = maxD;
-    for (const s of SHOPS) {
-      const d = dist2d(x, z, s.x, s.z);
+  closestStore(x, z, maxD) {
+    let best = null;
+    let bestD = maxD;
+    for (const s of STORES) {
+      const d = gap2d(x, z, s.x, s.z);
       if (d < bestD) { bestD = d; best = s; }
     }
     return best;
   }
   // returns the token if the player just walked through one
-  collectToken(x, z) {
+  grabToken(x, z) {
     for (const t of this.tokenMeshes) {
-      if (!t.taken && dist2d(x, z, t.x, t.z) < 1.6) {
+      if (t.taken) continue;
+      if (gap2d(x, z, t.x, t.z) < 1.6) {
         t.taken = true;
         t.mesh.visible = false;
         return t;
@@ -77,17 +82,23 @@ export class SideActivities {
     return null;
   }
   // apply a purchase; returns {ok, reason}
-  buy(offer, state) {
+  purchase(offer, state) {
     if (offer.once && this.bought.has(offer.id)) return { ok: false, reason: 'Already owned.' };
     if (state.cash < offer.price) return { ok: false, reason: 'Not enough cash.' };
     state.cash -= offer.price;
     this.bought.add(offer.id);
-    if (offer.id === 'repair' && state.ride) state.ride.health = 100;
-    if (offer.id === 'smg-ammo') state.arsenal.buyAmmo(1, 120);
-    if (offer.id === 'shells') state.arsenal.buyAmmo(2, 24);
-    if (offer.id === 'boomstick') state.arsenal.unlock(2);
-    if (offer.id === 'tune1') state.garage = Math.max(state.garage, 1);
-    if (offer.id === 'armor1') state.garage = Math.max(state.garage, 2);
+    switch (offer.id) {
+      case 'repair':
+        if (state.car) state.car.health = 100;
+        break;
+      case 'smg-ammo': state.loadout.addAmmo(1, 150); break;
+      case 'shells': state.loadout.addAmmo(2, 28); break;
+      case 'boomstick': state.loadout.open(2); break;
+      case 'tune1': state.garage = Math.max(state.garage, 1); break;
+      case 'armor1': state.garage = Math.max(state.garage, 2); break;
+      case 'nitro1': state.garage = Math.max(state.garage, 1); break;
+      default: break;
+    }
     return { ok: true, reason: offer.name };
   }
   update(dt, t) {

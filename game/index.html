@@ -9,66 +9,67 @@
   * { box-sizing:border-box; margin:0; padding:0; }
   html,body { width:100%; height:100%; overflow:hidden; background:#1a0f2e; }
   body { font-family:"Segoe UI", "Helvetica Neue", Arial, sans-serif; color:#fff; }
-  #stage { position:fixed; inset:0; }
-  #stage canvas { display:block; width:100%; height:100%; }
+  #viewport { position:fixed; inset:0; }
+  #viewport canvas { display:block; width:100%; height:100%; }
   .hud { position:fixed; z-index:5; pointer-events:none; user-select:none; }
   .panel { background:var(--panel); border:1px solid rgba(255,180,120,.45); border-radius:10px;
     box-shadow:0 2px 14px rgba(0,0,0,.45); }
-  /* top-left mission panel */
-  #hud-mission { top:14px; left:14px; width:340px; padding:10px 12px; }
-  #hud-mission .m-label { font-size:11px; letter-spacing:2px; color:var(--amber); font-weight:700; }
-  #hud-mission .m-name { font-size:19px; font-weight:800; letter-spacing:.5px; margin-top:2px; }
-  #hud-mission .m-obj { font-size:13px; color:#ffe9c9; margin-top:4px; line-height:1.35; }
-  #hud-mission .m-prog { margin-top:7px; height:7px; background:rgba(255,255,255,.16); border-radius:4px; overflow:hidden; }
-  #hud-mission .m-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--coral),var(--amber)); }
+  /* top-left job panel */
+  #panel-jobs { top:14px; left:14px; width:340px; padding:10px 12px; }
+  #panel-jobs .j-label { font-size:11px; letter-spacing:2px; color:var(--amber); font-weight:700; }
+  #panel-jobs .j-name { font-size:19px; font-weight:800; letter-spacing:.5px; margin-top:2px; }
+  #panel-jobs .j-task { font-size:13px; color:#ffe9c9; margin-top:4px; line-height:1.35; }
+  #panel-jobs .j-prog { margin-top:7px; height:7px; background:rgba(255,255,255,.16); border-radius:4px; overflow:hidden; }
+  #panel-jobs .j-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--coral),var(--amber)); }
   /* top-right status cluster */
-  #hud-status { top:14px; right:14px; width:250px; padding:10px 12px; text-align:right; }
-  #hud-cash { font-size:24px; font-weight:800; color:#7dffb0; letter-spacing:.5px; }
-  #hud-stars { font-size:22px; letter-spacing:3px; color:#ffd23f; margin-top:2px; min-height:26px; }
-  #hud-stars .off { color:rgba(255,255,255,.28); }
+  #panel-status { top:14px; right:14px; width:250px; padding:10px 12px; text-align:right; }
+  #cash-amount { font-size:24px; font-weight:800; color:#7dffb0; letter-spacing:.5px; }
+  #wanted-stars { font-size:22px; letter-spacing:3px; color:#ffd23f; margin-top:2px; min-height:26px; }
+  #wanted-stars .off { color:rgba(255,255,255,.28); }
   .bar-row { display:flex; align-items:center; gap:8px; margin-top:6px; justify-content:flex-end; }
   .bar-row .b-label { font-size:11px; font-weight:700; letter-spacing:1px; color:#ffd9c2; }
   .bar { flex:1; height:9px; background:rgba(255,255,255,.16); border-radius:5px; overflow:hidden; max-width:150px; }
   .bar > div { height:100%; }
-  #hud-health-fill { background:linear-gradient(90deg,#37e08b,#a8ffce); width:100%; }
-  #hud-damage-fill { background:linear-gradient(90deg,#ff5a3c,#ffb347); width:0%; }
-  #hud-heat-label { font-size:11px; letter-spacing:2px; color:#ffb0a0; margin-top:6px; font-weight:700; }
+  #health-bar { background:linear-gradient(90deg,#37e08b,#a8ffce); width:100%; }
+  #damage-bar { background:linear-gradient(90deg,#ff5a3c,#ffb347); width:0%; }
+  #nitro-bar { background:linear-gradient(90deg,#2fd4c4,#9fe8ff); width:100%; }
+  #heat-word { font-size:11px; letter-spacing:2px; color:#ffb0a0; margin-top:6px; font-weight:700; }
   /* bottom-left minimap */
-  #hud-map { left:14px; bottom:14px; width:196px; height:196px; border-radius:50%;
+  #map-wrap { left:14px; bottom:14px; width:196px; height:196px; border-radius:50%;
     border:3px solid rgba(255,180,120,.65); box-shadow:0 0 0 4px rgba(10,8,20,.5), 0 4px 18px rgba(0,0,0,.5); }
-  #minimap { width:100%; height:100%; display:block; background:transparent; }
-  #hud-loc { left:14px; bottom:216px; padding:5px 10px; font-size:12px; font-weight:700; letter-spacing:1px; }
+  #minimap-canvas { width:100%; height:100%; display:block; background:transparent; }
+  #district-tag { left:14px; bottom:216px; padding:5px 10px; font-size:12px; font-weight:700; letter-spacing:1px; }
   /* bottom-right speed cluster */
-  #hud-drive { right:14px; bottom:14px; width:210px; padding:10px 14px; text-align:right; }
-  #hud-speed { font-size:46px; font-weight:800; line-height:.95; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.6); }
-  #hud-speed small { font-size:15px; color:var(--amber); }
-  #hud-vehicle { font-size:13px; font-weight:700; letter-spacing:1px; color:#ffe9c9; margin-top:2px; }
-  #hud-gear { font-size:11px; color:#9fe8ff; letter-spacing:2px; margin-top:2px; }
+  #panel-drive { right:14px; bottom:14px; width:210px; padding:10px 14px; text-align:right; }
+  #speed-read { font-size:46px; font-weight:800; line-height:.95; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.6); }
+  #speed-read small { font-size:15px; color:var(--amber); }
+  #vehicle-tag { font-size:13px; font-weight:700; letter-spacing:1px; color:#ffe9c9; margin-top:2px; }
+  #driver-tag { font-size:11px; color:#9fe8ff; letter-spacing:2px; margin-top:2px; }
   /* bottom-centre radio + weapons + objective */
-  #hud-bottom { left:50%; bottom:14px; transform:translateX(-50%); width:430px; text-align:center; }
-  #hud-radio { display:inline-block; padding:6px 14px; font-size:13px; font-weight:700; letter-spacing:1px; }
-  #hud-radio b { color:var(--teal); }
-  #hud-weapons { display:flex; gap:8px; justify-content:center; margin-top:8px; }
+  #panel-bottom { left:50%; bottom:14px; transform:translateX(-50%); width:430px; text-align:center; }
+  #radio-strip { display:inline-block; padding:6px 14px; font-size:13px; font-weight:700; letter-spacing:1px; }
+  #radio-strip b { color:var(--teal); }
+  #weapon-row { display:flex; gap:8px; justify-content:center; margin-top:8px; }
   .slot { width:104px; padding:6px 4px; font-size:12px; font-weight:700; border-radius:8px;
     background:var(--panel); border:1px solid rgba(255,255,255,.25); color:#cfd2e0; }
   .slot.active { border-color:var(--amber); color:#fff; background:rgba(255,107,74,.35); }
   .slot .ammo { display:block; font-size:11px; color:#9fe8ff; font-weight:600; margin-top:2px; }
-  #hud-objective { margin-top:8px; padding:7px 12px; font-size:14px; font-weight:700; letter-spacing:.5px; }
-  #hud-prompt { left:50%; top:58%; transform:translateX(-50%); padding:9px 18px; font-size:16px;
+  #objective-strip { margin-top:8px; padding:7px 12px; font-size:14px; font-weight:700; letter-spacing:.5px; }
+  #action-cue { left:50%; top:58%; transform:translateX(-50%); padding:9px 18px; font-size:16px;
     font-weight:800; letter-spacing:1px; color:#fff; background:rgba(255,107,74,.85); border-radius:8px;
     border:1px solid #ffd9c2; display:none; }
-  #hud-banner { left:50%; top:22%; transform:translateX(-50%); padding:12px 26px; font-size:22px;
+  #mission-banner { left:50%; top:22%; transform:translateX(-50%); padding:12px 26px; font-size:22px;
     font-weight:800; letter-spacing:2px; color:#ffe9c9; text-align:center; display:none;
     background:rgba(20,8,30,.78); border:1px solid var(--amber); border-radius:12px; }
-  #hud-banner small { display:block; font-size:13px; color:#9fe8ff; letter-spacing:1px; margin-top:4px; }
-  #crosshair { left:50%; top:50%; width:22px; height:22px; transform:translate(-50%,-50%); display:none; }
-  #crosshair::before, #crosshair::after { content:""; position:absolute; background:#fff;
+  #mission-banner small { display:block; font-size:13px; color:#9fe8ff; letter-spacing:1px; margin-top:4px; }
+  #aim-dot { left:50%; top:50%; width:22px; height:22px; transform:translate(-50%,-50%); display:none; }
+  #aim-dot::before, #aim-dot::after { content:""; position:absolute; background:#fff;
     box-shadow:0 0 4px #000; }
-  #crosshair::before { left:10px; top:0; width:2px; height:22px; }
-  #crosshair::after { left:0; top:10px; width:22px; height:2px; }
-  #vignette { position:fixed; inset:0; z-index:4; pointer-events:none; opacity:0;
+  #aim-dot::before { left:10px; top:0; width:2px; height:22px; }
+  #aim-dot::after { left:0; top:10px; width:22px; height:2px; }
+  #hurt-vignette { position:fixed; inset:0; z-index:4; pointer-events:none; opacity:0;
     background:radial-gradient(ellipse at center, transparent 55%, rgba(255,30,10,.55) 100%); }
-  #toast { left:50%; bottom:150px; transform:translateX(-50%); padding:8px 16px; font-size:14px;
+  #toast-note { left:50%; bottom:150px; transform:translateX(-50%); padding:8px 16px; font-size:14px;
     font-weight:700; display:none; }
   /* menu + pause overlays */
   .overlay { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
@@ -86,56 +87,57 @@
     color:#1a0f2e; background:linear-gradient(90deg,#ffb347,#ff6b4a); border:0; border-radius:10px; cursor:pointer; }
   .big-btn:hover { filter:brightness(1.12); }
   .fine { font-size:11px; color:#9a8fb5; margin-top:14px; }
-  #pause-overlay { display:none; }
-  #loading { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
+  #pause-screen { display:none; }
+  #loader { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
     background:#1a0f2e; color:#ffb347; font-size:18px; font-weight:700; letter-spacing:2px; }
 </style>
 </head>
 <body>
-<div id="loading">LOADING CORAL HEAT…</div>
-<div id="stage"></div>
-<div id="vignette"></div>
+<div id="loader">LOADING CORAL HEAT…</div>
+<div id="viewport"></div>
+<div id="hurt-vignette"></div>
 
-<div id="hud-mission" class="hud panel">
-  <div class="m-label" id="hud-mission-label">MISSION 1 / 12</div>
-  <div class="m-name" id="hud-mission-name">First Light</div>
-  <div class="m-obj" id="hud-mission-obj">Drive to Marta's rooftop on Palm Row.</div>
-  <div class="m-prog"><div class="m-fill" id="hud-mission-fill"></div></div>
+<div id="panel-jobs" class="hud panel">
+  <div class="j-label" id="job-label">MISSION 1 / 12</div>
+  <div class="j-name" id="job-name">First Light</div>
+  <div class="j-task" id="job-task">Walk to Coral Plaza — Marta is waiting.</div>
+  <div class="j-prog"><div class="j-fill" id="job-fill"></div></div>
 </div>
 
-<div id="hud-status" class="hud panel">
-  <div id="hud-cash">$2,450</div>
-  <div id="hud-stars"><span class="off">★★★★★</span></div>
-  <div class="bar-row"><span class="b-label">HEALTH</span><div class="bar"><div id="hud-health-fill"></div></div></div>
-  <div class="bar-row"><span class="b-label">DAMAGE</span><div class="bar"><div id="hud-damage-fill"></div></div></div>
-  <div id="hud-heat-label">CORAL BAY PD — CLEAR</div>
+<div id="panel-status" class="hud panel">
+  <div id="cash-amount">$2,450</div>
+  <div id="wanted-stars"><span class="off">★★★★★</span></div>
+  <div class="bar-row"><span class="b-label">HEALTH</span><div class="bar"><div id="health-bar"></div></div></div>
+  <div class="bar-row"><span class="b-label">DAMAGE</span><div class="bar"><div id="damage-bar"></div></div></div>
+  <div class="bar-row"><span class="b-label">NITRO</span><div class="bar"><div id="nitro-bar"></div></div></div>
+  <div id="heat-word">CORAL BAY PD — CLEAR</div>
 </div>
 
-<div id="hud-loc" class="hud panel">PALM ROW</div>
-<div id="hud-map" class="hud"><canvas id="minimap" width="196" height="196"></canvas></div>
+<div id="district-tag" class="hud panel">PALM ROW</div>
+<div id="map-wrap" class="hud"><canvas id="minimap-canvas" width="196" height="196"></canvas></div>
 
-<div id="hud-drive" class="hud panel">
-  <div id="hud-speed">0 <small>MPH</small></div>
-  <div id="hud-vehicle">ON FOOT</div>
-  <div id="hud-gear">KAI SOLANO</div>
+<div id="panel-drive" class="hud panel">
+  <div id="speed-read">0 <small>MPH</small></div>
+  <div id="vehicle-tag">ON FOOT</div>
+  <div id="driver-tag">KAI SOLANO</div>
 </div>
 
-<div id="hud-bottom" class="hud">
-  <div id="hud-radio" class="panel">♪ <b>SUNSET FM 101.9</b> — “Golden Hour Drive”</div>
-  <div id="hud-weapons">
-    <div class="slot active" id="slot-0">1 · P9 PISTOL<span class="ammo">∞ ammo</span></div>
-    <div class="slot" id="slot-1">2 · STINGER SMG<span class="ammo">120</span></div>
-    <div class="slot" id="slot-2">3 · BOOMSTICK<span class="ammo">24</span></div>
+<div id="panel-bottom" class="hud">
+  <div id="radio-strip" class="panel">♪ <b>SUNSET FM 101.9</b> — “Golden Hour Drive”</div>
+  <div id="weapon-row">
+    <div class="slot active" id="gun-0">1 · P9 PISTOL<span class="ammo">∞ ammo</span></div>
+    <div class="slot" id="gun-1">2 · STINGER SMG<span class="ammo">120</span></div>
+    <div class="slot" id="gun-2">3 · BOOMSTICK<span class="ammo">24</span></div>
   </div>
-  <div id="hud-objective" class="panel">Reach the marker — follow the yellow diamond.</div>
+  <div id="objective-strip" class="panel">Reach the marker — follow the yellow diamond.</div>
 </div>
 
-<div id="hud-prompt" class="hud">E — CARJACK</div>
-<div id="hud-banner" class="hud">MISSION COMPLETE<small>+$1,500 — next job unlocked</small></div>
-<div id="crosshair" class="hud"></div>
-<div id="toast" class="hud panel"></div>
+<div id="action-cue" class="hud">E — CARJACK</div>
+<div id="mission-banner" class="hud">MISSION COMPLETE<small>+$1,500 — next job unlocked</small></div>
+<div id="aim-dot" class="hud"></div>
+<div id="toast-note" class="hud panel"></div>
 
-<div id="menu-overlay" class="overlay">
+<div id="menu-screen" class="overlay">
   <div class="card">
     <h1>CORAL HEAT</h1>
     <h2>12 STORY MISSIONS · 5-STAR POLICE · HELICOPTER CHASES · CARJACKING · BOATS &amp; RADIO</h2>
@@ -147,20 +149,20 @@
       <div><b>W A S D</b> — move / drive / sail</div><div><b>MOUSE</b> — look / aim</div>
       <div><b>E</b> — enter car · carjack · board boat</div><div><b>CLICK</b> — shoot</div>
       <div><b>1 / 2 / 3</b> — weapons</div><div><b>R</b> — change radio station</div>
-      <div><b>SHIFT</b> — sprint / boost</div><div><b>SPACE</b> — brake / handbrake</div>
+      <div><b>SHIFT</b> — sprint / nitro boost</div><div><b>SPACE</b> — brake / handbrake</div>
       <div><b>P</b> — pause &amp; save</div><div><b>H</b> — honk horn</div>
     </div>
-    <button class="big-btn" id="play-btn">▶ &nbsp;START ENGINE</button>
-    <div class="fine">CORAL HEAT v2.7 — an original open-world crime game. No Rockstar content.
+    <button class="big-btn" id="play-button">▶ &nbsp;START ENGINE</button>
+    <div class="fine">CORAL HEAT v2.8 — an original open-world crime game. No Rockstar content.
     Saves to this browser. Best played with sound on.</div>
   </div>
 </div>
 
-<div id="pause-overlay" class="overlay">
+<div id="pause-screen" class="overlay">
   <div class="card">
     <h1 style="font-size:38px">PAUSED</h1>
     <p style="text-align:center">Progress is saved to this browser automatically.</p>
-    <button class="big-btn" id="resume-btn">RESUME</button>
+    <button class="big-btn" id="resume-button">RESUME</button>
     <div class="fine">P — resume · progress, cash and unlocked missions are kept.</div>
   </div>
 </div>

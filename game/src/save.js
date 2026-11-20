@@ -1,61 +1,67 @@
-// Coral Heat — saves. One localStorage slot: cash, mission progress, the
-// arsenal, garage level, best chase stats. Loading is forgiving: a corrupt or
-// foreign save just starts a fresh game.
+// CORAL HEAT v2.8 — saves. One localStorage slot: cash, mission progress, the
+// loadout, garage level, best chase stats. Loading is forgiving: a corrupt or
+// foreign save just starts a fresh game. A save from an older version is
+// migrated, not dropped — the version check lives in one place.
 
-const SAVE_KEY = 'coral-heat-v27-save';
+const SLOT = 'coral-heat-v28-save';
+const SAVE_VERSION = 28;
 
-export function defaultSave() {
+export function freshSave() {
   return {
-    version: 27,
-    cash: 2450,
+    version: SAVE_VERSION,
+    cash: 2600,
     mission: 0,
     weapons: [true, true, false],
-    ammo: [Infinity, 120, 24],
-    garage: 0,          // 0 stock, 1 tuned, 2 race
-    tokens: 0,          // coral tokens collected
+    ammo: [Infinity, 150, 28],
+    garage: 0, // 0 stock, 1 tuned, 2 armored
+    tokens: 0, // coral tokens collected
     best: { topSpeed: 0, maxWanted: 0, missionsDone: 0 },
     muted: false,
   };
 }
 
-export function loadSave() {
+function migrate(parsed) {
+  const base = freshSave();
+  if (!parsed || typeof parsed !== 'object') return base;
+  if (parsed.version !== SAVE_VERSION) return base;
+  return {
+    ...base,
+    ...parsed,
+    best: { ...base.best, ...(parsed.best || {}) },
+    weapons: Array.isArray(parsed.weapons) ? parsed.weapons : base.weapons,
+  };
+}
+
+export function readSave() {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return defaultSave();
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || parsed.version !== 27) return defaultSave();
-    const base = defaultSave();
-    return {
-      ...base,
-      ...parsed,
-      best: { ...base.best, ...(parsed.best || {}) },
-      weapons: Array.isArray(parsed.weapons) ? parsed.weapons : base.weapons,
-    };
+    const raw = localStorage.getItem(SLOT);
+    if (!raw) return freshSave();
+    return migrate(JSON.parse(raw));
   } catch {
-    return defaultSave();
+    return freshSave();
   }
 }
 
-export function writeSave(state) {
+export function storeSave(state) {
   try {
     const snap = {
-      version: 27,
+      version: SAVE_VERSION,
       cash: Math.floor(state.cash),
       mission: state.missionIndex,
-      weapons: state.arsenal.slots.map((s) => s.owned),
-      ammo: state.arsenal.slots.map((s) => (s.ammo === Infinity ? -1 : s.ammo)),
+      weapons: state.loadout.slots.map((s) => s.owned),
+      ammo: state.loadout.slots.map((s) => (s.ammo === Infinity ? -1 : s.ammo)),
       garage: state.garage,
       tokens: state.tokens,
       best: state.best,
       muted: state.muted,
     };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(snap));
+    localStorage.setItem(SLOT, JSON.stringify(snap));
     return true;
   } catch {
     return false;
   }
 }
 
-export function wipeSave() {
-  try { localStorage.removeItem(SAVE_KEY); } catch { /* private mode */ }
+export function clearSave() {
+  try { localStorage.removeItem(SLOT); } catch { /* private mode */ }
 }

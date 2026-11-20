@@ -1,64 +1,65 @@
-// Coral Heat — the carjacking sequence. New in v2.7: stealing a car is a visible
-// moment, not a teleport. Kai walks up, yanks the door, drags the driver out,
-// and the driver stumbles away while Kai slides in. The whole beat takes about
-// two seconds and the camera stays on it.
+// CORAL HEAT v2.8 — the carjacking scene. Stealing a car is a visible moment,
+// not a teleport. Kai walks up, yanks the door, drags the driver out, and the
+// driver stumbles away while Kai slides in. The whole beat takes about two
+// seconds and the camera stays on it.
 
 import * as THREE from 'three';
-import { clamp, lerp } from './rng.js';
+import { clampVal, mix } from './rng.js';
 
-export const JACK_STAGES = {
+export const THEFT_PHASES = {
   IDLE: 'idle',
-  APPROACH: 'approach',   // Kai closes the last steps to the door
-  YANK: 'yank',           // door swings, driver is grabbed
-  DRAG: 'drag',           // driver pulled out, stumbles to the sidewalk
-  SLIDE: 'slide',         // Kai slides into the seat
+  APPROACH: 'approach', // Kai closes the last steps to the door
+  YANK: 'yank',         // door swings, driver is grabbed
+  DRAG: 'drag',         // driver pulled out, stumbles to the sidewalk
+  SLIDE: 'slide',       // Kai slides into the seat
   DONE: 'done',
 };
 
-export class CarjackSequence {
+export class TheftScene {
   constructor(scene) {
     this.scene = scene;
-    this.stage = JACK_STAGES.IDLE;
+    this.phase = THEFT_PHASES.IDLE;
     this.timer = 0;
-    this.ride = null;
-    this.driver = null;   // pedestrian mesh playing the victim
+    this.car = null;
+    this.victim = null; // pedestrian mesh playing the driver
     this.onDone = null;
-    this.onStage = null;  // HUD hook: (stage, text) => void
+    this.onPhase = null; // HUD hook: (phase, text) => void
   }
-  get active() { return this.stage !== JACK_STAGES.IDLE && this.stage !== JACK_STAGES.DONE; }
+  get active() { return this.phase !== THEFT_PHASES.IDLE && this.phase !== THEFT_PHASES.DONE; }
 
-  begin(ride, driverMesh, walker, onDone) {
-    this.ride = ride;
-    this.driver = driverMesh;
+  start(car, victimMesh, hero, onDone) {
+    this.car = car;
+    this.victim = victimMesh;
     this.onDone = onDone;
-    this.stage = JACK_STAGES.APPROACH;
+    this.phase = THEFT_PHASES.APPROACH;
     this.timer = 0;
-    this.walker = walker;
-    this.startX = walker.x;
-    this.startZ = walker.z;
+    this.hero = hero;
+    this.startX = hero.x;
+    this.startZ = hero.z;
     // door target: driver's side of the car
-    const dx = Math.cos(ride.heading);
-    const dz = -Math.sin(ride.heading);
-    this.doorX = ride.x - dx * 1.25;
-    this.doorZ = ride.z - dz * 1.25;
-    this.say(JACK_STAGES.APPROACH, 'Closing in…');
+    const dx = Math.cos(car.heading);
+    const dz = -Math.sin(car.heading);
+    this.doorX = car.x - dx * 1.25;
+    this.doorZ = car.z - dz * 1.25;
+    this.announce(THEFT_PHASES.APPROACH, 'Closing in…');
   }
-  say(stage, text) {
-    if (this.onStage) this.onStage(stage, text);
+  announce(phase, text) {
+    if (this.onPhase) this.onPhase(phase, text);
   }
-  cancel() {
-    this.stage = JACK_STAGES.IDLE;
-    this.ride = null;
-    this.driver = null;
+  abort() {
+    this.phase = THEFT_PHASES.IDLE;
+    this.car = null;
+    this.victim = null;
   }
-  update(dt) {
+  tick(dt) {
     if (!this.active) return;
     this.timer += dt;
-    const w = this.walker;
-    const r = this.ride;
-    if (this.stage === JACK_STAGES.APPROACH) {
+    const w = this.hero;
+    const r = this.car;
+    if (this.phase === THEFT_PHASES.APPROACH) {
       // walk Kai to the door in a straight line
-      const dx = this.doorX - w.x, dz = this.doorZ - w.z;
+      const dx = this.doorX - w.x;
+      const dz = this.doorZ - w.z;
       const d = Math.hypot(dx, dz);
       if (d > 0.15) {
         const step = Math.min(d, 5.5 * dt);
@@ -68,49 +69,49 @@ export class CarjackSequence {
         w.mesh.position.set(w.x, 0, w.z);
         w.mesh.rotation.y = w.heading;
       } else if (this.timer > 0.35) {
-        this.stage = JACK_STAGES.YANK;
+        this.phase = THEFT_PHASES.YANK;
         this.timer = 0;
-        this.say(JACK_STAGES.YANK, 'YANK THE DOOR!');
+        this.announce(THEFT_PHASES.YANK, 'YANK THE DOOR!');
       }
-    } else if (this.stage === JACK_STAGES.YANK) {
+    } else if (this.phase === THEFT_PHASES.YANK) {
       // Kai leans in; the car rocks on its suspension
       r.mesh.rotation.z = Math.sin(this.timer * 18) * 0.05;
       r.mesh.position.y = Math.abs(Math.sin(this.timer * 18)) * 0.08;
       w.mesh.rotation.y = r.heading + Math.PI / 2;
       if (this.timer > 0.55) {
-        this.stage = JACK_STAGES.DRAG;
+        this.phase = THEFT_PHASES.DRAG;
         this.timer = 0;
-        this.say(JACK_STAGES.DRAG, 'OUT! OUT! OUT!');
+        this.announce(THEFT_PHASES.DRAG, 'OUT! OUT! OUT!');
       }
-    } else if (this.stage === JACK_STAGES.DRAG) {
+    } else if (this.phase === THEFT_PHASES.DRAG) {
       // driver mesh slides out of the car and stumbles away
-      if (this.driver) {
-        const t = clamp(this.timer / 0.8, 0, 1);
+      if (this.victim) {
+        const t = clampVal(this.timer / 0.8, 0, 1);
         const sx = r.x - Math.cos(r.heading) * 1.25;
         const sz = r.z + Math.sin(r.heading) * 1.25;
         const ex = sx - Math.cos(r.heading) * 2.6;
         const ez = sz + Math.sin(r.heading) * 2.6;
-        this.driver.position.set(lerp(sx, ex, t), 0, lerp(sz, ez, t));
-        this.driver.rotation.y = r.heading;
-        this.driver.rotation.z = Math.sin(t * Math.PI) * 0.5; // stumble
-        this.driver.visible = true;
+        this.victim.position.set(mix(sx, ex, t), 0, mix(sz, ez, t));
+        this.victim.rotation.y = r.heading;
+        this.victim.rotation.z = Math.sin(t * Math.PI) * 0.5; // stumble
+        this.victim.visible = true;
       }
       r.mesh.rotation.z = 0;
       r.mesh.position.y = 0;
       if (this.timer > 0.85) {
-        this.stage = JACK_STAGES.SLIDE;
+        this.phase = THEFT_PHASES.SLIDE;
         this.timer = 0;
-        this.say(JACK_STAGES.SLIDE, 'GO GO GO!');
+        this.announce(THEFT_PHASES.SLIDE, 'GO GO GO!');
       }
-    } else if (this.stage === JACK_STAGES.SLIDE) {
-      // Kai slides into the seat and the walker mesh hides inside the car
-      const t = clamp(this.timer / 0.4, 0, 1);
-      w.x = lerp(this.doorX, r.x, t);
-      w.z = lerp(this.doorZ, r.z, t);
+    } else if (this.phase === THEFT_PHASES.SLIDE) {
+      // Kai slides into the seat and the hero mesh hides inside the car
+      const t = clampVal(this.timer / 0.4, 0, 1);
+      w.x = mix(this.doorX, r.x, t);
+      w.z = mix(this.doorZ, r.z, t);
       w.mesh.position.set(w.x, 0, w.z);
       w.mesh.visible = t < 0.85;
       if (this.timer > 0.45) {
-        this.stage = JACK_STAGES.DONE;
+        this.phase = THEFT_PHASES.DONE;
         const done = this.onDone;
         this.onDone = null;
         if (done) done(r);
@@ -120,7 +121,7 @@ export class CarjackSequence {
 }
 
 // A spare driver figure kept parked by the traffic car until someone yanks him.
-export function makeDriverFigure(shirtColor) {
+export function makeVictim(shirtColor) {
   const g = new THREE.Group();
   const skin = new THREE.MeshLambertMaterial({ color: 0x8a5a3a });
   const shirt = new THREE.MeshLambertMaterial({ color: shirtColor });

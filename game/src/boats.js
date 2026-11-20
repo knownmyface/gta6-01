@@ -1,21 +1,21 @@
-// Coral Heat — boats and the bay. Drivable speedboats, a yacht and patrol boats,
-// with wake, bob and a marina full of moored hulls. New in v2.7: the water is
-// a place to play, not a backdrop.
+// CORAL HEAT v2.8 — boats and the bay. Drivable runners, a queen yacht and
+// harbor patrol boats, with wake, bob and a marina full of moored hulls.
+// The water is a place to play, not a backdrop.
 
 import * as THREE from 'three';
-import { makeDice, clamp, lerp, angleGap, dist2d } from './rng.js';
+import { makeRandom, clampVal, mix, headingGap, gap2d } from './rng.js';
 
-export const BOAT_DEFS = {
-  speedboat: { name: 'REEF RUNNER',  top: 34, accel: 20, turn: 1.9, color: 0xff6b4a, len: 5.2 },
-  yacht:     { name: 'CORAL QUEEN',  top: 22, accel: 10, turn: 1.1, color: 0xf2ead8, len: 9.0 },
-  skiff:     { name: 'BAY SKIFF',    top: 26, accel: 15, turn: 2.3, color: 0x2fd4c4, len: 4.0 },
-  patrol:    { name: 'PD PATROL',    top: 30, accel: 18, turn: 2.0, color: 0x1a2a44, len: 6.0 },
+export const HULLS = {
+  runner: { name: 'REEF RUNNER', top: 34, accel: 20, turn: 1.9, color: 0xff6b4a, len: 5.2 },
+  queen:  { name: 'CORAL QUEEN', top: 22, accel: 10, turn: 1.1, color: 0xf2ead8, len: 9.0 },
+  dinghy: { name: 'BAY DINGHY',  top: 26, accel: 15, turn: 2.3, color: 0x2fd4c4, len: 4.0 },
+  harbor: { name: 'PD HARBOR',   top: 30, accel: 18, turn: 2.0, color: 0x1a2a44, len: 6.0 },
 };
 
-export function buildBoatMesh(kind) {
-  const def = BOAT_DEFS[kind];
+export function makeHullMesh(kind) {
+  const def = HULLS[kind];
   const g = new THREE.Group();
-  g.name = 'boat-' + kind;
+  g.name = 'hull-' + kind;
   const hullMat = new THREE.MeshPhongMaterial({ color: def.color, shininess: 80, specular: 0x666666 });
   const L = def.len;
   // hull: a stretched box with a wedge bow
@@ -31,7 +31,7 @@ export function buildBoatMesh(kind) {
   const deck = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.22, L * 0.6), new THREE.MeshLambertMaterial({ color: 0xefe6d0 }));
   deck.position.set(0, 0.95, -L * 0.1);
   g.add(deck);
-  if (kind === 'yacht') {
+  if (kind === 'queen') {
     const cabin = new THREE.Mesh(
       new THREE.BoxGeometry(1.6, 1.5, 3.4),
       new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 60 }),
@@ -55,7 +55,7 @@ export function buildBoatMesh(kind) {
     seat.position.set(0, 1.25, -1.1);
     g.add(seat);
   }
-  if (kind === 'patrol') {
+  if (kind === 'harbor') {
     const bar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.2, 0.4), new THREE.MeshLambertMaterial({ color: 0x14141c }));
     bar.position.set(0, 2.1, 0.2);
     g.add(bar);
@@ -75,29 +75,32 @@ export function buildBoatMesh(kind) {
   return g;
 }
 
-export class Boat {
+export class Hull {
   constructor(scene, kind, x, z, heading) {
-    this.def = BOAT_DEFS[kind];
+    this.def = HULLS[kind];
     this.kind = kind;
-    this.mesh = buildBoatMesh(kind);
+    this.mesh = makeHullMesh(kind);
     this.mesh.position.set(x, 0, z);
     this.mesh.rotation.y = heading;
     scene.add(this.mesh);
-    this.x = x; this.z = z; this.heading = heading;
-    this.speed = 0; this.steer = 0;
+    this.x = x;
+    this.z = z;
+    this.heading = heading;
+    this.speed = 0;
+    this.steer = 0;
     this.bobPhase = Math.random() * 6;
     this.health = 100;
     this.wakeTimer = 0;
   }
-  sail(input, dt, t) {
+  cruise(input, dt, t) {
     const d = this.def;
     const throttle = (input.up ? 1 : 0) - (input.down ? 0.5 : 0);
     const target = throttle * d.top;
-    this.speed = lerp(this.speed, target, 1 - Math.exp(-(d.accel / d.top) * dt));
+    this.speed = mix(this.speed, target, 1 - Math.exp(-(d.accel / d.top) * dt));
     const steerTarget = (input.left ? 1 : 0) - (input.right ? 1 : 0);
-    this.steer = lerp(this.steer, steerTarget, 1 - Math.exp(-6 * dt));
+    this.steer = mix(this.steer, steerTarget, 1 - Math.exp(-6 * dt));
     // boats turn slower at speed and drift: heading follows with a lag
-    const turnRate = this.steer * d.turn * clamp(Math.abs(this.speed) / 12, 0.15, 1) * Math.sign(this.speed || 1);
+    const turnRate = this.steer * d.turn * clampVal(Math.abs(this.speed) / 12, 0.15, 1) * Math.sign(this.speed || 1);
     this.heading += turnRate * dt;
     const nx = this.x + Math.sin(this.heading) * this.speed * dt;
     const nz = this.z + Math.cos(this.heading) * this.speed * dt;
@@ -108,43 +111,45 @@ export class Boat {
     } else if (nx < -430 || Math.abs(nz) > 300) {
       this.heading += Math.PI * dt * 0.5;
     } else {
-      this.x = nx; this.z = nz;
+      this.x = nx;
+      this.z = nz;
     }
     const bob = Math.sin(t * 1.6 + this.bobPhase) * 0.18 + Math.sin(t * 2.7 + this.bobPhase * 2) * 0.07;
     this.mesh.position.set(this.x, bob, this.z);
     this.mesh.rotation.y = this.heading;
     this.mesh.rotation.z = -this.steer * 0.08 + Math.sin(t * 1.3 + this.bobPhase) * 0.02;
-    this.mesh.rotation.x = Math.sin(t * 1.1 + this.bobPhase) * 0.02 - clamp(this.speed / d.top, 0, 1) * 0.05;
+    this.mesh.rotation.x = Math.sin(t * 1.1 + this.bobPhase) * 0.02 - clampVal(this.speed / d.top, 0, 1) * 0.05;
     this.wakeTimer -= dt;
     return this.wakeTimer <= 0 && Math.abs(this.speed) > 8;
   }
-  markWake() { this.wakeTimer = 0.12; }
+  leaveWake() { this.wakeTimer = 0.12; }
 }
 
 // Moored boats sit in the marina slips; one of them is always stealable.
-export class Marina {
+export class Mooring {
   constructor(scene, slips) {
-    this.dice = makeDice(31337);
+    this.dice = makeRandom(31337);
     this.moored = [];
     this.scene = scene;
     for (const slip of slips) {
-      const boat = new Boat(scene, slip.kind, slip.x, slip.z, slip.heading);
+      const boat = new Hull(scene, slip.kind, slip.x, slip.z, slip.heading);
       boat.moored = true;
       this.moored.push(boat);
     }
     // a couple of yachts anchored further out for the skyline
     for (const [x, z] of [[-300, -60], [-320, 140], [-290, 220]]) {
-      const yacht = new Boat(scene, 'yacht', x, z, this.dice.span(0, 6.28));
+      const yacht = new Hull(scene, 'queen', x, z, this.dice.range(0, 6.28));
       yacht.moored = true;
       yacht.anchored = true;
       this.moored.push(yacht);
     }
   }
-  nearestBoardable(x, z, maxD) {
-    let best = null, bestD = maxD;
+  closestDocked(x, z, maxD) {
+    let best = null;
+    let bestD = maxD;
     for (const b of this.moored) {
       if (b.anchored) continue;
-      const d = dist2d(x, z, b.x, b.z);
+      const d = gap2d(x, z, b.x, b.z);
       if (d < bestD) { bestD = d; best = b; }
     }
     return best;
@@ -157,7 +162,7 @@ export class Marina {
       b.mesh.rotation.z = Math.sin(t * 1.1 + b.bobPhase) * 0.015;
     }
   }
-  unmoor(boat) {
+  castOff(boat) {
     boat.moored = false;
     this.moored = this.moored.filter((b) => b !== boat);
     return boat;
@@ -165,10 +170,10 @@ export class Marina {
 }
 
 // Harbor patrol boats: the PD's answer to a getaway by water.
-export class HarborPatrol {
+export class HarborWatch {
   constructor(scene) {
     this.scene = scene;
-    this.dice = makeDice(808);
+    this.dice = makeRandom(808);
     this.boats = [];
     this.spawnTimer = 0;
     this.stageHold = false; // staged screenshot: hold positions, spawn nothing
@@ -180,13 +185,13 @@ export class HarborPatrol {
     const active = this.boats.filter((b) => !b.staged).length;
     if (active < wantBoats && this.spawnTimer <= 0) {
       this.spawnTimer = 3;
-      const b = new Boat(this.scene, 'patrol', px - 40, pz + this.dice.span(-30, 30), 0);
+      const b = new Hull(this.scene, 'harbor', px - 40, pz + this.dice.range(-30, 30), 0);
       this.boats.push(b);
     }
     for (const b of this.boats) {
       const wantHeading = Math.atan2(px - b.x, pz - b.z);
-      b.heading += clamp(angleGap(b.heading, wantHeading), -1.6 * dt, 1.6 * dt);
-      b.speed = lerp(b.speed, 26, 1 - Math.exp(-1.2 * dt));
+      b.heading += clampVal(headingGap(b.heading, wantHeading), -1.6 * dt, 1.6 * dt);
+      b.speed = mix(b.speed, 26, 1 - Math.exp(-1.2 * dt));
       b.x += Math.sin(b.heading) * b.speed * dt;
       b.z += Math.cos(b.heading) * b.speed * dt;
       b.mesh.position.set(b.x, Math.sin(t * 1.6 + b.bobPhase) * 0.15, b.z);

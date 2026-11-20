@@ -1,77 +1,31 @@
-# CORAL HEAT — 12 story missions, 5-star police, helicopter chases, carjacking, boats & radio in a sunset marina city
+# CORAL HEAT
 
-[![make.fun](https://make.fun/badge/competition/gta6-01)](https://make.fun/bounty/gta6-01)
-[![make.fun](https://make.fun/badge/entry/gta6-01)](https://make.fun/bounty/gta6-01)
-[![make.fun](https://make.fun/badge/play/gta6-01)](https://make.fun/bounty/gta6-01)
+[![make.fun](https://make.fun/badge.svg)](https://make.fun)
+[![Competition](https://make.fun/bounty/gta6-01/badge.svg)](https://make.fun/bounty/gta6-01)
+[![Entry](https://make.fun/entry/gta6-01/badge.svg)](https://make.fun/bounty/gta6-01)
 
-An entry for the [make.fun **Make GTA 6** bounty](https://make.fun/bounty/gta6-01):
-a complete original open-world crime game that runs offline in a desktop browser
-from static files. Sunset over Coral Bay — drive, steal, sail, and outrun the
-whole Coral Bay PD.
+**CORAL HEAT — 12 story missions, 5-star police, helicopter chases, carjacking, boats & radio in a sunset marina city**
 
-## The game
+An original open-world crime game in the spirit of GTA 6, built for the make.fun gta6-01 bounty: https://make.fun/bounty/gta6-01
 
-Kai Solano is back in Coral Bay with a dead scooter and a $20,000 debt to Marta
-Reyes. Twelve story missions take him from first light to the final heat wave:
-carjackings, a taxi fare, a shootout on Palm Row, a 5-star helicopter chase —
-and two jobs on the water, stealing boats out of the marina and running cargo
-past harbor patrol.
+## The city
+Coral Bay — a sun-soaked coastal city of palm-lined boulevards, a beachfront strip, and a marina district full of moored boats. All names, characters, vehicles and story are original.
 
-- **A city to explore on foot and by car** — Downtown, Palm Row, Sunset Strip,
-  Old Coral, Harbor Heights, the Beachfront and the Marina District, with
-  traffic, pedestrians, palms, a Ferris wheel and Coral Plaza.
-- **Drivable boats + a marina** — speedboats, a yacht and skiffs moored at the
-  docks, harbor patrol boats that hunt you on the water, wakes and bob.
-- **On-foot carjacking** — a visible sequence: walk up, yank the door, drag the
-  driver out, slide in and go. The driver stumbles away.
-- **Wanted system** — 0–5 stars, PD cruisers that ram, roadblocks at 4 stars,
-  the Air One helicopter with a searchlight at 3+.
-- **Combat** — three weapons (P9 pistol, Stinger SMG, Boomstick 12) with HUD
-  slots, ammo, tracers and muzzle flash.
-- **Dense legible HUD** — mission panel, cash, wanted stars, health + vehicle
-  damage bars, circular minimap, big speedometer, radio station, weapon slots
-  and objective banner.
-- **Radio** — three synthesized stations (Sunset FM, Reef Radio, Bay Talk),
-  engine hum, sirens, gunshots and splashes. All sound is made live in the
-  browser; nothing is downloaded.
-- **Side activities** — Tiko's garage (tuning, armor, repairs), Amara's gun
-  shop, and 12 coral tokens hidden around the city.
-- **Save** — progress, cash, weapons and stats persist in the browser.
+## What you can do
+- Drive and steal cars across the city, on foot or behind the wheel
+- Carjacking sequence: walk up to a parked car, pull the driver out, take it
+- Drivable boats — take a speedboat out of the marina and across the bay
+- 12 story missions, including 2 boat missions (smuggler run, marina getaway)
+- 5-star wanted level: street cops, roadblocks, and a police helicopter
+- On-foot and drive-by combat, weapon slots, health and damage
+- Radio stations, cash, safehouse saves (localStorage), shops and garage
+- Dense HUD: minimap, speedometer, wanted stars, cash, damage, weapon slots, radio station, objective banner
 
-Everything is original: the city, characters, vehicles, story, art and music.
-No Rockstar content of any kind.
-
-## Play it
-
-```sh
-node serve.ts
-# open http://localhost:8080
-```
-
-| Key | Action |
-| --- | --- |
-| W A S D | Move / drive / sail |
-| Mouse | Look / aim (click to lock) |
-| E | Enter car · carjack · board boat · shop |
-| Click | Shoot |
-| 1 / 2 / 3 | Weapons |
-| R | Change radio station |
-| Shift | Sprint / boost |
-| Space | Brake / handbrake |
-| H | Honk |
-| P | Pause & save |
-
-## Screenshots
-
-Four real renders of the game (`screenshots/`): the Palm Row chase cover, the
-carjacking on Sunset Strip, the marina, and the "Smoke on the Water" boat
-mission. Staged with `?shot=chase|foot|marina|mission` — every car, boat and
-star in each still is a live object in the running game.
+## How to play
+Serve `game/` with any static HTTP server and open `game/index.html` in desktop Chrome. Keyboard + mouse. WASD drive / move, E enter or exit a vehicle, F carjack, Space handbrake, R radio, M mission list, Esc pause.
 
 ## Tech
+Three.js (vendored under game/vendor/), plain static files, no build step, no network requests. Entry point `main.ts` copies game/ and screenshots/ to /output and writes /output/dossier.json via vendor/makefun-game.ts.
 
-- `three.js` r187, vendored under `game/vendor/three/`
-- Static files under `game/`, no build step, no network requests
-- `main.ts` (Node 22) copies `game/` + `screenshots/` to `/output` and writes
-  `dossier.json` with the vendored make.fun library
-- MIT license — see `LICENSE`
+## License
+MIT — see LICENSE.
