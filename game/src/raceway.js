@@ -1,256 +1,164 @@
-// raceway.js — the street-race system: 5 circuits around Coral Bay, checkpoint
-// gates, a countdown start, 3 rival AI drivers, lap + best-lap timing, a race
-// HUD (position / lap / time) and cash rewards.
+// Coral Heat — street races: 5 circuits, checkpoint gates, countdown, rival AI,
+// lap + best-lap timing, race HUD, cash rewards. Fresh write, round 7.
 import * as THREE from 'three';
-import { rand, pick, clamp, damp, angleLerp, dist2, fmtLap, fmtCash } from './util.js';
+import { clamp, rand, fmtLap } from './util.js';
 import { makeCarMesh } from './drive.js';
-import { GRID } from './coralcity.js';
 
-export const RACES = [
-  { id: 'marina-mile', name: 'MARINA MILE', laps: 2, reward: 1200, color: 0xffd23e },
-  { id: 'casino-loop', name: 'CASINO LOOP', laps: 2, reward: 1800, color: 0xff2e88 },
-  { id: 'beach-sprint', name: 'BEACH SPRINT', laps: 3, reward: 1500, color: 0x22e6ff },
-  { id: 'downtown-dash', name: 'DOWNTOWN DASH', laps: 3, reward: 2400, color: 0xff7a1a },
-  { id: 'coral-grand-prix', name: 'CORAL GRAND PRIX', laps: 3, reward: 3500, color: 0xc86bff },
+export const CIRCUITS = [
+  { name: 'Marina Mile', laps: 2, reward: 1200, gates: [[0, 156], [104, 156], [104, 52], [0, 52], [-104, 52], [-104, 156]] },
+  { name: 'Casino Loop', laps: 2, reward: 2000, gates: [[104, -104], [208, -104], [208, -208], [104, -208], [104, -104]] },
+  { name: 'Palm Sprint', laps: 3, reward: 1500, gates: [[-52, 0], [-52, -104], [52, -104], [52, 0], [-52, 0]] },
+  { name: 'Beachfront Dash', laps: 2, reward: 1800, gates: [[-208, 104], [-208, -104], [-104, -104], [-104, 104], [-208, 104]] },
+  { name: 'Coral Grand Prix', laps: 3, reward: 4000, gates: [[0, 208], [156, 208], [156, -156], [-156, -156], [-156, 208], [0, 208]] },
 ];
 
-// Waypoint loops (x, z) for each circuit, laid out on the road grid.
-function circuitPoints(raceId) {
-  switch (raceId) {
-    case 'marina-mile':
-      return [[0, 0], [104, 0], [156, 0], [156, 104], [104, 104], [0, 104], [-52, 104], [-52, 0]];
-    case 'casino-loop':
-      return [[-78, -52], [0, -52], [52, -52], [52, -104], [0, -104], [-78, -104], [-104, -104], [-104, -52]];
-    case 'beach-sprint':
-      return [[-104, 156], [0, 156], [104, 156], [156, 156], [156, 208], [0, 208], [-104, 208], [-156, 156]];
-    case 'downtown-dash':
-      return [[0, 0], [52, 0], [52, 52], [0, 52], [-52, 52], [-52, 0], [-52, -52], [0, -52]];
-    case 'coral-grand-prix':
-      return [[0, 0], [104, 0], [156, 0], [156, 104], [156, 156], [104, 156], [0, 156], [-104, 156], [-104, 52], [-104, -52], [-52, -52], [-52, 0]];
-    default:
-      return [[0, 0], [52, 0], [52, 52], [0, 52]];
+export class Raceway {
+  constructor(scene) {
+    this.scene = scene;
+    this.active = null;
+    this.bestLaps = {};   // circuit name -> seconds
+    this.gateMeshes = [];
+    this.rivals = [];
   }
-}
-
-export function initRace(W) {
-  W.race = {
-    active: false,
-    def: null,
-    points: [],
-    gates: [],
-    rivals: [],
-    checkpoint: 0,
-    lap: 1,
-    lapStart: 0,
-    bestLap: Infinity,
-    raceTime: 0,
-    countdown: 0,
-    position: 4,
-    finished: false,
-  };
-}
-
-function makeGate(color) {
-  const g = new THREE.Group();
-  const postGeo = new THREE.CylinderGeometry(0.22, 0.22, 6, 8);
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 });
-  for (const sx of [-6, 6]) {
-    const post = new THREE.Mesh(postGeo, postMat);
-    post.position.set(sx, 3, 0);
-    g.add(post);
+  clearGates() {
+    for (const m of this.gateMeshes) this.scene.remove(m);
+    this.gateMeshes = [];
   }
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(12.4, 1.1, 0.5),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
-  beam.position.y = 5.6;
-  g.add(beam);
-  const glow = new THREE.PointLight(color, 40, 26, 1.8);
-  glow.position.y = 5;
-  g.add(glow);
-  return g;
-}
-
-export function startRace(W, raceId) {
-  const def = RACES.find((r) => r.id === raceId) || RACES[0];
-  const race = W.race;
-  // Clear any previous gates / rivals.
-  for (const g of race.gates) W.scene.remove(g);
-  for (const r of race.rivals) W.scene.remove(r.mesh);
-  race.gates = [];
-  race.rivals = [];
-  race.def = def;
-  race.points = circuitPoints(raceId);
-  race.checkpoint = 0;
-  race.lap = 1;
-  race.bestLap = Infinity;
-  race.raceTime = 0;
-  race.countdown = 3.2;
-  race.finished = false;
-  race.active = true;
-  // Gates at every waypoint.
-  for (let i = 0; i < race.points.length; i++) {
-    const [x, z] = race.points[i];
-    const gate = makeGate(def.color);
-    gate.position.set(x, 0, z);
-    const next = race.points[(i + 1) % race.points.length];
-    gate.rotation.y = Math.atan2(next[0] - x, next[1] - z);
-    W.scene.add(gate);
-    race.gates.push(gate);
+  clearRivals() {
+    for (const r of this.rivals) this.scene.remove(r.mesh);
+    this.rivals = [];
   }
-  // 3 rival drivers lined up behind the player.
-  const rivalColors = [0x1a6fd4, 0x22b573, 0xff7a1a];
-  const [sx, sz] = race.points[0];
-  const [nx, nz] = race.points[1];
-  const startHeading = Math.atan2(nx - sx, nz - sz);
-  for (let i = 0; i < 3; i++) {
-    const mesh = makeCarMesh(rivalColors[i]);
-    const bx = sx - Math.sin(startHeading) * (15 + i * 6);
-    const bz = sz - Math.cos(startHeading) * (15 + i * 6);
-    mesh.position.set(bx, 0, bz);
-    mesh.rotation.y = startHeading;
-    W.scene.add(mesh);
-    race.rivals.push({
-      mesh, x: bx, z: bz, heading: startHeading,
-      speed: 0, topSpeed: rand(24, 30), target: 1,
-      progress: -15 - i * 6, // distance along the circuit
-      name: ['VEX', 'MARLOW', 'TIDE'][i],
-    });
-  }
-  // Put the player on the start line in their current vehicle (or a loaner),
-  // 10 units behind the line so the start gate reads ahead, not on the camera.
-  const px = sx - Math.sin(startHeading) * 10;
-  const pz = sz - Math.cos(startHeading) * 10;
-  if (!W.player.vehicle) {
-    const loaner = W.parked?.[0];
-    if (loaner) {
-      W.player.x = px;
-      W.player.z = pz;
-      loaner.x = px;
-      loaner.z = pz;
-      loaner.heading = startHeading;
-      loaner.mesh.position.set(px, 0, pz);
-      loaner.mesh.rotation.y = startHeading;
-      // Enter the loaner directly.
-      W.player.mode = 'car';
-      W.player.vehicle = loaner;
-      loaner.isPlayer = true;
-      W.player.mesh.visible = false;
+  startRace(circuit, G) {
+    this.active = {
+      circuit, gateIndex: 0, lap: 1, lapStart: 0, raceStart: 0,
+      countdown: 3.2, state: 'countdown', position: 4, finished: false,
+      totalTime: 0,
+    };
+    this.clearGates();
+    for (const [gx, gz] of circuit.gates) {
+      const gate = new THREE.Mesh(
+        new THREE.TorusGeometry(6, 0.5, 8, 24),
+        new THREE.MeshBasicMaterial({ color: 0x00e5ff })
+      );
+      gate.position.set(gx, 3.5, gz);
+      gate.rotation.y = Math.PI / 2;
+      this.scene.add(gate);
+      this.gateMeshes.push(gate);
     }
-  } else {
-    const v = W.player.vehicle;
-    v.x = px;
-    v.z = pz;
-    v.heading = startHeading;
-    v.speed = 0;
-    v.mesh.position.set(px, 0, pz);
-    v.mesh.rotation.y = startHeading;
-    W.player.x = px;
-    W.player.z = pz;
-    W.player.heading = startHeading;
-  }
-  W.hudFlash(def.name + ' — GET READY…');
-  W.objective = 'RACE: ' + def.name + ' — ' + def.laps + ' LAPS';
-  return def;
-}
-
-export function updateRace(W, dt) {
-  const race = W.race;
-  if (!race.active) return;
-  if (race.countdown > 0) {
-    race.countdown -= dt;
-    const n = Math.ceil(race.countdown);
-    W.raceBanner = race.countdown > 0.2 ? (n > 0 ? String(n) : 'GO!') : '';
-    if (race.countdown <= 0) {
-      race.lapStart = W.time;
-      W.hudFlash('GO! — ' + race.def.name);
-      W.raceBanner = 'GO!';
+    // 3 rival AI drivers start just behind the player
+    this.clearRivals();
+    const colors = [0xff2222, 0x22ff66, 0xffd166];
+    const px = G.playerCar.x, pz = G.playerCar.z;
+    for (let i = 0; i < 3; i++) {
+      const mesh = makeCarMesh(THREE, colors[i]);
+      this.scene.add(mesh);
+      this.rivals.push({
+        mesh, x: px - 6 - i * 2, z: pz - 8 - i * 3, heading: G.playerCar.heading,
+        speed: 0, gateIndex: 0, lap: 1, top: rand(30, 40), wobble: rand(0, 6),
+      });
     }
-    return;
+    G.playerCar.reset(px, pz, G.playerCar.heading);
+    G.hud?.toast('RACE: ' + circuit.name + ' — ' + circuit.laps + ' LAPS', '#00e5ff');
+    G.hud?.banner('RACE START — ' + circuit.name.toUpperCase(), circuit.laps + ' LAPS • BEAT THE RIVALS');
+    return this.active;
   }
-  race.raceTime += dt;
-  const p = W.player;
-  // Player progress: distance to the current checkpoint gate.
-  const cp = race.points[race.checkpoint];
-  const d = dist2(p.x, p.z, cp[0], cp[1]);
-  if (d < 9) {
-    race.checkpoint = (race.checkpoint + 1) % race.points.length;
-    W.sound?.checkpoint();
-    if (race.checkpoint === 0) {
-      const lapTime = W.time - race.lapStart;
-      race.bestLap = Math.min(race.bestLap, lapTime);
-      race.lap += 1;
-      race.lapStart = W.time;
-      W.hudFlash('LAP ' + Math.min(race.lap, race.def.laps) + ' — ' + fmtLap(lapTime));
-      if (race.lap > race.def.laps) {
-        finishRace(W, true);
-        return;
+  abort() {
+    this.active = null;
+    this.clearGates();
+    this.clearRivals();
+  }
+  update(dt, G, t) {
+    const r = this.active;
+    if (!r) return;
+    // pulse gate rings
+    for (let i = 0; i < this.gateMeshes.length; i++) {
+      const m = this.gateMeshes[i];
+      m.material.color.setHex(i === r.gateIndex ? 0x00e5ff : 0x335566);
+      m.rotation.z += dt * 0.8;
+      const s = i === r.gateIndex ? 1 + Math.sin(t * 5) * 0.08 : 1;
+      m.scale.set(s, s, s);
+    }
+    if (r.state === 'countdown') {
+      r.countdown -= dt;
+      if (r.countdown <= 0) {
+        r.state = 'racing';
+        r.raceStart = t;
+        r.lapStart = t;
+        G.hud?.banner('GO!', 'FIRST THROUGH THE GATES WINS');
+        G.sound?.beep(880);
+      }
+      return;
+    }
+    if (r.state !== 'racing') return;
+    r.totalTime = t - r.raceStart;
+    // player gate progress
+    const gates = r.circuit.gates;
+    const [gx, gz] = gates[r.gateIndex];
+    if (Math.hypot(G.playerCar.x - gx, G.playerCar.z - gz) < 10) {
+      r.gateIndex++;
+      G.sound?.beep(660);
+      if (r.gateIndex >= gates.length) {
+        r.gateIndex = 0;
+        const lapTime = t - r.lapStart;
+        r.lapStart = t;
+        const prev = this.bestLaps[r.circuit.name];
+        if (!prev || lapTime < prev) {
+          this.bestLaps[r.circuit.name] = lapTime;
+          G.hud?.toast('NEW BEST LAP ' + fmtLap(lapTime), '#7CFC00');
+        }
+        r.lap++;
+        if (r.lap > r.circuit.laps) {
+          this.finish(G);
+          return;
+        }
+        G.hud?.toast('LAP ' + r.lap + '/' + r.circuit.laps, '#00e5ff');
       }
     }
-  }
-  // Rivals follow the waypoints with a little rubber-banding.
-  for (const r of race.rivals) {
-    const tp = race.points[r.target];
-    const th = Math.atan2(tp[0] - r.x, tp[1] - r.z);
-    r.heading = angleLerp(r.heading, th, 1 - Math.exp(-2.4 * dt));
-    const playerAhead = raceProgress(W) > r.progress;
-    const targetSpeed = r.topSpeed * (playerAhead ? 1.06 : 0.97) * rand(0.98, 1.02);
-    r.speed = damp(r.speed, targetSpeed, 1.2, dt);
-    r.x += Math.sin(r.heading) * r.speed * dt;
-    r.z += Math.cos(r.heading) * r.speed * dt;
-    if (dist2(r.x, r.z, tp[0], tp[1]) < 8) {
-      r.target = (r.target + 1) % race.points.length;
-      r.progress += 1;
+    // rival AI: steer to next gate, rubber-band a little
+    for (const rv of this.rivals) {
+      const [rx, rz] = gates[rv.gateIndex];
+      const dx = rx - rv.x, dz = rz - rv.z;
+      const d = Math.hypot(dx, dz);
+      const target = Math.atan2(dx, dz);
+      let diff = target - rv.heading;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      rv.heading += clamp(diff, -1.6 * dt, 1.6 * dt);
+      const playerAhead = G.playerCar.x !== undefined;
+      const rubber = playerAhead ? clamp((r.totalTime * 0.4 - rv.lap * 20) * 0.02, -3, 3) : 0;
+      rv.speed = clamp(rv.speed + 18 * dt, 0, rv.top + rubber);
+      rv.x += Math.sin(rv.heading) * rv.speed * dt;
+      rv.z += Math.cos(rv.heading) * rv.speed * dt;
+      if (d < 11) {
+        rv.gateIndex++;
+        if (rv.gateIndex >= gates.length) { rv.gateIndex = 0; rv.lap++; }
+      }
+      rv.mesh.position.set(rv.x, 0, rv.z);
+      rv.mesh.rotation.y = rv.heading;
+      const spin = rv.speed * dt * 2.4;
+      for (const w of rv.mesh.userData.wheels) w.rotation.x += spin;
     }
-    r.mesh.position.set(r.x, 0, r.z);
-    r.mesh.rotation.y = r.heading;
-    const spin = r.speed * dt / 0.38;
-    for (const w of r.mesh.userData.wheels) w.rotation.x += spin;
+    // live position: player lap/gate vs rivals
+    let pos = 1;
+    for (const rv of this.rivals) {
+      const rvScore = rv.lap * 100 + rv.gateIndex;
+      const plScore = r.lap * 100 + r.gateIndex;
+      if (rvScore > plScore) pos++;
+    }
+    r.position = pos;
   }
-  // Position: count rivals ahead of the player by checkpoint progress.
-  const myProg = raceProgress(W);
-  let ahead = 0;
-  for (const r of race.rivals) if (r.progress > myProg) ahead += 1;
-  race.position = ahead + 1;
-  W.raceBanner = '';
-}
-
-function raceProgress(W) {
-  const race = W.race;
-  const p = W.player;
-  const cp = race.points[race.checkpoint];
-  const done = (race.lap - 1) * race.points.length + race.checkpoint;
-  const d = dist2(p.x, p.z, cp[0], cp[1]);
-  return done * 100 - d;
-}
-
-export function finishRace(W, won) {
-  const race = W.race;
-  race.active = false;
-  race.finished = true;
-  for (const g of race.gates) W.scene.remove(g);
-  race.gates = [];
-  for (const r of race.rivals) W.scene.remove(r.mesh);
-  race.rivals = [];
-  if (won && race.position <= 3) {
-    const prize = race.def.reward * (race.position === 1 ? 1 : race.position === 2 ? 0.6 : 0.35);
-    W.player.cash += Math.round(prize);
-    W.hudFlash('RACE WON — P' + race.position + ' — +' + fmtCash(prize));
-    W.events.push({ type: 'racewin', race: race.def.id, pos: race.position, prize: Math.round(prize) });
-    W.objective = 'RACE COMPLETE — ' + race.def.name;
-  } else {
-    W.hudFlash('RACE OVER — P' + race.position + ' — NO PRIZE');
-    W.events.push({ type: 'racelose', race: race.def.id, pos: race.position });
+  finish(G) {
+    const r = this.active;
+    r.state = 'finished';
+    r.finished = true;
+    const win = r.position === 1;
+    const payout = win ? r.circuit.reward : Math.floor(r.circuit.reward * 0.25);
+    G.player.cash += payout;
+    G.hud?.banner(win ? 'RACE WON!' : 'RACE OVER — P' + r.position,
+      'TIME ' + fmtLap(r.totalTime) + ' • +$' + payout.toLocaleString('en-US'));
+    G.hud?.toast((win ? '1ST PLACE! +$' : 'P' + r.position + ' +$') + payout.toLocaleString('en-US'), win ? '#ffd166' : '#ffffff');
+    G.sound?.fanfare(win);
+    G.missions?.onRaceFinished?.(r.circuit, win);
+    setTimeout(() => { if (this.active === r) this.abort(); }, 2500);
   }
-  W.raceBanner = '';
-}
-
-export function quitRace(W) {
-  const race = W.race;
-  if (!race.active) return;
-  race.active = false;
-  for (const g of race.gates) W.scene.remove(g);
-  race.gates = [];
-  for (const r of race.rivals) W.scene.remove(r.mesh);
-  race.rivals = [];
-  W.hudFlash('RACE QUIT');
-  W.raceBanner = '';
 }

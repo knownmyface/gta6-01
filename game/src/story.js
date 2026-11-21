@@ -1,228 +1,194 @@
-// story.js — the story: 16 missions (1-12 here, 13-16 in story2.js), the
-// mission state machine, objective markers and the characters of Coral Bay.
-// Story: MARA VOSS, a getaway driver back in Coral Bay, works her way up from
-// courier runs to the crew that will hit the Coral Crown Casino.
+// Coral Heat — story missions 1-12: the rise of Maya "Reef" Santos in Coral Bay.
+// Fresh write, round 7.
 import * as THREE from 'three';
-import { fmtCash, dist2, rand } from './util.js';
-import { PLACES } from './coralcity.js';
-import { giveWeapon } from './fight.js';
-import { makeVehicle } from './drive.js';
 
-export const STORY_INTRO =
-  'MARA VOSS is back in Coral Bay. Five years away, one burned crew, and a debt ' +
-  'to the Crown. Drive, earn, build the crew — then take the casino.';
-
-export const MISSIONS = [
-  { id: 1, name: 'BACK IN THE BAY', giver: 'DEX', brief: 'Meet Dex at the pier. Drive to the marker.', target: 'pier', kind: 'drive', reward: 400 },
-  { id: 2, name: 'COURIER RUN', giver: 'DEX', brief: 'Deliver the package to Palm Court. No cops, no dents.', target: 'safehouse1', kind: 'drive', reward: 600 },
-  { id: 3, name: 'HOT WHEELS', giver: 'DEX', brief: 'That Comet GT is yours now. Jack it and lose the heat.', target: 'jack', kind: 'jack', reward: 800 },
-  { id: 4, name: 'FIRST BLOOD', giver: 'ROOK', brief: 'Rook needs a message sent. Take out 3 Bay Patrol cars.', target: 'cops', kind: 'killcops', count: 3, reward: 1200 },
-  { id: 5, name: 'SALT AIR', giver: 'MARINA', brief: 'Steal a boat at the marina and sail it to the south buoy.', target: 'boat', kind: 'boat', reward: 1000 },
-  { id: 6, name: 'RADIO SILENCE', giver: 'DEX', brief: 'Drive to the garage and pick up the jammer. Cops cannot see you for 60s.', target: 'garageBay', kind: 'drive', reward: 700 },
-  { id: 7, name: 'PAYBACK', giver: 'ROOK', brief: 'The Tide crew jumped Dex. Chase their car down and wreck it.', target: 'chase', kind: 'chase', reward: 1500 },
-  { id: 8, name: 'NIGHT SHIFT', giver: 'MARINA', brief: 'Smuggle the cargo to the beach by boat. Avoid the patrol boats.', target: 'beach', kind: 'boatdrive', reward: 1800 },
-  { id: 9, name: 'FIVE STAR', giver: 'ROOK', brief: 'Survive a 3-star wanted level for 45 seconds. Lose them after.', target: 'survive', kind: 'survive', count: 45, reward: 2000 },
-  { id: 10, name: 'THE FIXER', giver: 'DEX', brief: 'Buy your first safehouse — Palm Court Apt. Property is power.', target: 'buyhouse', kind: 'buyhouse', house: 'palm', reward: 500 },
-  { id: 11, name: 'SMOKE AND MIRRORS', giver: 'MARINA', brief: 'Blow up 2 Tide crew cars with the rifle. Make it loud.', target: 'explode', kind: 'explode', count: 2, reward: 2200 },
-  { id: 12, name: 'CREW UP', giver: 'ROOK', brief: 'Meet the crew at the casino door. The heist is on.', target: 'casinoDoor', kind: 'drive', reward: 1000 },
+export const MISSIONS_1_12 = [
+  { id: 1, title: 'FIRST LIGHT', giver: 'Tomas', desc: 'Drive to the marina and meet Tomas at the docks.', type: 'goto', target: [0, 205], reward: 500, hint: 'Follow the beacon. WASD to drive.' },
+  { id: 2, title: 'WHEELS UP', giver: 'Tomas', desc: 'Steal the Coral GT parked on Marina Row. Press E near it.', type: 'steal', target: [0, 156], reward: 800, hint: 'Walk up to a parked car and press E.' },
+  { id: 3, title: 'DELIVERY RUN', giver: 'Lena', desc: 'Deliver the package to the Palm Court shack before the timer runs out.', type: 'timed', target: [-78, 78], reward: 1200, time: 75, hint: 'Drive fast — the clock is ticking.' },
+  { id: 4, title: 'HEAT CHECK', giver: 'Lena', desc: 'Lose the cops. Get your wanted level back to zero.', type: 'loseheat', target: null, reward: 1500, hint: 'Hide in the alleys or outrun them.' },
+  { id: 5, title: 'CARJACK 101', giver: 'Drex', desc: 'Carjack a moving car on the street. Press F next to a driver.', type: 'carjack', target: [52, 52], reward: 1500, hint: 'Stand by a slow car and press F.' },
+  { id: 6, title: 'THE COLLECTOR', giver: 'Drex', desc: 'Collect 3 cash drops scattered around Coral Bay.', type: 'collect', target: [104, -52], reward: 2000, count: 3, hint: 'Drive through the glowing cash markers.' },
+  { id: 7, title: 'BOAT PEOPLE', giver: 'Tomas', desc: 'Take a boat from the marina and reach the far buoy.', type: 'boat', target: [104, 265], reward: 2000, hint: 'Press E near a moored boat, then sail south.' },
+  { id: 8, title: 'FIVE STAR NIGHT', giver: 'Lena', desc: 'Survive a 3-star wanted level for 60 seconds.', type: 'survive', target: null, reward: 2500, time: 60, hint: 'Cause chaos, then keep moving.' },
+  { id: 9, title: 'THE DROP', giver: 'Drex', desc: 'Reach the drop point at the beach without being spotted — stay at wanted 0.', type: 'stealth', target: [-208, 156], reward: 2500, hint: 'Drive clean. No crimes on the way.' },
+  { id: 10, title: 'REPO RUN', giver: 'Lena', desc: 'Bring the Reef Cruiser from the north lot back to the garage.', type: 'goto', target: [78, 130], reward: 3000, hint: 'Any car will do — just get there.' },
+  { id: 11, title: 'ROADBLOCK BREAKER', giver: 'Drex', desc: 'Smash through a police roadblock at 4 stars.', type: 'roadblock', target: [104, -104], reward: 3500, hint: 'Get to 4 stars, then hit the spikes at full speed.' },
+  { id: 12, title: 'QUEEN OF THE BAY', giver: 'Tomas', desc: 'Win a street race on the Marina Mile circuit.', type: 'race', target: [0, 156], circuit: 'Marina Mile', reward: 4000, hint: 'Talk to the race starter at the gate.' },
 ];
 
-export function initStory(W) {
-  W.story = {
-    index: 0, // next mission to play
-    active: null,
-    progress: 0,
-    timer: 0,
-    done: [],
-    marker: null,
-    chaseCar: null,
-  };
-  // The objective beacon: a glowing pillar + a floating arrow.
-  const beacon = new THREE.Group();
-  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 60, 16, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
-  pillar.position.y = 30;
-  beacon.add(pillar);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.3, 8, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e }));
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.3;
-  beacon.add(ring);
-  const arrow = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.6, 4),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e }));
-  arrow.rotation.x = Math.PI;
-  arrow.position.y = 12;
-  beacon.add(arrow);
-  beacon.visible = false;
-  W.scene.add(beacon);
-  W.story.marker = beacon;
-  W.story.arrow = arrow;
-}
-
-export function currentMission(W) {
-  return MISSIONS[W.story.index] || null;
-}
-
-export function startMission(W, idx = W.story.index) {
-  const m = MISSIONS[idx];
-  if (!m) return null;
-  W.story.active = { ...m, progress: 0, timer: 0 };
-  W.story.progress = 0;
-  W.story.timer = 0;
-  W.objective = 'M' + m.id + ' — ' + m.name + ': ' + m.brief;
-  W.hudFlash('MISSION ' + m.id + ' — ' + m.name);
-  placeMarker(W, m);
-  // Mission-specific setup.
-  if (m.kind === 'chase') spawnChaseTarget(W);
-  if (m.kind === 'killcops') W.player.wanted = Math.max(W.player.wanted, 2);
-  if (m.kind === 'survive') W.player.wanted = Math.max(W.player.wanted, 3);
-  if (m.id === 4) giveWeapon(W, 'smg', 120);
-  if (m.id === 11) giveWeapon(W, 'rifle', 24);
-  W.events.push({ type: 'missionstart', id: m.id, name: m.name });
-  return m;
-}
-
-function placeMarker(W, m) {
-  const beacon = W.story.marker;
-  const pl = PLACES[m.target];
-  if (pl && m.kind !== 'jack' && m.kind !== 'cops' && m.kind !== 'chase' && m.kind !== 'explode' && m.kind !== 'survive' && m.kind !== 'buyhouse') {
-    beacon.position.set(pl.x, 0, pl.z);
-    beacon.visible = true;
-  } else {
-    beacon.visible = false;
+export class MissionManager {
+  constructor(scene, G) {
+    this.scene = scene;
+    this.G = G;
+    this.defs = MISSIONS_1_12;
+    this.index = 0;          // next mission to start (0-based)
+    this.active = null;
+    this.beacon = null;
+    this.pickups = [];
+    this.timer = 0;
+    this.collected = 0;
+    this.surviveTimer = 0;
   }
-}
+  get current() { return this.defs[this.index] || null; }
+  get completedCount() { return this.index; }
 
-function spawnChaseTarget(W) {
-  // A Tide crew car that flees from the player; wreck it to finish M7.
-  const p = W.player;
-  const v = makeVehicle(W, 0x8a2be2, p.x + 24, p.z - 10, p.heading, { topSpeed: 30, name: 'Tide Runner' });
-  v.fleeing = true;
-  v.wrecked = false;
-  v.health = 100;
-  W.story.chaseCar = v;
-  W.hudFlash('CHASE THE PURPLE TIDE RUNNER — WRECK IT');
-}
-
-export function completeMission(W) {
-  const m = W.story.active;
-  if (!m) return;
-  W.player.cash += m.reward;
-  W.story.done.push(m.id);
-  W.story.index += 1;
-  W.story.active = null;
-  W.story.marker.visible = false;
-  W.hudFlash('MISSION COMPLETE — +' + fmtCash(m.reward));
-  W.events.push({ type: 'missiondone', id: m.id, reward: m.reward });
-  W.saveGame?.();
-  const next = currentMission(W);
-  if (next) {
-    W.objective = 'NEXT: M' + next.id + ' — ' + next.name + ' (press N to start)';
-  } else {
-    W.objective = 'STORY COMPLETE — the casino heist awaits (see story2)';
+  makeBeacon(x, z, color = 0xffd166) {
+    this.clearBeacon();
+    const pillar = new THREE.Mesh(
+      new THREE.CylinderGeometry(3, 3, 60, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false })
+    );
+    pillar.position.set(x, 30, z);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(4, 0.4, 8, 24), new THREE.MeshBasicMaterial({ color }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(x, 0.3, z);
+    this.scene.add(pillar); this.scene.add(ring);
+    this.beacon = { pillar, ring, x, z };
   }
-}
-
-export function failMission(W, why) {
-  const m = W.story.active;
-  if (!m) return;
-  W.story.active = null;
-  W.story.marker.visible = false;
-  W.hudFlash('MISSION FAILED — ' + why + ' (press N to retry)');
-  W.events.push({ type: 'missionfail', id: m.id, why });
-}
-
-export function updateStory(W, dt) {
-  const s = W.story;
-  const m = s.active;
-  // The M7 chase target flees from the player and can be wrecked by ramming
-  // or by shooting it (fight.js marks it wrecked through W.events).
-  if (s.chaseCar && !s.chaseCar.wrecked) {
-    const c = s.chaseCar;
-    const p = W.player;
-    const away = Math.atan2(c.x - p.x, c.z - p.z);
-    c.heading += (away - c.heading) * 0.02;
-    c.heading = c.heading; // keep the flee heading smooth
-    c.speed = Math.min(c.topSpeed, (c.speed || 0) + 10 * dt);
-    c.x += Math.sin(c.heading) * c.speed * dt;
-    c.z += Math.cos(c.heading) * c.speed * dt;
-    c.x = Math.max(-205, Math.min(205, c.x));
-    c.z = Math.max(-205, Math.min(215, c.z));
-    c.mesh.position.set(c.x, 0, c.z);
-    c.mesh.rotation.y = c.heading;
-    const d = dist2(c.x, c.z, p.x, p.z);
-    if (d < 3.5 && p.vehicle && Math.abs(p.vehicle.speed) > 8) {
-      c.health -= 30 * dt;
-      p.vehicle.speed *= 0.9;
-      if (c.health <= 0) {
-        c.wrecked = true;
-        W.fx.explode(c.x, 1, c.z, true);
-      }
+  clearBeacon() {
+    if (!this.beacon) return;
+    this.scene.remove(this.beacon.pillar);
+    this.scene.remove(this.beacon.ring);
+    this.beacon = null;
+  }
+  clearPickups() {
+    for (const p of this.pickups) this.scene.remove(p.mesh);
+    this.pickups = [];
+  }
+  spawnPickups(n, spots) {
+    this.clearPickups();
+    for (let i = 0; i < n; i++) {
+      const [px, pz] = spots[i % spots.length];
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.4, 0.6), new THREE.MeshBasicMaterial({ color: 0x7CFC00 }));
+      mesh.position.set(px, 1.2, pz);
+      this.scene.add(mesh);
+      this.pickups.push({ mesh, x: px, z: pz, taken: false });
     }
   }
-  if (!m) return;
-  const p = W.player;
-  s.timer += dt;
-  // Bob the beacon arrow.
-  if (s.arrow) s.arrow.position.y = 12 + Math.sin(W.time * 2.5) * 1.2;
 
-  switch (m.kind) {
-    case 'drive': {
-      const pl = PLACES[m.target];
-      if (pl && dist2(p.x, p.z, pl.x, pl.z) < 8) completeMission(W);
-      break;
+  startCurrent() {
+    const def = this.current;
+    if (!def) return null;
+    this.active = { def, startedAt: this.G.time, collected: 0 };
+    this.collected = 0;
+    this.timer = def.time || 0;
+    this.surviveTimer = 0;
+    if (def.target) this.makeBeacon(def.target[0], def.target[1]);
+    if (def.type === 'collect') {
+      this.spawnPickups(def.count, [[104, -52], [-104, 104], [156, 52], [-156, -104]]);
     }
-    case 'jack': {
-      if (s.progress === 0 && p.mode === 'car' && p.vehicle) {
-        // Player jacked a car after the mission started.
-        s.progress = 1;
-        W.objective = 'M3 — Lose the cops: get wanted to 0';
+    if (def.type === 'survive') {
+      this.G.police.setWanted(3, this.G);
+      this.surviveTimer = def.time;
+    }
+    if (def.type === 'roadblock') {
+      this.G.police.setWanted(4, this.G);
+    }
+    if (def.type === 'race') {
+      const c = this.G.raceway.CIRCUITS?.find?.((x) => x.name === def.circuit) || this.G.racewayCircuits.find((x) => x.name === def.circuit);
+      if (c) this.G.raceway.startRace(c, this.G);
+    }
+    this.G.hud?.banner('MISSION ' + def.id + ' — ' + def.title, def.giver + ': ' + def.desc);
+    this.G.hud?.toast('NEW MISSION: ' + def.title, '#ffd166');
+    this.G.sound?.beep(520);
+    return this.active;
+  }
+
+  complete() {
+    const def = this.active.def;
+    this.G.player.cash += def.reward;
+    this.G.player.missionsDone = (this.G.player.missionsDone || 0) + 1;
+    this.G.hud?.banner('MISSION COMPLETE', def.title + ' • +$' + def.reward.toLocaleString('en-US'));
+    this.G.hud?.toast('+$' + def.reward.toLocaleString('en-US') + ' — ' + def.title, '#7CFC00');
+    this.G.sound?.fanfare(true);
+    this.G.save?.save();
+    this.active = null;
+    this.clearBeacon();
+    this.clearPickups();
+    this.index++;
+    this.G.missions2?.syncIndex?.(this.index);
+    if (this.current) setTimeout(() => this.startCurrent(), 2500);
+    else this.G.hud?.banner('STORY COMPLETE', 'You own Coral Bay. Free roam!');
+  }
+  fail(reason) {
+    const def = this.active?.def;
+    this.G.hud?.banner('MISSION FAILED', reason || (def ? def.title : ''));
+    this.G.hud?.toast('Mission failed — try again (M)', '#ff4444');
+    this.active = null;
+    this.clearBeacon();
+    this.clearPickups();
+    if (this.G.raceway.active) this.G.raceway.abort();
+  }
+
+  onRaceFinished(circuit, win) {
+    if (this.active && this.active.def.type === 'race' && win) this.complete();
+  }
+  onCarjacked() {
+    if (this.active && this.active.def.type === 'carjack') this.complete();
+  }
+  onSteal() {
+    if (this.active && this.active.def.type === 'steal') this.complete();
+  }
+  onBoatReached() {
+    if (this.active && this.active.def.type === 'boat') this.complete();
+  }
+
+  update(dt) {
+    if (!this.active) return;
+    const def = this.active.def;
+    const p = this.G.playerPos();
+    if (!p) return;
+    if (this.beacon) {
+      this.beacon.pillar.rotation.y += dt;
+      const s = 1 + Math.sin(this.G.time * 4) * 0.12;
+      this.beacon.ring.scale.set(s, s, s);
+    }
+    for (const pk of this.pickups) pk.mesh.rotation.y += dt * 2;
+    switch (def.type) {
+      case 'goto':
+      case 'timed':
+      case 'stealth':
+      case 'roadblock': {
+        if (def.target && Math.hypot(p.x - def.target[0], p.z - def.target[1]) < 9) {
+          if (def.type === 'stealth' && this.G.police.wanted > 0) { this.fail('Spotted! Wanted level rose.'); return; }
+          if (def.type === 'roadblock' && this.G.police.roadblocks.length === 0 && this.G.police.wanted < 4) { break; }
+          this.complete();
+        }
+        if (def.type === 'timed') {
+          this.timer -= dt;
+          if (this.timer <= 0) this.fail('Out of time.');
+        }
+        break;
       }
-      if (s.progress === 1 && p.wanted === 0) completeMission(W);
-      break;
-    }
-    case 'killcops': {
-      const kills = W.events.filter((e) => e.type === 'copdown').length;
-      if (kills >= m.count) completeMission(W);
-      break;
-    }
-    case 'boat': {
-      if (p.mode === 'boat') {
-        s.progress = 1;
-        W.objective = 'M5 — Sail to the south buoy (z > 250)';
+      case 'loseheat': {
+        if (this.G.police.wanted === 0) this.complete();
+        break;
       }
-      if (s.progress === 1 && p.mode === 'boat' && p.z > 250) completeMission(W);
-      break;
-    }
-    case 'boatdrive': {
-      if (p.mode === 'boat' && p.z > 240) completeMission(W);
-      break;
-    }
-    case 'chase': {
-      if (s.chaseCar && s.chaseCar.wrecked) completeMission(W);
-      if (s.timer > 120) failMission(W, 'TARGET ESCAPED');
-      break;
-    }
-    case 'survive': {
-      if (p.wanted >= 3) s.progress += dt;
-      else s.progress = Math.max(0, s.progress - dt * 2);
-      W.objective = 'M9 — Stay at 3+ stars: ' + Math.floor(s.progress) + 's / ' + m.count + 's';
-      if (s.progress >= m.count) {
-        p.wanted = 0;
-        completeMission(W);
+      case 'collect': {
+        for (const pk of this.pickups) {
+          if (!pk.taken && Math.hypot(p.x - pk.x, p.z - pk.z) < 4) {
+            pk.taken = true;
+            this.scene.remove(pk.mesh);
+            this.active.collected++;
+            this.G.player.cash += 150;
+            this.G.hud?.toast('CASH DROP ' + this.active.collected + '/' + def.count + ' +$150', '#7CFC00');
+          }
+        }
+        if (this.active.collected >= def.count) this.complete();
+        break;
       }
-      break;
+      case 'boat': {
+        if (this.G.boats.active && Math.hypot(p.x - def.target[0], p.z - def.target[1]) < 12) this.complete();
+        break;
+      }
+      case 'survive': {
+        this.surviveTimer -= dt;
+        if (this.G.police.wanted < 3) { this.fail('Wanted level dropped below 3.'); return; }
+        if (this.surviveTimer <= 0) this.complete();
+        break;
+      }
+      default: break;
     }
-    case 'buyhouse': {
-      if (W.garage.owned[m.house]) completeMission(W);
-      break;
-    }
-    case 'explode': {
-      const booms = W.events.filter((e) => e.type === 'explosion' && e.big).length;
-      if (booms >= m.count) completeMission(W);
-      break;
-    }
-    default:
-      break;
   }
 }

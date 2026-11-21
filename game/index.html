@@ -1,152 +1,83 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CORAL HEAT — 20 story missions, casino heist, street races, garage &amp; bikes, 5-star police, helicopter chases, carjacking, boats &amp; radio in a sunset marina city</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1026;
-    font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #fff; }
-  #game-root, #game-root canvas { width: 100%; height: 100%; display: block; }
-  #hud { position: fixed; inset: 0; pointer-events: none; opacity: 1; z-index: 5; }
-  .panel { background: rgba(10, 6, 24, 0.72); border: 1px solid rgba(255, 210, 62, 0.35);
-    border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(3px); }
-  /* Mission panel, top-left */
-  #hud-mission { position: absolute; top: 14px; left: 14px; max-width: 380px;
-    font-size: 14px; line-height: 1.45; }
-  #hud-mission b { color: #ffd23e; font-size: 15px; letter-spacing: 0.5px; }
-  /* Cash + wanted, top-right */
-  #hud-topright { position: absolute; top: 14px; right: 14px; text-align: right; }
-  #hud-cash { font-size: 30px; font-weight: 800; color: #7dff8a; letter-spacing: 1px;
-    text-shadow: 0 2px 6px rgba(0,0,0,0.7); }
-  #hud-stars { font-size: 26px; letter-spacing: 4px; color: #ffd23e;
-    text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
-  #hud-damage { font-size: 12px; color: #9fd8ff; margin-top: 2px; font-weight: 700; }
-  /* Minimap, bottom-left */
-  #minimap-wrap { position: absolute; left: 14px; bottom: 14px; width: 190px; height: 190px;
-    border-radius: 50%; overflow: hidden; border: 3px solid rgba(255,210,62,0.6);
-    box-shadow: 0 0 0 4px rgba(10,6,24,0.7), 0 4px 18px rgba(0,0,0,0.6); }
-  #minimap { width: 100%; height: 100%; display: block; background: #123a5a; }
-  /* Speed, bottom-right */
-  #hud-speed-wrap { position: absolute; right: 16px; bottom: 14px; text-align: right; }
-  #hud-speed { font-size: 64px; font-weight: 900; line-height: 0.9; color: #fff;
-    text-shadow: 0 3px 10px rgba(0,0,0,0.8); }
-  #hud-speed-unit { font-size: 13px; font-weight: 700; color: #ffd23e; letter-spacing: 2px; }
-  /* Radio + weapons, bottom-centre */
-  #hud-bottom { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
-    display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  #hud-radio { font-size: 13px; font-weight: 700; color: #22e6ff; letter-spacing: 1px;
-    background: rgba(10,6,24,0.72); border: 1px solid rgba(34,230,255,0.35);
-    padding: 5px 12px; border-radius: 20px; }
-  #hud-weapons { display: flex; gap: 6px; }
-  .wslot { background: rgba(10,6,24,0.72); border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 8px; padding: 5px 9px; font-size: 11px; color: #ddd; }
-  .wslot.active { border-color: #ffd23e; color: #ffd23e; box-shadow: 0 0 10px rgba(255,210,62,0.5); }
-  .wslot.locked { opacity: 0.45; }
-  .wslot b { color: #fff; }
-  /* Objective banner, top-centre */
-  #hud-objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-    max-width: 560px; text-align: center; font-size: 14px; font-weight: 700;
-    color: #fff; background: rgba(10,6,24,0.72); border: 1px solid rgba(255,255,255,0.25);
-    padding: 8px 16px; border-radius: 8px; }
-  /* Countdown banner, centre */
-  #hud-banner { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%);
-    font-size: 92px; font-weight: 900; color: #ffd23e;
-    text-shadow: 0 4px 24px rgba(0,0,0,0.9), 0 0 40px rgba(255,210,62,0.6); }
-  /* Flash message, centre-top */
-  #hud-flash { position: absolute; top: 76px; left: 50%; transform: translateX(-50%);
-    font-size: 20px; font-weight: 800; color: #ffd23e; letter-spacing: 1px;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.9); transition: opacity 0.3s; white-space: nowrap; }
-  /* Race panel, right side */
-  #hud-race { position: absolute; top: 150px; right: 14px; display: none;
-    font-size: 13px; line-height: 1.5; text-align: right; }
-  #hud-race b { color: #22e6ff; font-size: 14px; }
-  /* Weapon wheel */
-  #weapon-wheel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    display: none; flex-direction: column; gap: 8px; z-index: 8; }
-  .wheel-title { text-align: center; font-size: 14px; font-weight: 800; color: #ffd23e;
-    letter-spacing: 2px; text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
-  .wheel-slot { display: flex; gap: 14px; align-items: center; justify-content: space-between;
-    background: rgba(10,6,24,0.85); border: 2px solid rgba(255,255,255,0.3);
-    border-radius: 10px; padding: 10px 18px; min-width: 340px; }
-  .wheel-slot.active { border-color: #ffd23e; box-shadow: 0 0 16px rgba(255,210,62,0.6); }
-  .wheel-slot.locked { opacity: 0.5; }
-  .wheel-slot b { font-size: 20px; color: #ffd23e; }
-  .wheel-slot span { font-size: 16px; font-weight: 700; flex: 1; }
-  .wheel-slot em { font-size: 12px; color: #9fd8ff; font-style: normal; }
-  /* Garage shop */
-  #shop-panel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    display: none; width: 520px; max-width: 92vw; z-index: 9; pointer-events: auto;
-    background: rgba(10,6,24,0.94); border: 2px solid #ffd23e; border-radius: 14px; padding: 20px; }
-  #shop-panel h2 { color: #ffd23e; font-size: 18px; letter-spacing: 1px; margin-bottom: 8px; }
-  .shop-cash { color: #7dff8a; font-weight: 800; font-size: 18px; margin-bottom: 12px; }
-  .shop-row { display: flex; align-items: center; gap: 12px; padding: 8px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.12); }
-  .shop-row b { width: 150px; font-size: 14px; }
-  .shop-row span { flex: 1; font-size: 12px; color: #bbb; }
-  .shop-row button { pointer-events: auto; cursor: pointer; background: #ffd23e; color: #1a1026;
-    border: none; border-radius: 8px; padding: 8px 14px; font-weight: 800; font-size: 13px; }
-  .shop-row button:hover { background: #ffe27a; }
-  .shop-hint { margin-top: 12px; font-size: 12px; color: #9fd8ff; text-align: center; }
-  /* Start screen */
-  #start-screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center;
-    justify-content: center; background: linear-gradient(180deg, rgba(26,16,38,0.88), rgba(232,93,61,0.55));
-    pointer-events: auto; }
-  #start-card { text-align: center; max-width: 640px; padding: 32px; }
-  #start-card h1 { font-size: 72px; font-weight: 900; letter-spacing: 4px; color: #ffd23e;
-    text-shadow: 0 4px 0 #d92828, 0 8px 30px rgba(0,0,0,0.7); }
-  #start-card h2 { font-size: 20px; color: #fff; margin: 6px 0 16px; letter-spacing: 1px; }
-  #start-card p { font-size: 14px; line-height: 1.6; color: #ffe9c9; margin-bottom: 10px; }
-  #start-card .controls { font-size: 13px; color: #cfe8ff; line-height: 1.9; margin: 14px 0; }
-  #play-btn { cursor: pointer; background: #d92828; color: #fff; border: none; border-radius: 12px;
-    padding: 16px 44px; font-size: 22px; font-weight: 900; letter-spacing: 2px;
-    box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
-  #play-btn:hover { background: #ff2e33; }
-  #save-note { margin-top: 14px; font-size: 13px; color: #7dff8a; }
-  .tiny { font-size: 11px; color: #9a8fb0; margin-top: 16px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a0b2e; font-family: Arial, Helvetica, sans-serif; }
+  #game { position: relative; width: 100%; height: 100%; }
+  #game canvas { display: block; }
+  .hud { position: absolute; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  .panel { position: absolute; background: rgba(8,10,22,.72); border: 1px solid rgba(255,209,102,.45); border-radius: 10px; padding: 8px 12px; }
+  .mission-panel { top: 12px; left: 12px; width: 340px; }
+  .mp-title { color: #ffd166; font-weight: 900; font-size: 13px; letter-spacing: 2px; }
+  .mp-name { font-weight: 900; font-size: 17px; margin-top: 2px; }
+  .mp-desc { font-size: 13px; color: #e8e8e8; margin-top: 3px; line-height: 1.35; }
+  .mp-hint { font-size: 12px; color: #7dd3fc; margin-top: 3px; }
+  .mp-obj { font-size: 12px; color: #ffd166; margin-top: 5px; font-weight: 700; }
+  .top-right { top: 12px; right: 12px; text-align: right; min-width: 210px; }
+  .cash { font-size: 26px; font-weight: 900; color: #7CFC00; }
+  .wanted { font-size: 24px; letter-spacing: 3px; color: #888; }
+  .wanted.w1, .wanted.w2 { color: #ffd166; }
+  .wanted.w3, .wanted.w4 { color: #ff8844; }
+  .wanted.w5 { color: #ff3333; animation: blink .5s infinite alternate; }
+  @keyframes blink { from { opacity: 1; } to { opacity: .45; } }
+  .wanted-label { font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #ffb3b3; }
+  .health { font-size: 14px; margin-top: 3px; }
+  .clock { font-size: 13px; color: #c9c9c9; }
+  .minimap-wrap { left: 12px; bottom: 12px; padding: 5px; }
+  .minimap { display: block; border-radius: 6px; }
+  .zone { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #ffd166; text-align: center; margin-top: 4px; }
+  .speed-panel { right: 12px; bottom: 12px; text-align: right; min-width: 170px; }
+  .speed { font-size: 52px; font-weight: 900; line-height: 1; color: #fff; }
+  .speed-unit { font-size: 13px; letter-spacing: 3px; color: #ffd166; font-weight: 800; }
+  .vehicle { font-size: 12px; font-weight: 800; margin-top: 2px; color: #7dd3fc; }
+  .damage, .nitro { font-size: 12px; margin-top: 2px; }
+  .nitro { color: #ff2fd6; font-weight: 800; }
+  .weapon-slots { left: 220px; bottom: 12px; display: flex; gap: 5px; padding: 6px; }
+  .wslot { font-size: 11px; font-weight: 700; padding: 5px 7px; border-radius: 6px; background: rgba(255,255,255,.08); color: #ccc; white-space: nowrap; }
+  .wslot.active { background: #ffd166; color: #111; }
+  .bottom-centre { left: 50%; transform: translateX(-50%); bottom: 12px; width: 460px; text-align: center; }
+  .radio { font-size: 13px; color: #f472b6; font-weight: 700; }
+  .banner-title { font-size: 22px; font-weight: 900; color: #ffd166; letter-spacing: 1px; margin-top: 3px; }
+  .banner-title.flash { animation: bannerpop 2.6s ease; }
+  @keyframes bannerpop { 0% { transform: scale(1.25); } 100% { transform: scale(1); } }
+  .banner-sub { font-size: 13px; color: #fff; }
+  .hint-line { font-size: 12px; color: #7CFC00; margin-top: 3px; min-height: 15px; }
+  .race-hud { top: 12px; left: 50%; transform: translateX(-50%); text-align: center; border-color: #00e5ff; }
+  .race-name { font-size: 16px; font-weight: 900; color: #00e5ff; }
+  .race-pos { font-size: 22px; font-weight: 900; }
+  .race-lap, .race-time { font-size: 13px; font-weight: 700; }
+  .toast-box { position: absolute; top: 150px; left: 12px; display: flex; flex-direction: column; gap: 6px; width: 340px; }
+  .toast { background: rgba(8,10,22,.85); border-left: 4px solid #fff; border-radius: 6px; padding: 7px 10px; font-size: 13px; font-weight: 700; }
+  .wheel { position: absolute; left: 50%; top: 50%; width: 340px; height: 340px; transform: translate(-50%, -50%); border-radius: 50%; background: rgba(8,10,22,.6); border: 2px solid rgba(255,209,102,.6); pointer-events: auto; }
+  .wheel-centre { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-weight: 900; letter-spacing: 2px; color: #ffd166; font-size: 14px; }
+  .wheel-seg { position: absolute; transform: translate(-50%, -50%); background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 6px 9px; font-size: 11px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+  .wheel-seg:hover { background: #ffd166; color: #111; }
+  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(160deg, rgba(26,11,46,.88), rgba(255,107,74,.55)); pointer-events: auto; text-align: center; padding: 20px; }
+  .game-title { font-size: 84px; font-weight: 900; letter-spacing: 6px; color: #ffd166; text-shadow: 0 0 30px #ff2fd6, 0 4px 0 #7a2d00; }
+  .game-sub { font-size: 17px; font-weight: 800; color: #fff; margin-top: 8px; }
+  .game-sub2 { font-size: 14px; font-weight: 700; color: #7dd3fc; margin-top: 4px; }
+  .controls { font-size: 14px; line-height: 1.9; color: #e8e8e8; margin-top: 22px; background: rgba(0,0,0,.4); padding: 12px 22px; border-radius: 10px; }
+  .play-btn { margin-top: 22px; font-size: 20px; font-weight: 900; letter-spacing: 2px; color: #111; background: #ffd166; border: none; border-radius: 10px; padding: 14px 34px; cursor: pointer; }
+  .play-btn:hover { background: #ffe08a; }
+  .pause-title { font-size: 54px; font-weight: 900; letter-spacing: 6px; }
+  .shop-panel { background: rgba(8,10,22,.92); justify-content: flex-start; padding-top: 60px; overflow-y: auto; }
+  .shop-title { font-size: 30px; font-weight: 900; color: #ffd166; letter-spacing: 2px; }
+  .shop-body { width: 640px; max-width: 92vw; margin-top: 16px; text-align: left; }
+  .shop-sec { font-size: 15px; font-weight: 900; color: #7dd3fc; margin: 14px 0 6px; letter-spacing: 1px; }
+  .shop-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: rgba(255,255,255,.07); border-radius: 8px; padding: 9px 12px; margin-bottom: 6px; font-size: 13px; }
+  .buy-btn { background: #7CFC00; color: #111; font-weight: 900; border: none; border-radius: 7px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
+  .buy-btn:disabled { background: #555; color: #aaa; cursor: default; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="game-root"></div>
-<div id="hud">
-  <div id="hud-mission" class="panel"><b>FREE ROAM</b><br>Press N for the next mission · E to jack a car</div>
-  <div id="hud-topright">
-    <div id="hud-cash">$2,450</div>
-    <div id="hud-stars">☆☆☆☆☆</div>
-    <div id="hud-damage">DAMAGE 0%</div>
-  </div>
-  <div id="hud-objective">Press N to start Mission 1 — BACK IN THE BAY</div>
-  <div id="hud-flash"></div>
-  <div id="hud-banner"></div>
-  <div id="hud-race" class="panel"></div>
-  <div id="minimap-wrap"><canvas id="minimap" width="190" height="190"></canvas></div>
-  <div id="hud-speed-wrap"><div id="hud-speed">0</div><div id="hud-speed-unit">MPH</div></div>
-  <div id="hud-bottom">
-    <div id="hud-radio">♪ CORAL FM 98.5</div>
-    <div id="hud-weapons"></div>
-  </div>
-  <div id="weapon-wheel"></div>
-  <div id="shop-panel"></div>
-</div>
-<div id="start-screen">
-  <div id="start-card">
-    <h1>CORAL HEAT</h1>
-    <h2>20 story missions · casino heist · street races · garage &amp; bikes · 5-star police · helicopter chases · carjacking · boats &amp; radio</h2>
-    <p>Mara Voss is back in Coral Bay. Drive, earn, build the crew — then take the Coral Crown Casino. A sunset open-world crime game: steal cars, outrun Bay Patrol, race Marina Mile, tune your ride at Sunset Garage, and escape the final heist by boat.</p>
-    <div class="controls">
-      WASD drive / walk · SPACE brake · SHIFT nitro · E jack car / enter &amp; exit vehicle<br>
-      Mouse click shoot · Q hold weapon wheel · 1-4 weapons · R radio · G garage shop (at Sunset Garage)<br>
-      N next mission · M mute · ESC pause
-    </div>
-    <button id="play-btn">▶ PLAY CORAL HEAT</button>
-    <div id="save-note"></div>
-    <div class="tiny">An original game. No Rockstar names, art or music. Built with three.js, offline, in your browser.</div>
-  </div>
-</div>
+<div id="game"></div>
 <script type="module" src="./src/boot.js"></script>
 </body>
 </html>

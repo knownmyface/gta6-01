@@ -1,215 +1,325 @@
-// hudkit.js — the HUD: mission panel, cash + wanted stars, circular minimap,
-// big speedometer, weapon slots, radio station, objective banner, weapon
-// wheel overlay, garage shop UI, start screen and flash messages.
-import { fmtCash, fmtLap, clamp } from './util.js';
-import { WEAPONS, WHEEL_ORDER } from './fight.js';
-import { SAFEHOUSES, UPGRADES, upgradePrice } from './garage.js';
-import { RACES } from './raceway.js';
+// Coral Heat — HUD kit: dense legible HUD (mission panel, cash, wanted stars,
+// minimap, big speed, weapon slots, radio, banners, weapon wheel, menus).
+// Fresh write, round 7.
+import { makeEl, fmtMoney, fmtClock, fmtLap } from './util.js';
+import { WEAPONS } from './fight.js';
+import { SAFEHOUSES, UPGRADES } from './garage.js';
 
-export function buildHud(W) {
-  const hud = document.getElementById('hud');
-  const el = (id) => document.getElementById(id);
-  W.hud = {
-    root: hud,
-    mission: el('hud-mission'),
-    cash: el('hud-cash'),
-    stars: el('hud-stars'),
-    speed: el('hud-speed'),
-    speedUnit: el('hud-speed-unit'),
-    minimap: el('minimap'),
-    radio: el('hud-radio'),
-    weapons: el('hud-weapons'),
-    banner: el('hud-banner'),
-    objective: el('hud-objective'),
-    flash: el('hud-flash'),
-    wheel: el('weapon-wheel'),
-    shop: el('shop-panel'),
-    start: el('start-screen'),
-    damage: el('hud-damage'),
-    race: el('hud-race'),
-    showWheel(open) { hud.classList.toggle('wheel-open', open); renderWheel(W, open); },
-    showShop(open) { renderShop(W, open); },
-    refreshWeapons() { renderWeapons(W); },
-    refreshGarage() { renderShop(W, true); },
-  };
-  renderWeapons(W);
-  return W.hud;
-}
-
-function starRow(n) {
-  let s = '';
-  for (let i = 0; i < 5; i++) s += i < n ? '★' : '☆';
-  return s;
-}
-
-export function updateHud(W) {
-  const p = W.player;
-  const h = W.hud;
-  if (!h) return;
-  const m = W.story.active || W.story2.active;
-  h.mission.innerHTML = m
-    ? '<b>M' + m.id + ' · ' + m.name + '</b><br>' + m.brief
-    : '<b>FREE ROAM</b><br>Press N for the next mission · E to jack a car';
-  h.cash.textContent = fmtCash(p.cash);
-  h.stars.textContent = starRow(p.wanted);
-  h.stars.style.color = p.wanted >= 4 ? '#ff2222' : p.wanted >= 2 ? '#ffb36b' : '#ffd23e';
-  const v = p.vehicle;
-  const speed = v ? Math.abs(v.speed || 0) * 3.2 : Math.abs(p.speed || 0) * 3.2;
-  h.speed.textContent = Math.round(speed);
-  h.speedUnit.textContent = p.mode === 'boat' ? 'KNOTS' : p.mode === 'bike' ? 'MPH · BIKE' : p.mode === 'foot' ? 'MPH · ON FOOT' : 'MPH';
-  h.radio.textContent = '♪ ' + (W.sound?.stationName() || 'CORAL FM 98.5');
-  h.objective.textContent = W.objective || '';
-  h.banner.textContent = W.raceBanner || (W.race?.active && W.race.countdown > 0 ? String(Math.ceil(W.race.countdown)) : '');
-  const dmg = v ? Math.round(v.damage || 0) : 0;
-  h.damage.textContent = 'DAMAGE ' + dmg + '%';
-  h.damage.style.color = dmg > 70 ? '#ff2222' : dmg > 40 ? '#ffb36b' : '#9fd8ff';
-  // Race panel.
-  const r = W.race;
-  if (r?.active && r.def) {
-    h.race.style.display = 'block';
-    h.race.innerHTML =
-      '<b>' + r.def.name + '</b> · P' + r.position + '/4<br>' +
-      'LAP ' + Math.min(r.lap, r.def.laps) + '/' + r.def.laps +
-      ' · ' + fmtLap(r.raceTime) + '<br>BEST ' + fmtLap(r.bestLap);
-  } else {
-    h.race.style.display = 'none';
+export class Hud {
+  constructor(G) {
+    this.G = G;
+    this.root = null;
+    this.els = {};
+    this.toasts = [];
+    this.wheelOpen = false;
   }
-  drawMinimap(W);
-  // Flash message fade.
-  if (W.flashTimer > 0) {
-    W.flashTimer -= 1 / 60;
-    h.flash.style.opacity = String(Math.min(1, W.flashTimer));
-  } else {
-    h.flash.style.opacity = '0';
-  }
-}
-
-function drawMinimap(W) {
-  const cv = W.hud.minimap;
-  if (!cv) return;
-  const g = cv.getContext('2d');
-  const S = cv.width;
-  const scale = S / 480; // world -240..240 maps to the canvas
-  const toX = (x) => S / 2 + x * scale;
-  const toY = (z) => S / 2 + z * scale;
-  g.clearRect(0, 0, S, S);
-  // Sea + land.
-  g.fillStyle = '#123a5a';
-  g.fillRect(0, 0, S, S);
-  g.fillStyle = '#3a2f28';
-  g.fillRect(0, 0, S, S * 0.86);
-  // Roads.
-  g.strokeStyle = '#555560';
-  g.lineWidth = 4;
-  for (let c = -208; c <= 208; c += 52) {
-    g.beginPath(); g.moveTo(toX(c), 0); g.lineTo(toX(c), S); g.stroke();
-    g.beginPath(); g.moveTo(0, toY(c)); g.lineTo(S, toY(c)); g.stroke();
-  }
-  // Casino district glow.
-  g.fillStyle = 'rgba(255,46,136,0.55)';
-  g.fillRect(toX(-130), toY(-156), 104 * scale, 104 * scale);
-  // Marina.
-  g.fillStyle = 'rgba(34,230,255,0.5)';
-  g.fillRect(toX(180), toY(0), 60 * scale, 160 * scale);
-  // Objective marker.
-  if (W.story.marker?.visible) {
-    g.fillStyle = '#ffd23e';
-    g.beginPath();
-    g.arc(toX(W.story.marker.position.x), toY(W.story.marker.position.z), 7, 0, Math.PI * 2);
-    g.fill();
-  }
-  // Cops.
-  g.fillStyle = '#2266ff';
-  for (const c of W.cops) {
-    g.beginPath();
-    g.arc(toX(c.x), toY(c.z), 3.5, 0, Math.PI * 2);
-    g.fill();
-  }
-  // Heli.
-  if (W.heli) {
-    g.fillStyle = '#ffffff';
-    g.beginPath();
-    g.arc(toX(W.heli.x), toY(W.heli.z), 4.5, 0, Math.PI * 2);
-    g.fill();
-  }
-  // Player arrow.
-  const p = W.player;
-  g.save();
-  g.translate(toX(p.x), toY(p.z));
-  g.rotate(-p.heading + Math.PI);
-  g.fillStyle = p.mode === 'foot' ? '#ffffff' : '#ff2e33';
-  g.beginPath();
-  g.moveTo(0, -8);
-  g.lineTo(6, 6);
-  g.lineTo(0, 3);
-  g.lineTo(-6, 6);
-  g.closePath();
-  g.fill();
-  g.restore();
-}
-
-function renderWeapons(W) {
-  const h = W.hud;
-  if (!h || !h.weapons) return;
-  const p = W.player;
-  h.weapons.innerHTML = WHEEL_ORDER.map((key, i) => {
-    const owned = p.weapons[key]?.owned;
-    const ammo = p.weapons[key]?.ammo ?? 0;
-    const active = p.weapon === key;
-    return '<div class="wslot' + (active ? ' active' : '') + (owned ? '' : ' locked') + '">' +
-      '<b>' + (i + 1) + ' ' + WEAPONS[key].name + '</b> ' + (owned ? '· ' + ammo : '· LOCKED') + '</div>';
-  }).join('');
-}
-
-function renderWheel(W, open) {
-  const wheel = W.hud.wheel;
-  if (!wheel) return;
-  if (!open) { wheel.style.display = 'none'; return; }
-  wheel.style.display = 'flex';
-  const p = W.player;
-  wheel.innerHTML = '<div class="wheel-title">WEAPON WHEEL — hold Q, press 1-4</div>' +
-    WHEEL_ORDER.map((key, i) => {
-      const owned = p.weapons[key]?.owned;
-      const ammo = p.weapons[key]?.ammo ?? 0;
-      return '<div class="wheel-slot' + (p.weapon === key ? ' active' : '') + (owned ? '' : ' locked') + '">' +
-        '<b>' + (i + 1) + '</b><span>' + WEAPONS[key].name + '</span><em>' +
-        (owned ? ammo + ' rounds' : 'NOT OWNED') + '</em></div>';
-    }).join('');
-}
-
-function renderShop(W, open) {
-  const panel = W.hud.shop;
-  if (!panel) return;
-  if (!open) { panel.style.display = 'none'; return; }
-  panel.style.display = 'block';
-  const p = W.player;
-  const up = W.garageUpgrades;
-  let html = '<h2>SUNSET GARAGE — UPGRADES</h2><div class="shop-cash">CASH ' + fmtCash(p.cash) + '</div>';
-  for (const key of Object.keys(UPGRADES)) {
-    const u = UPGRADES[key];
-    const lvl = up[key];
-    const price = lvl >= u.max ? 'MAX' : fmtCash(upgradePrice(key, lvl));
-    html += '<div class="shop-row"><b>' + u.name + ' LV' + lvl + '/' + u.max + '</b><span>' + u.desc +
-      '</span><button data-up="' + key + '">' + price + '</button></div>';
-  }
-  html += '<h2>SAFEHOUSES</h2>';
-  for (const sh of SAFEHOUSES) {
-    const owned = W.garage.owned[sh.key];
-    html += '<div class="shop-row"><b>' + sh.name + '</b><span>' + sh.slots +
-      ' garage slots</span><button data-house="' + sh.key + '">' + (owned ? 'OWNED' : fmtCash(sh.price)) + '</button></div>';
-  }
-  html += '<div class="shop-hint">Click a price to buy · G or Esc to close</div>';
-  panel.innerHTML = html;
-  panel.querySelectorAll('button[data-up]').forEach((b) => {
-    b.addEventListener('click', () => {
-      const { buyUpgrade } = window.__garageApi;
-      buyUpgrade(W, b.dataset.up);
+  build() {
+    const root = makeEl('div', 'hud', document.getElementById('game'));
+    this.root = root;
+    // --- mission panel top-left ---
+    const mp = makeEl('div', 'panel mission-panel', root);
+    makeEl('div', 'mp-title', mp, '★ MISSION');
+    this.els.missionName = makeEl('div', 'mp-name', mp, '—');
+    this.els.missionDesc = makeEl('div', 'mp-desc', mp, 'Press M to start the story');
+    this.els.missionHint = makeEl('div', 'mp-hint', mp, '');
+    this.els.objective = makeEl('div', 'mp-obj', mp, 'OBJECTIVE: —');
+    // --- cash + wanted top-right ---
+    const tr = makeEl('div', 'panel top-right', root);
+    this.els.cash = makeEl('div', 'cash', tr, '$0');
+    this.els.wanted = makeEl('div', 'wanted', tr, '☆☆☆☆☆');
+    this.els.wantedLabel = makeEl('div', 'wanted-label', tr, 'CLEAN');
+    this.els.health = makeEl('div', 'health', tr, '♥ 100  🛡 0');
+    this.els.clock = makeEl('div', 'clock', tr, '18:42');
+    // --- minimap bottom-left ---
+    const mm = makeEl('div', 'panel minimap-wrap', root);
+    this.els.minimap = makeEl('canvas', 'minimap', mm);
+    this.els.minimap.width = 190; this.els.minimap.height = 190;
+    this.els.zone = makeEl('div', 'zone', mm, 'CORAL BAY');
+    // --- speed bottom-right ---
+    const sp = makeEl('div', 'panel speed-panel', root);
+    this.els.speed = makeEl('div', 'speed', sp, '0');
+    makeEl('div', 'speed-unit', sp, 'MPH');
+    this.els.vehicle = makeEl('div', 'vehicle', sp, 'ON FOOT');
+    this.els.damage = makeEl('div', 'damage', sp, 'DAMAGE 0%');
+    this.els.nitro = makeEl('div', 'nitro', sp, 'NITRO ▰▰▰▰▰');
+    // --- weapon slots bottom-centre-left ---
+    const ws = makeEl('div', 'panel weapon-slots', root);
+    this.els.slots = [];
+    WEAPONS.forEach((w, i) => {
+      const s = makeEl('div', 'wslot', ws, w.slot + ' ' + w.name);
+      this.els.slots.push(s);
     });
-  });
-  panel.querySelectorAll('button[data-house]').forEach((b) => {
-    b.addEventListener('click', () => {
-      const { buySafehouse } = window.__garageApi;
-      buySafehouse(W, b.dataset.house);
+    // --- radio + objective banner bottom-centre ---
+    const bc = makeEl('div', 'panel bottom-centre', root);
+    this.els.radio = makeEl('div', 'radio', bc, '♪ BAY FM 98.5 — Sunset Drive');
+    this.els.bannerTitle = makeEl('div', 'banner-title', bc, '');
+    this.els.bannerSub = makeEl('div', 'banner-sub', bc, '');
+    this.els.hint = makeEl('div', 'hint-line', bc, '');
+    // --- race HUD ---
+    const rh = makeEl('div', 'panel race-hud', root);
+    this.els.raceName = makeEl('div', 'race-name', rh, '');
+    this.els.racePos = makeEl('div', 'race-pos', rh, '');
+    this.els.raceLap = makeEl('div', 'race-lap', rh, '');
+    this.els.raceTime = makeEl('div', 'race-time', rh, '');
+    rh.style.display = 'none';
+    this.els.raceHud = rh;
+    // --- toasts ---
+    this.els.toastBox = makeEl('div', 'toast-box', root);
+    // --- weapon wheel ---
+    const wheel = makeEl('div', 'wheel', root);
+    wheel.style.display = 'none';
+    this.els.wheel = wheel;
+    makeEl('div', 'wheel-centre', wheel, 'WEAPON');
+    WEAPONS.forEach((w, i) => {
+      const a = (i / WEAPONS.length) * Math.PI * 2 - Math.PI / 2;
+      const seg = makeEl('div', 'wheel-seg', wheel, w.slot + ' ' + w.name);
+      seg.style.left = (50 + Math.cos(a) * 36) + '%';
+      seg.style.top = (50 + Math.sin(a) * 36) + '%';
+      seg.dataset.idx = i;
+      seg.addEventListener('click', () => { this.G.combat.select(i); this.hideWheel(); });
     });
-  });
+    // --- start screen ---
+    const start = makeEl('div', 'overlay start-screen', root);
+    makeEl('div', 'game-title', start, 'CORAL HEAT');
+    makeEl('div', 'game-sub', start, '20 STORY MISSIONS • CASINO HEIST • STREET RACES • GARAGE & BIKES');
+    makeEl('div', 'game-sub2', start, '5-STAR POLICE • HELICOPTER CHASES • ROADBLOCKS • CARJACKING • BOATS & RADIO');
+    const ctrl = makeEl('div', 'controls', start);
+    ctrl.innerHTML = 'WASD drive / walk &nbsp;•&nbsp; E enter car / boat / bike &nbsp;•&nbsp; F carjack<br>' +
+      'Q weapon wheel &nbsp;•&nbsp; CLICK shoot &nbsp;•&nbsp; SHIFT nitro / sprint &nbsp;•&nbsp; R radio<br>' +
+      'G garage &amp; safehouses &nbsp;•&nbsp; M mission &nbsp;•&nbsp; P pause &nbsp;•&nbsp; C camera &nbsp;•&nbsp; H help';
+    const playBtn = makeEl('button', 'play-btn', start, '▶  START ENGINE');
+    playBtn.addEventListener('click', () => this.G.startGame());
+    this.els.startScreen = start;
+    // --- pause overlay ---
+    const pause = makeEl('div', 'overlay pause-screen', root);
+    pause.style.display = 'none';
+    makeEl('div', 'pause-title', pause, 'PAUSED');
+    const resumeBtn = makeEl('button', 'play-btn', pause, 'RESUME');
+    resumeBtn.addEventListener('click', () => this.G.togglePause(false));
+    const saveBtn = makeEl('button', 'play-btn', pause, 'SAVE GAME');
+    saveBtn.addEventListener('click', () => { this.G.save?.save(); this.toast('GAME SAVED', '#7CFC00'); });
+    this.els.pauseScreen = pause;
+    // --- garage / shop panel ---
+    const shop = makeEl('div', 'overlay shop-panel', root);
+    shop.style.display = 'none';
+    makeEl('div', 'shop-title', shop, 'GARAGE & SAFEHOUSES');
+    this.els.shopBody = makeEl('div', 'shop-body', shop);
+    const closeBtn = makeEl('button', 'play-btn', shop, 'CLOSE (G)');
+    closeBtn.addEventListener('click', () => this.closeShop());
+    this.els.shop = shop;
+    return root;
+  }
+
+  toast(text, color = '#ffffff') {
+    const t = makeEl('div', 'toast', this.els.toastBox, text);
+    t.style.borderLeftColor = color;
+    this.toasts.push(t);
+    setTimeout(() => { t.remove(); this.toasts = this.toasts.filter((x) => x !== t); }, 4200);
+    while (this.toasts.length > 4) { const old = this.toasts.shift(); old.remove(); }
+  }
+  banner(title, sub) {
+    this.els.bannerTitle.textContent = title;
+    this.els.bannerSub.textContent = sub || '';
+    this.els.bannerTitle.classList.add('flash');
+    setTimeout(() => this.els.bannerTitle.classList.remove('flash'), 3000);
+  }
+  hint(text) { this.els.hint.textContent = text; }
+  showWheel() {
+    this.els.wheel.style.display = 'block';
+    this.wheelOpen = true;
+    this.els.slots.forEach((s, i) => s.classList.toggle('active', i === this.G.combat.weaponIndex));
+  }
+  hideWheel() { this.els.wheel.style.display = 'none'; this.wheelOpen = false; }
+
+  openShop() {
+    const G = this.G;
+    const body = this.els.shopBody;
+    body.innerHTML = '';
+    makeEl('div', 'shop-sec', body, '— SAFEHOUSES —');
+    for (const sh of SAFEHOUSES) {
+      const row = makeEl('div', 'shop-row', body);
+      makeEl('span', '', row, sh.name + ' — ' + sh.desc);
+      const b = makeEl('button', 'buy-btn', row, G.garage.owned[sh.id] ? 'OWNED ✓' : 'BUY ' + fmtMoney(sh.price));
+      b.disabled = !!G.garage.owned[sh.id];
+      b.addEventListener('click', () => {
+        const r = G.garage.buySafehouse(G, sh);
+        this.toast(r.msg, r.ok ? '#7CFC00' : '#ff8844');
+        if (r.ok) { G.missions2?.onHouseBought?.(); this.openShop(); }
+      });
+    }
+    makeEl('div', 'shop-sec', body, '— UPGRADES (' + G.playerCar.model.name + ') —');
+    for (const up of UPGRADES) {
+      const lvl = G.playerCar.upgrades[up.id] || 0;
+      const row = makeEl('div', 'shop-row', body);
+      makeEl('span', '', row, up.name + ' Lv' + lvl + '/' + up.levels.length + ' — ' + up.desc);
+      const price = lvl >= up.levels.length ? 'MAXED' : 'BUY ' + fmtMoney(up.levels[lvl]);
+      const b = makeEl('button', 'buy-btn', row, price);
+      b.disabled = lvl >= up.levels.length;
+      b.addEventListener('click', () => {
+        const r = G.garage.buyUpgrade(G, up);
+        this.toast(r.msg, r.ok ? '#7CFC00' : '#ff8844');
+        if (r.ok) { G.missions2?.onUpgradeBought?.(); this.openShop(); }
+      });
+    }
+    const storeBtn = makeEl('button', 'buy-btn', body, 'STORE CURRENT CAR IN NEAREST OWNED SAFEHOUSE');
+    storeBtn.addEventListener('click', () => {
+      const sh = G.garage.markers.map((m) => m.sh).find((s) => G.garage.owned[s.id]);
+      if (!sh) { this.toast('Buy a safehouse first.', '#ff8844'); return; }
+      const r = G.garage.storeCar(G, sh);
+      this.toast(r.msg, r.ok ? '#7CFC00' : '#ff8844');
+    });
+    this.els.shop.style.display = 'flex';
+    G.shopOpen = true;
+  }
+  closeShop() { this.els.shop.style.display = 'none'; this.G.shopOpen = false; }
+
+  update(G, dt) {
+    const e = this.els;
+    const p = G.player;
+    e.cash.textContent = fmtMoney(p.cash);
+    const w = G.police.wanted;
+    e.wanted.textContent = '★'.repeat(w) + '☆'.repeat(5 - w);
+    e.wanted.className = 'wanted w' + w;
+    e.wantedLabel.textContent = w === 0 ? 'CLEAN' : 'WANTED — ' + ['','ONE','TWO','THREE','FOUR','FIVE'][w] + ' STAR' + (w > 1 ? 'S' : '');
+    const armor = Math.max(0, 100 - G.playerCar.damage);
+    e.health.textContent = '♥ ' + Math.max(0, Math.floor(p.health)) + '  🛡 ' + Math.floor(armor);
+    e.clock.textContent = fmtClock(G.timeOfDay);
+    // mission
+    const m1 = G.missions.active;
+    const m2 = G.missions2.active;
+    const act = m1 || m2;
+    if (act) {
+      e.missionName.textContent = 'MISSION ' + act.def.id + ' — ' + act.def.title;
+      e.missionDesc.textContent = act.def.giver + ': ' + act.def.desc;
+      e.missionHint.textContent = act.def.hint || '';
+      let obj = 'OBJECTIVE: ';
+      if (act.def.type === 'timed') obj += 'REACH THE MARKER — ' + Math.ceil(G.missions.timer) + 's LEFT';
+      else if (act.def.type === 'collect') obj += 'CASH DROPS ' + act.collected + '/' + act.def.count;
+      else if (act.def.type === 'survive') obj += 'SURVIVE ' + Math.ceil(G.missions.surviveTimer) + 's AT 3 STARS';
+      else if (act.def.type === 'vault') obj += 'CRACK THE VAULT — STAY INSIDE THE CASINO';
+      else if (act.def.type === 'race') obj += 'WIN THE RACE — ' + act.def.circuit;
+      else obj += act.def.title;
+      e.objective.textContent = obj;
+    } else {
+      const next = G.missions.current || G.missions2.current;
+      e.missionName.textContent = next ? 'NEXT: MISSION ' + next.id + ' — ' + next.title : 'STORY COMPLETE — FREE ROAM';
+      e.missionDesc.textContent = next ? next.desc : 'You own Coral Bay.';
+      e.missionHint.textContent = 'Press M to start the mission';
+      e.objective.textContent = 'OBJECTIVE: —';
+    }
+    // speed / vehicle
+    if (G.inCar) {
+      e.speed.textContent = String(Math.round(G.playerCar.mph));
+      e.vehicle.textContent = G.playerCar.model.name.toUpperCase() + '  •  ' + (G.playerCar.nitroActive ? 'NITRO!' : 'DRIVE');
+      e.damage.textContent = 'DAMAGE ' + Math.floor(G.playerCar.damage) + '%';
+      const nb = Math.round(G.playerCar.nitro / 20);
+      e.nitro.textContent = 'NITRO ' + '▰'.repeat(nb) + '▱'.repeat(5 - nb);
+    } else if (G.boats.active) {
+      e.speed.textContent = String(Math.round(Math.abs(G.boats.active.speed) * 2.237));
+      e.vehicle.textContent = G.boats.active.model.name.toUpperCase() + '  •  BOAT';
+      e.damage.textContent = 'WATER: MARINA';
+      e.nitro.textContent = '';
+    } else if (G.bikes.active) {
+      e.speed.textContent = String(Math.round(Math.abs(G.bikes.active.speed) * 2.237));
+      e.vehicle.textContent = G.bikes.active.model.name.toUpperCase() + '  •  BIKE' + (G.bikes.active.wheelie > 0.5 ? '  •  WHEELIE!' : '');
+      e.damage.textContent = 'LEAN WITH A / D';
+      e.nitro.textContent = '';
+    } else {
+      e.speed.textContent = String(Math.round(G.walker.speed * 2.237));
+      e.vehicle.textContent = 'ON FOOT — MAYA "REEF" SANTOS';
+      e.damage.textContent = 'PRESS E NEAR A CAR / BOAT / BIKE';
+      e.nitro.textContent = '';
+    }
+    // weapon slots
+    const cw = G.combat;
+    this.els.slots.forEach((s, i) => {
+      const w = WEAPONS[i];
+      const ammo = cw.ammo[w.id] === Infinity ? '∞' : cw.ammo[w.id];
+      s.textContent = w.slot + ' ' + w.name + ' [' + ammo + ']';
+      s.classList.toggle('active', i === cw.weaponIndex);
+    });
+    // radio
+    e.radio.textContent = '♪ ' + G.sound.stationName() + ' — ' + G.sound.stationTrack();
+    // race HUD
+    const r = G.raceway.active;
+    if (r) {
+      this.els.raceHud.style.display = 'block';
+      this.els.raceName.textContent = '🏁 ' + r.circuit.name.toUpperCase();
+      this.els.racePos.textContent = r.state === 'countdown' ? 'GET READY… ' + Math.ceil(r.countdown) : 'POSITION P' + r.position + '/4';
+      this.els.raceLap.textContent = 'LAP ' + Math.min(r.lap, r.circuit.laps) + '/' + r.circuit.laps;
+      this.els.raceTime.textContent = 'TIME ' + fmtLap(r.totalTime) + '  •  BEST ' + fmtLap(G.raceway.bestLaps[r.circuit.name]);
+    } else {
+      this.els.raceHud.style.display = 'none';
+    }
+    // zone label
+    const pos = G.playerPos();
+    e.zone.textContent = pos ? zoneName(pos.x, pos.z) : 'CORAL BAY';
+    this.drawMinimap(G);
+  }
+
+  drawMinimap(G) {
+    const c = this.els.minimap;
+    const g = c.getContext('2d');
+    const W = 190, S = 190 / 560; // world -280..280 -> 0..190
+    g.clearRect(0, 0, W, W);
+    g.fillStyle = 'rgba(10,14,24,0.82)';
+    g.fillRect(0, 0, W, W);
+    const toX = (x) => (x + 280) * S;
+    const toY = (z) => (z + 280) * S;
+    // water
+    g.fillStyle = '#1d6f8e';
+    g.fillRect(0, toY(220), W, W - toY(220));
+    g.fillRect(0, 0, toX(-244), W);
+    // roads
+    g.strokeStyle = '#5a6272';
+    g.lineWidth = 4;
+    for (let i = -4; i <= 4; i++) {
+      const v = toX(i * 52);
+      g.beginPath(); g.moveTo(v, 0); g.lineTo(v, W); g.stroke();
+      const h = toY(i * 52);
+      g.beginPath(); g.moveTo(0, h); g.lineTo(W, h); g.stroke();
+    }
+    // casino district
+    g.fillStyle = '#ff2fd6';
+    g.fillRect(toX(120), toY(-180), 26, 26);
+    // dots: boats
+    g.fillStyle = '#4ecdc4';
+    for (const b of G.boats.list) { g.beginPath(); g.arc(toX(b.x), toY(b.z), 2.5, 0, 7); g.fill(); }
+    // police
+    g.fillStyle = '#ff3333';
+    for (const pc of G.police.cars) { g.beginPath(); g.arc(toX(pc.x), toY(pc.z), 3, 0, 7); g.fill(); }
+    if (G.police.heli) { g.fillStyle = '#ff8800'; g.beginPath(); g.arc(toX(G.police.heli.x), toY(G.police.heli.z), 3.5, 0, 7); g.fill(); }
+    // beacon
+    const bc = G.missions.beacon || G.missions2.beacon;
+    if (bc) {
+      g.fillStyle = '#ffd166';
+      g.beginPath(); g.arc(toX(bc.x), toY(bc.z), 5, 0, 7); g.fill();
+      g.strokeStyle = '#ffd166'; g.lineWidth = 1.5;
+      g.beginPath(); g.arc(toX(bc.x), toY(bc.z), 8 + Math.sin(G.time * 4) * 2, 0, 7); g.stroke();
+    }
+    // player arrow
+    const pos = G.playerPos();
+    if (pos) {
+      g.save();
+      g.translate(toX(pos.x), toY(pos.z));
+      g.rotate(G.playerHeading());
+      g.fillStyle = '#ffffff';
+      g.beginPath(); g.moveTo(0, -7); g.lineTo(5, 6); g.lineTo(-5, 6); g.closePath(); g.fill();
+      g.restore();
+    }
+    // frame
+    g.strokeStyle = '#ffd166'; g.lineWidth = 2;
+    g.strokeRect(1, 1, W - 2, W - 2);
+  }
+}
+
+export function zoneName(x, z) {
+  if (z > 200) return 'MARINA — CORAL BAY';
+  if (x > 100 && z < -80) return 'NEON DISTRICT — CASINO ROW';
+  if (x < -230) return 'SUNSET BEACH';
+  if (Math.abs(x) < 30 && Math.abs(z) < 30) return 'DOWNTOWN — CORAL BAY';
+  if (z > 150) return 'MARINA ROW';
+  if (x > 150) return 'EASTSIDE';
+  if (x < -150) return 'WESTSIDE';
+  return 'CORAL BAY';
 }

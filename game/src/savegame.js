@@ -1,59 +1,50 @@
-// savegame.js — save / load through localStorage: cash, missions done,
-// owned safehouses, upgrades and the best lap per race.
+// Coral Heat — save game: localStorage persistence for cash, missions,
+// safehouses, upgrades, best laps. Fresh write, round 7.
+
 const KEY = 'coral-heat-save-v210';
 
-export function saveGame(W) {
-  try {
-    const data = {
-      cash: W.player.cash,
-      missions: W.story.done.concat(W.story2.done.map((id) => 100 + id)),
-      storyIndex: W.story.index,
-      story2Index: W.story2.index,
-      owned: W.garage.owned,
-      upgrades: W.garageUpgrades,
-      bestLaps: W.bestLaps || {},
-      savedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(KEY, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    return false;
+export class SaveGame {
+  constructor(G) { this.G = G; }
+  save() {
+    try {
+      const G = this.G;
+      const data = {
+        cash: Math.floor(G.player.cash),
+        missionsDone: G.player.missionsDone || 0,
+        missionIndex: G.missions.index,
+        mission2Index: G.missions2.index,
+        owned: G.garage.owned,
+        stored: G.garage.stored,
+        upgrades: G.playerCar.upgrades,
+        bestLaps: G.raceway.bestLaps,
+        kills: G.player.kills || 0,
+        station: G.sound.station,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(KEY, JSON.stringify(data));
+      return true;
+    } catch (e) { return false; }
   }
-}
-
-export function loadGame(W) {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (typeof data.cash === 'number') W.player.cash = data.cash;
-    if (Array.isArray(data.missions)) {
-      W.story.done = data.missions.filter((id) => id < 100);
-      W.story2.done = data.missions.filter((id) => id >= 100).map((id) => id - 100);
-    }
-    if (typeof data.storyIndex === 'number') W.story.index = Math.max(W.story.index, data.storyIndex);
-    if (typeof data.story2Index === 'number') W.story2.index = Math.max(W.story2.index, data.story2Index);
-    if (data.owned) Object.assign(W.garage.owned, data.owned);
-    if (data.upgrades) Object.assign(W.garageUpgrades, data.upgrades);
-    if (data.bestLaps) W.bestLaps = data.bestLaps;
-    return data;
-  } catch (e) {
-    return null;
+  load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      const G = this.G;
+      G.player.cash = data.cash ?? 2500;
+      G.player.missionsDone = data.missionsDone ?? 0;
+      G.missions.index = data.missionIndex ?? 0;
+      G.missions2.index = data.mission2Index ?? 0;
+      G.garage.owned = data.owned ?? {};
+      G.garage.stored = data.stored ?? {};
+      Object.assign(G.playerCar.upgrades, data.upgrades ?? {});
+      G.raceway.bestLaps = data.bestLaps ?? {};
+      G.player.kills = data.kills ?? 0;
+      G.sound.station = data.station ?? 0;
+      return data;
+    } catch (e) { return null; }
   }
-}
-
-export function hasSave() {
-  try {
-    return !!localStorage.getItem(KEY);
-  } catch (e) {
-    return false;
-  }
-}
-
-export function clearSave() {
-  try {
-    localStorage.removeItem(KEY);
-  } catch (e) {
-    // Storage unavailable — nothing to clear.
+  clear() {
+    try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
   }
 }

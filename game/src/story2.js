@@ -1,179 +1,162 @@
-// story2.js — missions 13-20: four missions built on the races, bikes and
-// garage, then the casino-heist finale chain (recon, getaway driver, vault,
-// escape by boat). The heist is the climax of CORAL HEAT.
-import { fmtCash, dist2 } from './util.js';
-import { PLACES } from './coralcity.js';
-import { RACES, startRace } from './raceway.js';
-import { giveWeapon } from './fight.js';
+// Coral Heat — story missions 13-20: races, bikes, garage, and the 4-part
+// casino-heist finale (recon, getaway driver, vault, escape by boat).
+// Fresh write, round 7.
+import * as THREE from 'three';
 
-export const MISSIONS2 = [
-  { id: 13, name: 'MARINA MILE', giver: 'VEX', brief: 'Win the Marina Mile street race. P3 or better pays.', target: 'race', race: 'marina-mile', reward: 1500 },
-  { id: 14, name: 'REEF RIDER', giver: 'VEX', brief: 'Take a bike from Reef Riders and ride it to the pier.', target: 'bikeShop', kind: 'bike', reward: 900 },
-  { id: 15, name: 'TUNED UP', giver: 'DEX', brief: 'Buy any upgrade at Sunset Garage. Speed costs money.', target: 'garageBay', kind: 'upgrade', reward: 600 },
-  { id: 16, name: 'GRAND PRIX', giver: 'VEX', brief: 'Win the Coral Grand Prix. The whole city is watching.', target: 'race', race: 'coral-grand-prix', reward: 4000 },
-  { id: 17, name: 'CASINO RECON', giver: 'ROOK', brief: 'Scope the Coral Crown Casino. Park at the door and photograph the vault route.', target: 'casinoDoor', kind: 'recon', reward: 1500 },
-  { id: 18, name: 'GETAWAY DRIVER', giver: 'ROOK', brief: 'Outrun a 4-star chase for 30 seconds. The crew is counting on you.', target: 'survive4', kind: 'survive', count: 30, stars: 4, reward: 3000 },
-  { id: 19, name: 'THE VAULT', giver: 'ROOK', brief: 'Inside the casino! Hold the vault room for 40 seconds while Dex cracks it.', target: 'casinoDoor', kind: 'hold', count: 40, reward: 8000 },
-  { id: 20, name: 'ESCAPE BY BOAT', giver: 'MARINA', brief: 'The heat is on. Get to the marina, steal a boat, sail south past the buoy.', target: 'marinaDock', kind: 'escape', reward: 12000 },
+export const MISSIONS_13_20 = [
+  { id: 13, title: 'BIKE LIFE', giver: 'Drex', desc: 'Ride a motorcycle to the Palm Sprint start line.', type: 'bike', target: [-52, 0], reward: 3500, hint: 'Find a bike on the street, press E, then ride.' },
+  { id: 14, title: 'PALM SPRINT', giver: 'Drex', desc: 'Win the Palm Sprint circuit on a bike.', type: 'race', target: [-52, 0], circuit: 'Palm Sprint', reward: 5000, hint: 'Win it. Bikes are quick off the line.' },
+  { id: 15, title: 'HOME BASE', giver: 'Lena', desc: 'Buy any safehouse — a place to store your cars.', type: 'buyhouse', target: [-78, 78], reward: 2500, hint: 'Stand in a glowing marker and press G.' },
+  { id: 16, title: 'TUNED UP', giver: 'Lena', desc: 'Buy any garage upgrade for your car.', type: 'upgrade', target: [78, 130], reward: 3000, hint: 'Garage shop: press G near the garage marker.' },
+  { id: 17, title: 'HEIST: RECON', giver: 'The Fixer', desc: 'Case the Coral Crown Casino. Reach the neon district without raising heat.', type: 'stealth', target: [150, -150], reward: 5000, hint: 'Stay clean. No crimes on the way in.' },
+  { id: 18, title: 'HEIST: GETAWAY DRIVER', giver: 'The Fixer', desc: 'Win the Casino Loop race — prove you can drive the getaway.', type: 'race', target: [104, -104], circuit: 'Casino Loop', reward: 6000, hint: 'Win the Casino Loop.' },
+  { id: 19, title: 'HEIST: THE VAULT', giver: 'The Fixer', desc: 'Enter the Coral Crown Casino and crack the vault. Get inside!', type: 'vault', target: [150, -136], reward: 15000, hint: 'Walk through the casino doors.' },
+  { id: 20, title: 'HEIST: ESCAPE BY BOAT', giver: 'The Fixer', desc: 'Five stars. Escape to the marina and leave by boat — the finale.', type: 'escape', target: [0, 265], reward: 25000, hint: 'Boat at the dock. Do not get caught.' },
 ];
 
-export function initStory2(W) {
-  W.story2 = { index: 0, active: null, progress: 0, timer: 0, done: [] };
-}
-
-export function currentMission2(W) {
-  return MISSIONS2[W.story2.index] || null;
-}
-
-export function startMission2(W, idx = W.story2.index) {
-  const m = MISSIONS2[idx];
-  if (!m) return null;
-  W.story2.active = { ...m, progress: 0, timer: 0 };
-  W.story2.progress = 0;
-  W.story2.timer = 0;
-  W.objective = 'M' + m.id + ' — ' + m.name + ': ' + m.brief;
-  W.hudFlash('MISSION ' + m.id + ' — ' + m.name);
-  if (m.target === 'race') {
-    startRace(W, m.race);
-  } else if (m.kind === 'upgrade') {
-    const up = W.garageUpgrades || {};
-    W.story2.baseUpgrades = up.engine + up.tires + up.armor + up.nitro;
-  } else if (m.kind === 'survive') {
-    W.player.wanted = Math.max(W.player.wanted, m.stars || 3);
-  } else if (m.id === 19) {
-    giveWeapon(W, 'shotgun', 30);
-    W.player.wanted = Math.max(W.player.wanted, 4);
-    W.hudFlash('VAULT CREW INSIDE — HOLD THE ROOM');
-  } else if (m.kind === 'recon') {
-    // Park a getaway car by the casino door for the photo op.
-    W.objective = 'M17 — CASINO RECON: stand at the casino door for 5s';
+export class MissionsPart2 {
+  constructor(scene, G) {
+    this.scene = scene;
+    this.G = G;
+    this.defs = MISSIONS_13_20;
+    this.index = 0;   // 0-based within part 2 (mission 13 == index 0)
+    this.active = null;
+    this.vaultTimer = 0;
+    this.beacon = null;
   }
-  const pl = PLACES[m.target];
-  if (pl && m.target !== 'race') {
-    W.story.marker.position.set(pl.x, 0, pl.z);
-    W.story.marker.visible = true;
+  get current() { return this.defs[this.index] || null; }
+  // called by part 1 when it finishes mission 12
+  syncIndex(part1Index) {
+    if (part1Index >= 12 && this.index === 0 && !this.active) {
+      setTimeout(() => this.startCurrent(), 1200);
+    }
   }
-  W.events.push({ type: 'missionstart', id: m.id, name: m.name });
-  return m;
-}
+  get globalIndex() { return 12 + this.index; }
+  get isActive() { return !!this.active; }
 
-export function completeMission2(W) {
-  const m = W.story2.active;
-  if (!m) return;
-  W.player.cash += m.reward;
-  W.story2.done.push(m.id);
-  W.story2.index += 1;
-  W.story2.active = null;
-  W.story.marker.visible = false;
-  W.hudFlash('MISSION COMPLETE — +' + fmtCash(m.reward));
-  W.events.push({ type: 'missiondone', id: m.id, reward: m.reward });
-  W.saveGame?.();
-  if (m.id === 20) {
-    W.objective = 'HEIST COMPLETE — CORAL HEAT LEGEND. Free roam!';
-    W.hudFlash('CORAL CROWN HEIST — CLEAN GETAWAY!');
-    W.fx.explode(W.player.x + 10, 1, W.player.z - 10, true);
-  } else {
-    const next = currentMission2(W);
-    W.objective = next
-      ? 'NEXT: M' + next.id + ' — ' + next.name + ' (press N to start)'
-      : 'ALL 20 MISSIONS DONE — free roam!';
+  makeBeacon(x, z, color = 0xff2fd6) {
+    this.clearBeacon();
+    const pillar = new THREE.Mesh(
+      new THREE.CylinderGeometry(3, 3, 60, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false })
+    );
+    pillar.position.set(x, 30, z);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(4, 0.4, 8, 24), new THREE.MeshBasicMaterial({ color }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(x, 0.3, z);
+    this.scene.add(pillar); this.scene.add(ring);
+    this.beacon = { pillar, ring, x, z };
   }
-}
+  clearBeacon() {
+    if (!this.beacon) return;
+    this.scene.remove(this.beacon.pillar);
+    this.scene.remove(this.beacon.ring);
+    this.beacon = null;
+  }
 
-export function failMission2(W, why) {
-  const m = W.story2.active;
-  if (!m) return;
-  W.story2.active = null;
-  W.story.marker.visible = false;
-  W.hudFlash('MISSION FAILED — ' + why + ' (press N to retry)');
-  W.events.push({ type: 'missionfail', id: m.id, why });
-}
+  startCurrent() {
+    const def = this.current;
+    if (!def) return null;
+    this.active = { def, startedAt: this.G.time };
+    if (def.target) this.makeBeacon(def.target[0], def.target[1]);
+    if (def.type === 'race') {
+      const c = this.G.racewayCircuits.find((x) => x.name === def.circuit);
+      if (c) this.G.raceway.startRace(c, this.G);
+    }
+    if (def.type === 'vault') this.vaultTimer = 12;
+    if (def.type === 'escape') this.G.police.setWanted(5, this.G);
+    this.G.hud?.banner('MISSION ' + def.id + ' — ' + def.title, def.giver + ': ' + def.desc);
+    this.G.hud?.toast('NEW MISSION: ' + def.title, '#ff2fd6');
+    this.G.sound?.beep(520);
+    return this.active;
+  }
 
-export function updateStory2(W, dt) {
-  const s2 = W.story2;
-  const m = s2.active;
-  if (!m) return;
-  const p = W.player;
-  s2.timer += dt;
-  switch (m.kind) {
-    case 'bike': {
-      // Ride any bike to the pier.
-      if (p.mode === 'bike') {
-        const pier = PLACES.pier;
-        if (dist2(p.x, p.z, pier.x, pier.z) < 12) completeMission2(W);
-        else W.objective = 'M14 — Ride the bike to the pier (marker)';
+  complete() {
+    const def = this.active.def;
+    this.G.player.cash += def.reward;
+    this.G.player.missionsDone = (this.G.player.missionsDone || 0) + 1;
+    this.G.hud?.banner('MISSION COMPLETE', def.title + ' • +$' + def.reward.toLocaleString('en-US'));
+    this.G.hud?.toast('+$' + def.reward.toLocaleString('en-US') + ' — ' + def.title, '#7CFC00');
+    this.G.sound?.fanfare(true);
+    this.G.save?.save();
+    this.active = null;
+    this.clearBeacon();
+    this.index++;
+    if (this.current) setTimeout(() => this.startCurrent(), 2500);
+    else {
+      this.G.hud?.banner('CORAL HEAT — STORY COMPLETE', '20/20 missions. The casino is yours. Free roam!');
+      this.G.player.storyComplete = true;
+    }
+  }
+  fail(reason) {
+    this.G.hud?.banner('MISSION FAILED', reason || '');
+    this.G.hud?.toast('Mission failed — try again (M)', '#ff4444');
+    this.active = null;
+    this.clearBeacon();
+    if (this.G.raceway.active) this.G.raceway.abort();
+  }
+
+  onRaceFinished(circuit, win) {
+    if (this.active && this.active.def.type === 'race' && win) this.complete();
+  }
+  onHouseBought() {
+    if (this.active && this.active.def.type === 'buyhouse') this.complete();
+  }
+  onUpgradeBought() {
+    if (this.active && this.active.def.type === 'upgrade') this.complete();
+  }
+
+  update(dt) {
+    if (!this.active) return;
+    const def = this.active.def;
+    const p = this.G.playerPos();
+    if (!p) return;
+    if (this.beacon) {
+      this.beacon.pillar.rotation.y += dt;
+      const s = 1 + Math.sin(this.G.time * 4) * 0.12;
+      this.beacon.ring.scale.set(s, s, s);
+    }
+    switch (def.type) {
+      case 'bike': {
+        if (this.G.bikes.active && def.target && Math.hypot(p.x - def.target[0], p.z - def.target[1]) < 9) this.complete();
+        break;
       }
-      break;
-    }
-    case 'upgrade': {
-      const up = W.garageUpgrades || {};
-      const total = up.engine + up.tires + up.armor + up.nitro;
-      if (total > (s2.baseUpgrades ?? 0)) completeMission2(W);
-      break;
-    }
-    case 'recon': {
-      const door = PLACES.casinoDoor;
-      const d = dist2(p.x, p.z, door.x, door.z);
-      if (d < 10) {
-        s2.progress += dt;
-        W.objective = 'M17 — CASINO RECON: photographing… ' + Math.ceil(5 - s2.progress) + 's';
-        if (s2.progress >= 5) completeMission2(W);
-      } else {
-        s2.progress = 0;
-      }
-      break;
-    }
-    case 'survive': {
-      const need = m.stars || 3;
-      if (p.wanted >= need) s2.progress += dt;
-      else s2.progress = Math.max(0, s2.progress - dt * 2);
-      W.objective = 'M18 — GETAWAY: hold ' + need + ' stars ' + Math.floor(s2.progress) + 's / ' + m.count + 's';
-      if (s2.progress >= m.count) {
-        p.wanted = 0;
-        completeMission2(W);
-      }
-      if (s2.timer > 150) failMission2(W, 'TOOK TOO LONG');
-      break;
-    }
-    case 'hold': {
-      // Hold the vault room: stay inside the casino door zone while wanted.
-      const door = PLACES.casinoDoor;
-      const d = dist2(p.x, p.z, door.x, door.z);
-      if (d < 16) {
-        s2.progress += dt;
-        W.objective = 'M19 — THE VAULT: cracking… ' + Math.floor(s2.progress) + 's / ' + m.count + 's';
-        if (chance(dt * 0.35)) W.fx.burst(p.x + 4, 1.5, p.z, 'spark', 4);
-        if (s2.progress >= m.count) completeMission2(W);
-      } else {
-        W.objective = 'M19 — THE VAULT: get back inside the casino door!';
-      }
-      break;
-    }
-    case 'escape': {
-      const dock = PLACES.marinaDock;
-      if (p.mode !== 'boat') {
-        if (dist2(p.x, p.z, dock.x, dock.z) < 14) {
-          W.objective = 'M20 — ESCAPE: steal a boat at the dock (press E)';
-        } else {
-          W.objective = 'M20 — ESCAPE BY BOAT: get to the marina dock';
+      case 'buyhouse':
+      case 'upgrade': {
+        // completion happens via garage callbacks; beacon just guides
+        if (def.target && Math.hypot(p.x - def.target[0], p.z - def.target[1]) < 10) {
+          this.G.hud?.hint('Press G here to open the garage / property menu');
         }
-      } else {
-        W.objective = 'M20 — ESCAPE: sail south past the buoy (z > 250)';
-        if (p.z > 250) completeMission2(W);
+        break;
       }
-      break;
+      case 'stealth': {
+        if (def.target && Math.hypot(p.x - def.target[0], p.z - def.target[1]) < 10) {
+          if (this.G.police.wanted > 0) { this.fail('Spotted! Wanted level rose.'); return; }
+          this.complete();
+        }
+        break;
+      }
+      case 'vault': {
+        // stand inside the casino doorway zone on foot to crack the vault
+        const d = def.target ? Math.hypot(p.x - def.target[0], p.z - def.target[1]) : 999;
+        if (d < 8 && !this.G.inCar) {
+          this.vaultTimer -= dt;
+          this.G.hud?.hint('CRACKING THE VAULT… ' + Math.ceil(this.vaultTimer) + 's — STAY INSIDE');
+          if (this.vaultTimer <= 0) {
+            this.G.player.cash += 5000;
+            this.G.police.setWanted(5, this.G);
+            this.complete();
+          }
+        }
+        break;
+      }
+      case 'escape': {
+        if (this.G.boats.active && def.target && Math.hypot(p.x - def.target[0], p.z - def.target[1]) < 14) {
+          if (this.G.police.wanted === 5) this.complete();
+        }
+        break;
+      }
+      default: break;
     }
-    default:
-      break;
   }
-  // Race missions complete through the race system.
-  if (m.target === 'race' && !W.race.active && W.race.finished) {
-    if (W.race.position <= 3) completeMission2(W);
-    else failMission2(W, 'FINISHED P' + W.race.position + ' — NEED P3');
-    W.race.finished = false;
-  }
-}
-
-function chance(p) {
-  return Math.random() < p;
 }

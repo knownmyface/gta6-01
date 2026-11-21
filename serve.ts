@@ -1,45 +1,35 @@
-// CORAL HEAT — local dev server: serves game/ on http://localhost:8080
-// so the game can be played in a desktop browser while building.
-// Usage: node serve.ts  (then open http://localhost:8080)
+// CORAL HEAT — tiny static dev server: serves game/ at http://localhost:8080.
+// Node 22, standard library only. Run: node serve.ts
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const root = join(here, 'game');
-const port = Number(process.env.PORT ?? 8080);
-
-const TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
+const types = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
 };
 
-const server = createServer(async (req, res) => {
-  try {
-    const raw = decodeURIComponent(req.url.split('?')[0]);
-    const path = raw === '/' ? '/index.html' : raw;
-    const file = join(root, path);
-    if (!file.startsWith(root)) {
-      res.writeHead(403);
-      res.end('forbidden');
-      return;
-    }
-    const data = await readFile(file);
-    res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' });
-    res.end(data);
-  } catch {
-    res.writeHead(404);
+const server = createServer((req, res) => {
+  const path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  const file = join(root, path === '/' ? 'index.html' : path);
+  if (!file.startsWith(root) || !existsSync(file)) {
+    res.writeHead(404, { 'content-type': 'text/plain' });
     res.end('not found');
+    return;
   }
+  res.writeHead(200, { 'content-type': types[extname(file)] || 'application/octet-stream' });
+  res.end(readFileSync(file));
 });
 
-server.listen(port, () => {
-  console.log('CORAL HEAT at http://localhost:' + port);
+server.listen(8080, () => {
+  console.log('CORAL HEAT at http://localhost:8080');
 });

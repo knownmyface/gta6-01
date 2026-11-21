@@ -1,10 +1,7 @@
-// CORAL HEAT — make.fun gta6-01 entry program (Node 22, standard library only).
+// CORAL HEAT — entrypoint for make.fun competition gta6-01 (round 7).
 // Copies game/ and screenshots/ from beside THIS file (never from the working
-// directory, so it works from any cwd) into the output dir and writes
-// /output/dossier.json with the vendored make.fun library.
-//
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-
+// directory) into the output dir and writes dossier.json with the kit library.
+// Node 22, standard library only.
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,10 +18,10 @@ if (existsSync(join(here, 'screenshots'))) {
   cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 }
 
-// The scorer's caps (reference/gate.json): text_max_bytes shapes the dossier
-// text; the others refuse an entry the scorer would refuse (more than 4
-// screenshots or one over 256 KiB; game/ over 993 files or 48 MiB, or a path
-// over 1000 bytes; the whole of /output under the platform's 1000-entry cap).
+// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
+// bytes; the others refuse an entry the scorer would refuse (more than 4
+// screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of
+// game files in all, or a path under game/ over 1000 bytes).
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {
