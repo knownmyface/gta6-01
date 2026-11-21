@@ -1,106 +1,95 @@
-// CORAL HEAT — motorcycles. Three original models (a city scooter, a
-// street cruiser and a sport bike) parked around the city; riding one is
-// the same arcade model as a car, but quicker to turn and easier to knock
-// over at speed. Mission 7 is built on the sport bike.
-CH.bikes = (function () {
-  const U = CH.util;
-  const MODELS = [
-    { type: 'Scooter', color: 0x2ec2a0, top: 34, accel: 12 },
-    { type: 'Cruiser', color: 0xb03a2e, top: 46, accel: 15 },
-    { type: 'Sport Bike', color: 0x1a1a22, top: 54, accel: 19 },
-  ];
+// bikes.js — three rideable motorcycle models. Bikes lean into turns,
+// accelerate hard, and are the fastest way through boulevard traffic.
+import * as THREE from "../vendor/three/three.module.min.js";
+import { clamp, lerp, lerpAngle, rand } from "./util.js";
 
-  function makeBikeMesh(color) {
-    const g = new THREE.Group();
-    const bodyMat = new THREE.MeshLambertMaterial({ color });
-    const dark = new THREE.MeshLambertMaterial({ color: 0x14161a });
-    const tank = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.42, 1.1), bodyMat);
-    tank.position.y = 0.72; tank.position.z = 0.1; g.add(tank);
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.16, 0.8), dark);
-    seat.position.set(0, 0.82, -0.5); g.add(seat);
-    const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 6), dark);
-    fork.position.set(0, 0.62, 0.95); fork.rotation.x = 0.35; g.add(fork);
-    const wheelMat = new THREE.MeshLambertMaterial({ color: 0x101010 });
-    const wheels = [];
-    for (const wz of [0.95, -0.85]) {
-      const w = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.09, 8, 16), wheelMat);
-      w.position.set(0, 0.34, wz); g.add(w); wheels.push(w);
-    }
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff2b0 }));
-    lamp.position.set(0, 0.78, 1.02); g.add(lamp);
-    g.userData.wheels = wheels;
-    return g;
-  }
+export const BIKE_MODELS = [
+  { id: "coast-125", name: "Coast 125", color: 0x37b6ff, top: 48, accel: 24, price: 0 },
+  { id: "neon-600", name: "Neon 600", color: 0xff5ad1, top: 58, accel: 30, price: 9000 },
+  { id: "ember-1000", name: "Ember 1000", color: 0xff5a2a, top: 70, accel: 34, price: 18000 },
+];
 
-  function spawnBikes(scene) {
-    const S = CH.S;
-    const spots = [
-      { x: 24, z: -120, m: 2 }, { x: -96, z: 60, m: 1 }, { x: 132, z: 228, m: 0 },
-      { x: -204, z: -36, m: 1 }, { x: 60, z: -240, m: 2 }, { x: -12, z: 240, m: 0 },
-    ];
-    for (const s of spots) {
-      const spec = MODELS[s.m];
-      const mesh = makeBikeMesh(spec.color);
-      mesh.position.set(s.x, 0, s.z);
-      mesh.rotation.y = U.rand(0, Math.PI * 2);
-      scene.add(mesh);
-      S.bikes.list.push({ x: s.x, z: s.z, heading: mesh.rotation.y, speed: 0, type: spec.type, top: spec.top, accel: spec.accel, mesh, taken: false });
-    }
+export function makeBikeMesh(color) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.3 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.85 });
+  const tank = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.42, 1.1), bodyMat);
+  tank.position.set(0, 0.82, 0.1);
+  g.add(tank);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.16, 0.85), darkMat);
+  seat.position.set(0, 0.8, -0.62);
+  g.add(seat);
+  const fender = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.6), bodyMat);
+  fender.position.set(0, 0.72, 0.95);
+  g.add(fender);
+  const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 6), darkMat);
+  fork.position.set(0, 0.62, 0.95);
+  fork.rotation.x = 0.5;
+  g.add(fork);
+  const bars = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.06), darkMat);
+  bars.position.set(0, 1.05, 0.72);
+  g.add(bars);
+  const headlight = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xfff2b0 }));
+  headlight.position.set(0, 0.85, 1.15);
+  g.add(headlight);
+  const wheels = [];
+  for (const wz of [1.05, -0.85]) {
+    const wheel = new THREE.Group();
+    const tire = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.1, 8, 18), darkMat);
+    wheel.add(tire);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 8),
+      new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8 }));
+    hub.rotation.x = Math.PI / 2;
+    wheel.add(hub);
+    wheel.position.set(0, 0.34, wz);
+    g.add(wheel);
+    wheels.push(wheel);
   }
+  g.userData.wheels = wheels;
+  return g;
+}
 
-  function nearestBike(x, z, maxD) {
-    let best = null, bd = maxD;
-    for (const b of CH.S.bikes.list) {
-      if (b.taken) continue;
-      const d = U.dist2(x, z, b.x, b.z);
-      if (d < bd) { bd = d; best = b; }
-    }
-    return best;
-  }
+export function spawnBike(G, modelId, x, z, heading) {
+  const model = BIKE_MODELS.find((m) => m.id === modelId) || BIKE_MODELS[0];
+  const mesh = makeBikeMesh(model.color);
+  mesh.position.set(x, 0, z);
+  mesh.rotation.y = heading;
+  G.scene.add(mesh);
+  const bike = {
+    kind: "bike", model, mesh,
+    x, z, heading, speed: 0, steer: 0,
+  };
+  G.playerBike = bike;
+  return bike;
+}
 
-  function ride(dt) {
-    const S = CH.S, p = S.player;
-    if (!p.inBike || !p.bike) return;
-    const k = S.input.keys;
-    const b = p.bike;
-    if (k.KeyW) b.speed = Math.min(b.speed + b.accel * dt, b.top);
-    else b.speed = Math.max(b.speed - 8 * dt, 0);
-    if (k.KeyS) b.speed = Math.max(b.speed - 22 * dt, -6);
-    let steer = 0;
-    if (k.KeyA) steer -= 1;
-    if (k.KeyD) steer += 1;
-    b.heading += steer * U.clamp(Math.abs(b.speed) / 10, 0, 1) * 2.4 * dt;
-    const nx = b.x + Math.sin(b.heading) * b.speed * dt;
-    const nz = b.z + Math.cos(b.heading) * b.speed * dt;
-    const hit = CH.city.collide(nx, nz, 1.0);
-    if (hit.x !== nx || hit.z !== nz) b.speed *= 0.5;
-    b.x = U.clamp(hit.x, CH.CFG.cityMin, CH.CFG.cityMax);
-    b.z = U.clamp(hit.z, CH.CFG.cityMin, CH.CFG.waterZ - 2);
-    b.mesh.position.set(b.x, 0, b.z);
-    b.mesh.rotation.y = b.heading;
-    b.mesh.rotation.z = -steer * U.clamp(Math.abs(b.speed) / 20, 0, 1) * 0.35; // lean
-    p.x = b.x; p.z = b.z; p.heading = b.heading; p.speed = b.speed;
-    CH.sound.setEngine(Math.abs(b.speed) / CH.CFG.maxSpeed, true);
-  }
-
-  function mount(bike) {
-    const S = CH.S, p = S.player;
-    p.inBike = true; p.bike = bike; bike.taken = true;
-    p.mesh.visible = false;
-    p.mesh.position.set(bike.x, 0, bike.z);
-    CH.sound.pickup();
-  }
-  function dismount() {
-    const S = CH.S, p = S.player;
-    if (!p.bike) return;
-    p.bike.taken = false;
-    p.x = p.bike.x - Math.sin(p.bike.heading) * 2;
-    p.z = p.bike.z - Math.cos(p.bike.heading) * 2;
-    p.inBike = false; p.bike = null; p.speed = 0;
-    p.mesh.visible = true;
-    p.mesh.position.set(p.x, 0, p.z);
-    CH.sound.setEngine(0, false);
-  }
-
-  return { MODELS, makeBikeMesh, spawnBikes, nearestBike, ride, mount, dismount };
-})();
+export function updateBike(G, dt, input) {
+  const bike = G.playerBike;
+  if (!bike || G.player.mode !== "bike") return;
+  const m = bike.model;
+  const fwd = input.forward ? 1 : input.back ? -0.5 : 0;
+  const targetSpeed = fwd * m.top;
+  const accelRate = fwd !== 0 ? m.accel : 16;
+  if (bike.speed < targetSpeed) bike.speed = Math.min(targetSpeed, bike.speed + accelRate * dt);
+  else if (bike.speed > targetSpeed) bike.speed = Math.max(targetSpeed, bike.speed - accelRate * 1.5 * dt);
+  if (input.brake) bike.speed = lerp(bike.speed, 0, clamp(dt * 6, 0, 1));
+  const steerTarget = (input.left ? 1 : 0) - (input.right ? 1 : 0);
+  bike.steer = lerp(bike.steer, steerTarget, clamp(dt * 7, 0, 1));
+  const spd01 = clamp(Math.abs(bike.speed) / m.top, 0, 1);
+  bike.heading += bike.steer * 3.1 * (0.3 + spd01) * dt * Math.sign(bike.speed || 1) * clamp(Math.abs(bike.speed) / 8, 0, 1);
+  bike.x += Math.sin(bike.heading) * bike.speed * dt;
+  bike.z += Math.cos(bike.heading) * bike.speed * dt;
+  bike.x = clamp(bike.x, -330, 330);
+  bike.z = clamp(bike.z, -198, 330);
+  bike.mesh.position.set(bike.x, 0, bike.z);
+  bike.mesh.rotation.y = bike.heading;
+  bike.mesh.rotation.z = -bike.steer * spd01 * 0.5;
+  const wheels = bike.mesh.userData.wheels || [];
+  for (const w of wheels) w.rotation.y += bike.speed * dt * 2.6;
+  G.player.pos.set(bike.x, 0, bike.z);
+  G.player.heading = bike.heading;
+  G.player.speed = bike.speed;
+  G.displaySpeed = Math.abs(bike.speed) * 2.6;
+  if (G.sound) G.sound.setEngine(spd01, fwd !== 0 ? 1 : 0);
+}

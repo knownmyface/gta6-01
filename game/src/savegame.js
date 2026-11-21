@@ -1,49 +1,47 @@
-// CORAL HEAT — save/load. One localStorage slot holds mission progress,
-// cash, owned cars and best race results; the game autosaves after every
-// mission and whenever the player banks a car at a safehouse.
-CH.savegame = (function () {
-  const KEY = CH.CFG.saveKey;
+// savegame.js — localStorage save/load for Coral Heat. Plain JSON, one key,
+// versioned so an old save never crashes a new build.
+const SAVE_KEY = "coralheat-save-v212";
 
-  function blank() {
-    return { mission: 0, cash: 500, owned: ['Sedan'], bestRace: {}, racesWon: 0, carsStolen: 0, version: 1 };
+export const DEFAULT_SAVE = {
+  version: 212,
+  cash: 2500,
+  mission: 1,
+  missionsDone: [],
+  ownedCars: ["sunset-gt"],
+  ownedBikes: ["coast-125"],
+  ownedBoats: [],
+  safehouses: ["marina-loft"],
+  weapons: ["fists"],
+  bestLap: {},
+  totalEarned: 0,
+  playMinutes: 0,
+};
+
+export function loadSave() {
+  try {
+    const raw = window.localStorage.getItem(SAVE_KEY);
+    if (!raw) return { ...DEFAULT_SAVE };
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 212) return { ...DEFAULT_SAVE };
+    return { ...DEFAULT_SAVE, ...data };
+  } catch (e) {
+    return { ...DEFAULT_SAVE };
   }
-  function load() {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (!raw) return blank();
-      const d = JSON.parse(raw);
-      if (!d || typeof d.mission !== 'number') return blank();
-      const b = blank();
-      b.mission = Math.max(0, Math.min(21, d.mission | 0));
-      b.cash = typeof d.cash === 'number' ? d.cash : 500;
-      b.owned = Array.isArray(d.owned) && d.owned.length ? d.owned : ['Sedan'];
-      b.bestRace = d.bestRace || {};
-      b.racesWon = d.racesWon | 0;
-      b.carsStolen = d.carsStolen | 0;
-      return b;
-    } catch (e) { return blank(); }
+}
+
+export function writeSave(save) {
+  try {
+    save.version = 212;
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    return true;
+  } catch (e) {
+    return false;
   }
-  function save(data) {
-    try { localStorage.setItem(KEY, JSON.stringify(data)); return true; }
-    catch (e) { return false; }
-  }
-  function snapshotFromGame() {
-    const S = CH.S;
-    return {
-      mission: S.missions.idx,
-      cash: Math.round(S.player.cash),
-      owned: S.garage.owned.slice(),
-      bestRace: S.race.best || {},
-      racesWon: S.stats.racesWon,
-      carsStolen: S.stats.carsStolen,
-      version: 1,
-    };
-  }
-  function autosave() {
-    return save(snapshotFromGame());
-  }
-  function clear() {
-    try { localStorage.removeItem(KEY); } catch (e) {}
-  }
-  return { load, save, blank, autosave, clear, snapshotFromGame };
-})();
+}
+
+export function clearSave() {
+  try {
+    window.localStorage.removeItem(SAVE_KEY);
+  } catch (e) { /* silent */ }
+  return { ...DEFAULT_SAVE };
+}

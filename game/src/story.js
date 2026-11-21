@@ -1,143 +1,111 @@
-// CORAL HEAT — the story, missions 1-11, and the mission engine.
-// A mission is a title, a one-line objective, a target on the map and a
-// completion rule (reach it, steal a car, win a race, hold a spot, escape
-// with heat on you). Completing one banks cash, advances the story and
-// autosaves; the beacon in the world always points at the current target.
-CH.story = (function () {
-  const U = CH.util;
-  let beacon = null, beaconRing = null;
+// story.js — story missions 1-16: the rise of Marina "Reef" Solano in Coral
+// Bay. Each mission: title, briefing, objective, a target point, a reward,
+// and a simple completion rule (reach the beacon, survive, or deliver).
+// All characters and crews are original inventions.
+import { dist2d, formatCash } from "./util.js";
 
-  const M1 = [
-    { id: 1, title: 'New in Town', sub: 'Drive or walk to the marina boulevard', type: 'goto', target: { x: 0, z: 240 }, radius: 14, reward: 300 },
-    { id: 2, title: 'Borrowed Wheels', sub: 'Jack a car — walk up to one and press E', type: 'steal', target: { x: 0, z: 240 }, radius: 30, reward: 400 },
-    { id: 3, title: 'Neon Strip Cruise', sub: 'Cruise to the casino district', type: 'goto', target: { x: -180, z: -120 }, radius: 14, reward: 500 },
-    { id: 4, title: 'The Fixer', sub: 'Meet the fixer at the Palm Court safehouse', type: 'goto', target: { x: -60, z: 120 }, radius: 10, reward: 600 },
-    { id: 5, title: 'Heat Check', sub: 'Get the cops on you, then lose them at the park', type: 'escape', target: { x: 120, z: 120 }, radius: 14, reward: 700 },
-    { id: 6, title: 'Midnight Circuit', sub: 'Win the Marina Loop street race', type: 'race', target: { x: 0, z: 240 }, radius: 16, reward: 1500, circuit: 0 },
-    { id: 7, title: 'Two Wheels', sub: 'Ride a bike to the pier — grab one on the street', type: 'bike', target: { x: 0, z: 240 }, radius: 12, reward: 800 },
-    { id: 8, title: 'Jackpot Run', sub: 'Jack another car and bring it to the casino strip', type: 'steal', target: { x: -180, z: -60 }, radius: 20, reward: 700 },
-    { id: 9, title: 'Casing the Coral Palms', sub: 'Scout the casino from the boulevard', type: 'goto', target: { x: -150, z: -150 }, radius: 14, reward: 800 },
-    { id: 10, title: 'Inside the Palms', sub: 'Walk through the casino doors', type: 'enter', target: { x: -150, z: -135 }, radius: 8, reward: 900 },
-    { id: 11, title: 'Wheelman', sub: 'Escape a 3-star chase to the east docks', type: 'escape3', target: { x: 180, z: 180 }, radius: 16, reward: 1200 },
-  ];
+export const MISSIONS_1_16 = [
+  { id: 1, title: "Welcome to Coral Bay", brief: "Reef lands in Coral Bay with $2,500 and a borrowed Sunset GT. Meet Dale at the marina loft.", objective: "Drive to the Marina Loft", target: { x: -150, z: -150 }, reward: 500, wanted: 0 },
+  { id: 2, title: "First Wheels", brief: "Dale's coupe is parked by the boulevard. Take it for a spin — it is not stealing if he said so.", objective: "Get in the Coral Coupe at Sunset Motors", target: { x: 120, z: 60 }, reward: 400, wanted: 0 },
+  { id: 3, title: "Hot Wheels", brief: "The crew needs a fast car and the owner is arguing with a meter maid. Take it.", objective: "Carjack a car on the boulevard (F near a car)", target: { x: 0, z: -168 }, reward: 800, wanted: 1, needsJack: true },
+  { id: 4, title: "Outrun the Blues", brief: "Bay PD noticed the jack. Lose them or outrun them — 5 stars is not an option yet.", objective: "Drop your wanted level to 0", target: { x: 0, z: 120 }, reward: 1000, wanted: 2, needsCool: true },
+  { id: 5, title: "Marina Pickup", brief: "Pick up a package from the pier. The harbour master asks no questions if you tip him.", objective: "Reach the pier", target: { x: -60, z: -205 }, reward: 900, wanted: 0 },
+  { id: 6, title: "Boulevard Sprint", brief: "Tessa bets you cannot win the Boulevard Sprint. Two laps. No excuses.", objective: "Win the Boulevard Sprint (race menu, M)", target: { x: -240, z: -168 }, reward: 2500, wanted: 0, race: "boulevard-sprint" },
+  { id: 7, title: "The Mechanic", brief: "Grease runs Sunset Motors. He will tune your ride if you bring him a Tide Sedan.", objective: "Deliver a Tide Sedan to Sunset Motors", target: { x: 120, z: 60 }, reward: 1500, wanted: 0 },
+  { id: 8, title: "Night Shift", brief: "Drive a nervous courier across town while the PD runs a checkpoint. Keep it under the limit — or do not.", objective: "Drive to the Beach Bungalow", target: { x: 210, z: -150 }, reward: 1400, wanted: 1 },
+  { id: 9, title: "Arms Dealer", brief: "Harbor Arms has a P9 with your name on it. Buy it, then show the range what it does.", objective: "Buy a weapon at Harbor Arms", target: { x: -60, z: -60 }, reward: 600, wanted: 0, needsBuy: true },
+  { id: 10, title: "Payback at the Docks", brief: "Rival crew took Dale's bike. Take it back — and make sure they remember the name Reef.", objective: "Reach the docks and clear the ambush", target: { x: -240, z: -168 }, reward: 2200, wanted: 3 },
+  { id: 11, title: "Casino Loop", brief: "The Coral Crown runs a street circuit at dusk. Three laps, high rollers watching.", objective: "Win the Casino Loop", target: { x: 30, z: -60 }, reward: 3000, wanted: 0, race: "casino-loop" },
+  { id: 12, title: "The Informant", brief: "A pit boss at the Crown owes Dale a favour. Walk in on foot and hear him out.", objective: "Enter the Coral Crown casino on foot", target: { x: 30, z: -96 }, reward: 1200, wanted: 0, needsFoot: true },
+  { id: 13, title: "Marina Mile", brief: "Two laps along the waterfront. The cops love this one — it gives them somewhere to set up.", objective: "Win the Marina Mile", target: { x: -300, z: -168 }, reward: 3200, wanted: 1, race: "marina-mile" },
+  { id: 14, title: "Bike Life", brief: "Tessa's Neon 600 is waiting at Neon Cycles. Ride it across town before the crew meeting.", objective: "Ride a bike to the Crown Penthouse", target: { x: 86, z: -120 }, reward: 1800, wanted: 0, needsBike: true },
+  { id: 15, title: "Heat Wave", brief: "Five stars. The whole Bay PD is awake. Survive the chase to the beach bungalow.", objective: "Reach the Beach Bungalow at 4+ stars", target: { x: 210, z: -150 }, reward: 4000, wanted: 4 },
+  { id: 16, title: "The Big Score — Part 1", brief: "Dale lays it out: the Coral Crown vault. First you need the layout, the driver, and a boat. Start with the layout.", objective: "Scout the Coral Crown casino", target: { x: 30, z: -96 }, reward: 2500, wanted: 0 },
+];
 
-  function all() { return M1.concat(CH.story2.list); }
+export function missionById(id) {
+  return MISSIONS_1_16.find((m) => m.id === id);
+}
 
-  function current() {
-    const S = CH.S;
-    const list = all();
-    return list[Math.min(S.missions.idx, list.length - 1)];
+export function initStory(G) {
+  G.missions = MISSIONS_1_16;
+  G.missionIndex = 0;
+  const saved = (G.save && G.save.mission) || 1;
+  G.missionIndex = Math.max(0, Math.min(MISSIONS_1_16.length - 1, saved - 1));
+  G.missionState = { stage: "go", timer: 0 };
+  setMission(G, G.missionIndex);
+  return G.missions;
+}
+
+export function currentMission(G) {
+  return G.missions[G.missionIndex] || null;
+}
+
+export function setMission(G, index) {
+  G.missionIndex = index;
+  const m = currentMission(G);
+  if (!m) {
+    if (G.hud) G.hud.setMission(null);
+    return null;
   }
-
-  function buildBeacon(scene) {
-    beacon = new THREE.Mesh(
-      new THREE.ConeGeometry(1.6, 4.5, 4),
-      new THREE.MeshBasicMaterial({ color: 0xffd23e })
-    );
-    beacon.rotation.x = Math.PI;
-    scene.add(beacon);
-    beaconRing = new THREE.Mesh(
-      new THREE.RingGeometry(3, 4.2, 24),
-      new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
-    );
-    beaconRing.rotation.x = -Math.PI / 2;
-    scene.add(beaconRing);
-    moveBeacon();
+  G.missionState = { stage: "go", timer: 0 };
+  resetMissionFlags(G);
+  if (G.city && G.city.beacon) {
+    G.city.beacon.position.set(m.target.x, 13, m.target.z);
   }
+  if (G.hud) G.hud.setMission(m);
+  if (G.toast) G.toast("Mission " + m.id + ": " + m.title);
+  return m;
+}
 
-  function moveBeacon() {
-    const m = current();
-    if (!m || !beacon) return;
-    beacon.position.set(m.target.x, 14 + Math.sin(CH.S.clock * 2) * 0.8, m.target.z);
-    beaconRing.position.set(m.target.x, 0.12, m.target.z);
-    beacon.visible = true; beaconRing.visible = true;
+export function completeMission(G) {
+  const m = currentMission(G);
+  if (!m) return;
+  if (G.save) {
+    G.save.cash += m.reward;
+    G.save.totalEarned += m.reward;
+    if (!G.save.missionsDone.includes(m.id)) G.save.missionsDone.push(m.id);
+    G.save.mission = Math.min(22, m.id + 1);
+    if (G.hud) G.hud.setCash(G.save.cash);
+    if (G.saveGame) G.saveGame();
   }
-
-  function startMission(m) {
-    const S = CH.S;
-    if (m.type === 'race' && !S.race.active && !S.race.finished) {
-      CH.raceway.startRace(m.circuit || 0, S.scene);
-    }
-    if (m.id === 21 || m.id === 22) {
-      // Police boats join the chase for the waterfront finale.
-      if (S.boats.policeBoats.length === 0) {
-        CH.boats.spawnPoliceBoat(S.scene, 60, 350);
-        CH.boats.spawnPoliceBoat(S.scene, -60, 360);
-      }
-      CH.cops.setWanted(4);
-    }
-    if (m.type === 'escape3') CH.cops.setWanted(3);
-    if (m.id === 17) CH.cops.setWanted(4);
-    if (m.id === 18) CH.cops.setWanted(5);
-    CH.hud.banner('MISSION ' + m.id + ' — ' + m.title.toUpperCase());
-    CH.hud.toast(m.title.toUpperCase() + ': ' + m.sub);
-    moveBeacon();
+  if (G.sound) G.sound.missionSting();
+  if (G.toast) G.toast("Mission complete: " + m.title + " — +" + formatCash(m.reward));
+  if (G.setWanted) G.setWanted(Math.max(0, (G.wanted || 0) - 1));
+  // Advance into story2 (missions 17-22) when the first chain ends.
+  if (G.missionIndex + 1 < G.missions.length) {
+    setMission(G, G.missionIndex + 1);
+  } else if (G.advanceToStory2) {
+    G.advanceToStory2();
+  } else {
+    if (G.hud) G.hud.setMission(null);
+    if (G.toast) G.toast("All story missions complete — free roam, Reef!");
   }
+}
 
-  function complete() {
-    const S = CH.S;
-    const m = current();
-    if (!m) return;
-    S.player.cash += m.reward;
-    S.stats.missionsDone++;
-    CH.sound.missionDone();
-    CH.hud.banner('MISSION COMPLETE — ' + m.title.toUpperCase() + '  +' + U.fmtCash(m.reward));
-    if (S.missions.idx < all().length - 1) {
-      S.missions.idx++;
-      startMission(current());
-    } else {
-      CH.hud.banner('STORY COMPLETE — CORAL HEAT CLEARED');
-      beacon.visible = false; beaconRing.visible = false;
-    }
-    // Save AFTER advancing, so a reload resumes on the next mission.
-    CH.savegame.autosave();
+export function updateStory(G, dt) {
+  const m = currentMission(G);
+  if (!m) return;
+  const p = G.player.pos;
+  const d = dist2d(p.x, p.z, m.target.x, m.target.z);
+  if (m.needsJack && !G._jackedThisMission) return; // wait for a jack (drive.js flags it)
+  if (m.needsCool && (G.wanted || 0) > 0) return; // must cool off first
+  if (m.needsBuy && !G._boughtThisMission) return;
+  if (m.needsFoot && G.player.mode !== "foot") return;
+  if (m.needsBike && G.player.mode !== "bike") return;
+  if (m.race && !G._raceWon) return; // race completion flags via raceway
+  if (m.id === 15 && (G.wanted || 0) < 4) return; // need real heat
+  if (d < 12) {
+    completeMission(G);
   }
+}
 
-  function update(dt) {
-    const S = CH.S, p = S.player;
-    if (!p || S.mode !== 'play') return;
-    const m = current();
-    if (!m) return;
-    // Beacon bobs above the target.
-    if (beacon) {
-      beacon.position.y = 14 + Math.sin(S.clock * 2) * 0.8;
-      beacon.rotation.y += dt * 1.5;
-    }
-    const d = U.dist2(p.x, p.z, m.target.x, m.target.z);
-    switch (m.type) {
-      case 'goto':
-      case 'enter':
-        if (d < m.radius) complete();
-        break;
-      case 'steal':
-        if (p.inCar && d < m.radius) complete();
-        break;
-      case 'bike':
-        if (p.inBike && d < m.radius) complete();
-        break;
-      case 'escape':
-        if (p.wanted >= 1 && d < m.radius) complete();
-        break;
-      case 'escape3':
-        if (p.wanted >= 3 && d < m.radius) complete();
-        break;
-      case 'race':
-        if (S.race.finished) complete();
-        break;
-      case 'boat':
-        if (p.inBoat && d < m.radius) complete();
-        break;
-      case 'hold': {
-        if (d < m.radius) {
-          m._hold = (m._hold || 0) + dt;
-          if (m._hold > 10) complete();
-        } else m._hold = 0;
-        break;
-      }
-      default:
-        if (d < m.radius) complete();
-    }
-  }
-
-  return { M1, all, current, buildBeacon, moveBeacon, startMission, complete, update };
-})();
+// Flags set by other systems when a mission condition is met.
+export function flagJacked(G) { G._jackedThisMission = true; }
+export function flagBought(G) { G._boughtThisMission = true; }
+export function flagRaceWon(G) { G._raceWon = true; }
+export function resetMissionFlags(G) {
+  G._jackedThisMission = false;
+  G._boughtThisMission = false;
+  G._raceWon = false;
+}

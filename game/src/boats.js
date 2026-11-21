@@ -1,131 +1,141 @@
-// CORAL HEAT — boats and the bay. Speedboats moor along the pier and run
-// the open water south of the boulevard; police boats join the chase in
-// the waterfront finale. Boats float on the animated water plane, leave a
-// foam wake, and steer like a car with a long slide.
-CH.boats = (function () {
-  const U = CH.util;
+// boats.js — speedboats, the marina, and police boats. Boats run on the
+// water strip north of the beach; mission 21 escapes by boat, mission 22
+// is a waterfront pursuit with police boats in the wake.
+import * as THREE from "../vendor/three/three.module.min.js";
+import { clamp, lerp, lerpAngle, rand, pick } from "./util.js";
 
-  function makeBoatMesh(color) {
-    const g = new THREE.Group();
-    const hullMat = new THREE.MeshLambertMaterial({ color });
-    const hull = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.7, 6.4), hullMat);
-    hull.position.y = 0.55; g.add(hull);
-    const bow = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.2, 4), hullMat);
-    bow.rotation.x = Math.PI / 2; bow.rotation.y = Math.PI / 4;
-    bow.position.set(0, 0.55, 4.1); g.add(bow);
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.25, 3.4), new THREE.MeshLambertMaterial({ color: 0xf0ead8 }));
-    deck.position.set(0, 0.95, -0.6); g.add(deck);
-    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.6, 0.3), new THREE.MeshLambertMaterial({ color: 0x18222e, transparent: true, opacity: 0.8 }));
-    windshield.position.set(0, 1.3, 1.0); g.add(windshield);
-    const engine = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.5), new THREE.MeshLambertMaterial({ color: 0x222222 }));
-    engine.position.set(0, 0.7, -3.3); g.add(engine);
-    return g;
+export const BOAT_MODELS = [
+  { id: "harbor-skiff", name: "Harbor Skiff", color: 0xf2f2f2, top: 34, accel: 16, price: 6000 },
+  { id: "coral-speedster", name: "Coral Speedster", color: 0xff5a2a, top: 52, accel: 24, price: 16000 },
+  { id: "neon-yacht", name: "Neon Yacht", color: 0x37b6ff, top: 40, accel: 18, price: 28000 },
+];
+
+export function makeBoatMesh(color, police) {
+  const g = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color, metalness: 0.4, roughness: 0.4 });
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.0, 8.5), hullMat);
+  hull.position.y = 0.8;
+  g.add(hull);
+  const bow = new THREE.Mesh(new THREE.ConeGeometry(1.5, 2.4, 4), hullMat);
+  bow.rotation.x = Math.PI / 2;
+  bow.rotation.y = Math.PI / 4;
+  bow.position.set(0, 0.8, 5.4);
+  bow.scale.set(1, 1, 0.6);
+  g.add(bow);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 3.0),
+    new THREE.MeshStandardMaterial({ color: 0x223344, metalness: 0.6, roughness: 0.3 }));
+  cabin.position.set(0, 1.85, -0.8);
+  g.add(cabin);
+  const windshield = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.7, 0.2),
+    new THREE.MeshStandardMaterial({ color: 0x9fd8ff, metalness: 0.9, roughness: 0.1 }));
+  windshield.position.set(0, 1.9, 0.9);
+  windshield.rotation.x = -0.4;
+  g.add(windshield);
+  const engine = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.7),
+    new THREE.MeshStandardMaterial({ color: 0x181818 }));
+  engine.position.set(0, 1.0, -4.3);
+  g.add(engine);
+  if (police) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.18, 0.5),
+      new THREE.MeshBasicMaterial({ color: 0x2244ff }));
+    bar.position.set(0, 2.55, -0.8);
+    g.add(bar);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.25, 3.2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    stripe.position.set(0, 1.0, 0.5);
+    g.add(stripe);
   }
+  // Wake: a fading trail mesh the boat drags behind it.
+  const wake = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 14),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false }));
+  wake.rotation.x = -Math.PI / 2;
+  wake.position.set(0, 0.15, -8);
+  g.add(wake);
+  g.userData.wake = wake;
+  return g;
+}
 
-  function spawnBoats(scene) {
-    const S = CH.S;
-    const spots = [
-      { x: -14, z: 330, color: 0xe8e0c8 }, { x: 14, z: 344, color: 0x2e6fc2 },
-      { x: -20, z: 358, color: 0xc23b2e }, { x: 20, z: 372, color: 0x3a7a3a },
-    ];
-    for (const s of spots) {
-      const mesh = makeBoatMesh(s.color);
-      mesh.position.set(s.x, 0.1, s.z);
-      mesh.rotation.y = U.rand(-0.3, 0.3);
-      scene.add(mesh);
-      S.boats.list.push({ x: s.x, z: s.z, heading: mesh.rotation.y, speed: 0, mesh, taken: false, wake: 0 });
-    }
-  }
+export function spawnBoat(G, modelId, x, z, heading) {
+  const model = BOAT_MODELS.find((m) => m.id === modelId) || BOAT_MODELS[0];
+  const mesh = makeBoatMesh(model.color, false);
+  mesh.position.set(x, 0.5, z);
+  mesh.rotation.y = heading;
+  G.scene.add(mesh);
+  const boat = {
+    kind: "boat", model, mesh,
+    x, z, heading, speed: 0, steer: 0,
+  };
+  G.playerBoat = boat;
+  return boat;
+}
 
-  function nearestBoat(x, z, maxD) {
-    let best = null, bd = maxD;
-    for (const b of CH.S.boats.list) {
-      if (b.taken) continue;
-      const d = U.dist2(x, z, b.x, b.z);
-      if (d < bd) { bd = d; best = b; }
-    }
-    return best;
-  }
+export function updateBoat(G, dt, input) {
+  const boat = G.playerBoat;
+  if (!boat || G.player.mode !== "boat") return;
+  const m = boat.model;
+  const fwd = input.forward ? 1 : input.back ? -0.4 : 0;
+  const targetSpeed = fwd * m.top;
+  const accelRate = fwd !== 0 ? m.accel : 10;
+  if (boat.speed < targetSpeed) boat.speed = Math.min(targetSpeed, boat.speed + accelRate * dt);
+  else if (boat.speed > targetSpeed) boat.speed = Math.max(targetSpeed, boat.speed - accelRate * 1.2 * dt);
+  const steerTarget = (input.left ? 1 : 0) - (input.right ? 1 : 0);
+  boat.steer = lerp(boat.steer, steerTarget, clamp(dt * 4, 0, 1));
+  const spd01 = clamp(Math.abs(boat.speed) / m.top, 0, 1);
+  boat.heading += boat.steer * 1.5 * (0.3 + spd01) * dt * Math.sign(boat.speed || 1) * clamp(Math.abs(boat.speed) / 6, 0, 1);
+  boat.x += Math.sin(boat.heading) * boat.speed * dt;
+  boat.z += Math.cos(boat.heading) * boat.speed * dt;
+  // Boats stay on the water: z between -360 and -200, x inside the bay.
+  boat.x = clamp(boat.x, -330, 330);
+  boat.z = clamp(boat.z, -355, -202);
+  const t = performance.now() / 1000;
+  boat.mesh.position.set(boat.x, 0.5 + Math.sin(t * 1.6) * 0.14, boat.z);
+  boat.mesh.rotation.y = boat.heading;
+  boat.mesh.rotation.z = -boat.steer * spd01 * 0.16 + Math.sin(t * 1.3) * 0.02;
+  boat.mesh.rotation.x = Math.sin(t * 1.1) * 0.02 - spd01 * 0.05;
+  const wake = boat.mesh.userData.wake;
+  if (wake) wake.material.opacity = 0.08 + spd01 * 0.3;
+  G.player.pos.set(boat.x, 0, boat.z);
+  G.player.heading = boat.heading;
+  G.player.speed = boat.speed;
+  G.displaySpeed = Math.abs(boat.speed) * 2.6;
+  if (G.sound) G.sound.setEngine(spd01 * 0.8, fwd !== 0 ? 1 : 0);
+}
 
-  function stepBoat(b, dt, throttle, steer, brake) {
-    if (throttle) b.speed = Math.min(b.speed + 11 * dt, 34);
-    else b.speed = Math.max(b.speed - 4 * dt, 0);
-    if (brake) b.speed = Math.max(b.speed - 16 * dt, 0);
-    b.heading += steer * U.clamp(Math.abs(b.speed) / 12, 0, 1) * 1.5 * dt;
-    const nx = b.x + Math.sin(b.heading) * b.speed * dt;
-    const nz = b.z + Math.cos(b.heading) * b.speed * dt;
-    b.x = U.clamp(nx, -360, 360);
-    b.z = U.clamp(nz, CH.CFG.waterZ + 4, CH.CFG.bayFar - 6);
-    b.mesh.position.set(b.x, 0.1 + Math.sin(CH.S.clock * 1.8 + b.x * 0.05) * 0.12, b.z);
+export function spawnPoliceBoat(G, x, z) {
+  const mesh = makeBoatMesh(0x1a2a44, true);
+  mesh.position.set(x, 0.5, z);
+  G.scene.add(mesh);
+  const b = { mesh, x, z, heading: 0, speed: 0, top: 46 };
+  G.policeBoats = G.policeBoats || [];
+  G.policeBoats.push(b);
+  return b;
+}
+
+export function updatePoliceBoats(G, dt) {
+  const px = G.player.pos.x;
+  const pz = G.player.pos.z;
+  for (const b of G.policeBoats || []) {
+    const dx = px - b.x;
+    const dz = pz - b.z;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const want = Math.atan2(dx, dz);
+    b.heading = lerpAngle(b.heading, want, clamp(dt * 1.8, 0, 1));
+    const cruise = d > 50 ? b.top : d > 15 ? b.top * 0.7 : b.top * 0.3;
+    b.speed = lerp(b.speed, cruise, clamp(dt * 1.2, 0, 1));
+    b.x += Math.sin(b.heading) * b.speed * dt;
+    b.z += Math.cos(b.heading) * b.speed * dt;
+    b.x = clamp(b.x, -330, 330);
+    b.z = clamp(b.z, -355, -202);
+    const t = performance.now() / 1000;
+    b.mesh.position.set(b.x, 0.5 + Math.sin(t * 1.6 + b.x) * 0.12, b.z);
     b.mesh.rotation.y = b.heading;
-    b.mesh.rotation.z = -steer * U.clamp(Math.abs(b.speed) / 20, 0, 1) * 0.12;
-    // Foam wake behind a fast boat.
-    b.wake -= dt;
-    if (Math.abs(b.speed) > 12 && b.wake <= 0) {
-      b.wake = 0.12;
-      CH.fx.wake(b.x - Math.sin(b.heading) * 3.4, b.z - Math.cos(b.heading) * 3.4);
+    if (d < 6 && G.player.mode === "boat" && G.playerBoat) {
+      G.playerBoat.speed *= 1 - dt * 0.4;
     }
   }
+}
 
-  function sail(dt) {
-    const S = CH.S, p = S.player;
-    if (!p.inBoat || !p.boat) return;
-    const k = S.input.keys;
-    let steer = 0;
-    if (k.KeyA) steer -= 1;
-    if (k.KeyD) steer += 1;
-    stepBoat(p.boat, dt, k.KeyW, steer, k.KeyS);
-    p.x = p.boat.x; p.z = p.boat.z; p.heading = p.boat.heading; p.speed = p.boat.speed;
-    CH.sound.setEngine(Math.abs(p.boat.speed) / 34, true);
-  }
-
-  function board(boat) {
-    const S = CH.S, p = S.player;
-    p.inBoat = true; p.boat = boat; boat.taken = true;
-    p.mesh.visible = false;
-    CH.sound.pickup();
-  }
-  function disembark() {
-    const S = CH.S, p = S.player;
-    if (!p.boat) return;
-    p.boat.taken = false;
-    // Step back onto the pier or the beach.
-    p.x = U.clamp(p.boat.x, -300, 300);
-    p.z = CH.CFG.waterZ - 2;
-    p.inBoat = false; p.boat = null; p.speed = 0;
-    p.mesh.visible = true;
-    p.mesh.position.set(p.x, 0, p.z);
-    CH.sound.setEngine(0, false);
-  }
-
-  function spawnPoliceBoat(scene, x, z) {
-    const mesh = makeBoatMesh(0x1a2a4a);
-    // Police livery: white stripe + light bar.
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.18, 6.5), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    stripe.position.y = 0.9; mesh.add(stripe);
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.22, 0.4), new THREE.MeshBasicMaterial({ color: 0xff2222 }));
-    bar.position.set(0, 1.5, 0.4); mesh.add(bar);
-    mesh.position.set(x, 0.1, z);
-    scene.add(mesh);
-    const b = { x, z, heading: 0, speed: 0, mesh, police: true, wake: 0 };
-    CH.S.boats.policeBoats.push(b);
-    return b;
-  }
-
-  function updatePoliceBoats(dt) {
-    const S = CH.S, p = S.player;
-    for (const b of S.boats.policeBoats) {
-      const d = U.dist2(b.x, b.z, p.x, p.z);
-      const want = Math.atan2(p.x - b.x, p.z - b.z);
-      const steer = U.clamp(U.angDiff(b.heading, want), -1, 1);
-      stepBoat(b, dt, d > 10, steer, false);
-      // Ram the player's boat when close.
-      if (d < 7 && p.inBoat) {
-        p.boat.speed *= 0.94;
-        CH.fx.sparks(p.x, p.z);
-      }
-    }
-  }
-
-  return { makeBoatMesh, spawnBoats, nearestBoat, stepBoat, sail, board, disembark, spawnPoliceBoat, updatePoliceBoats };
-})();
+export function clearPoliceBoats(G) {
+  for (const b of G.policeBoats || []) G.scene.remove(b.mesh);
+  G.policeBoats = [];
+}

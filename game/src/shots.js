@@ -1,188 +1,200 @@
-// CORAL HEAT — screenshot staging. ?shot=chase|foot|marina|race builds a
-// dense, deterministic scene from the real game systems (real traffic,
-// real police, real HUD), then raises window.__shotReady so the capture
-// runner can take the frame. The chase scene restores the v2.10 cover
-// frame: a dense neon casino chase at ~116 MPH with 5 stars.
-CH.shots = (function () {
-  const U = CH.util;
+// shots.js — deterministic staging for the 4 screenshots. Each stage puts the
+// game in a composed, legible frame, freezes gameplay (shot mode) so the
+// frame does not drift, and reports window.__shotReady when rendered.
+// Cover = the v2.10 frame: dense neon casino chase, 116 MPH, 5 stars.
+import * as THREE from "../vendor/three/three.module.min.js";
+import { spawnPoliceCar, deployRoadblock, spawnHelicopter } from "./cops.js";
+import { spawnBoat, spawnPoliceBoat } from "./boats.js";
+import { startRace } from "./raceway.js";
 
-  function stage(name) {
-    const S = CH.S, p = S.player;
-    S.shot = name;
-    S.shotReadyAt = S.frame + 45; // scene is staged synchronously; ~26 s at headless fps is plenty of settling
-    CH.hud.hideStart();
-    S.mode = 'play';
-    CH.sound.start();
-    if (name === 'chase') stageChase();
-    else if (name === 'foot') stageFoot();
-    else if (name === 'marina') stageMarina();
-    else if (name === 'race') stageRace();
-    // Keep the scene alive until the runner captures it.
-    S.shotHoldUntil = S.frame + 900;
+function placeCar(G, car, x, z, heading, speed) {
+  car.x = x;
+  car.z = z;
+  car.heading = heading;
+  car.speed = speed || 0;
+  car.mesh.position.set(x, 0, z);
+  car.mesh.rotation.y = heading;
+  G.player.pos.set(x, 0, z);
+  G.player.heading = heading;
+  G.player.speed = car.speed;
+}
+
+export function stageCover(G) {
+  G.shotMode = true;
+  G.hud.hideStart();
+  // Player car on the casino boulevard, facing the Crown (-Z = sunset).
+  placeCar(G, G.playerCar, 30, -38, Math.PI, 44.6);
+  G.displaySpeed = 116;
+  G.player.mode = "car";
+  if (G.playerMesh) G.playerMesh.visible = false;
+  // Wanted: full 5 stars, synced to the player object.
+  G.setWanted(5);
+  // Four police cars in frame: two flanking behind, two ahead by the casino.
+  const spots = [
+    [18, -18, Math.PI + 0.25], [42, -20, Math.PI - 0.2],
+    [16, -66, Math.PI + 0.5], [46, -68, Math.PI - 0.4],
+  ];
+  // Trim any extra pursuit cars first so exactly four show.
+  for (const p of [...(G.police || [])]) G.scene.remove(p.mesh);
+  G.police = [];
+  for (const [x, z, h] of spots) {
+    const p = spawnPoliceCar(G, x, z);
+    p.x = x; p.z = z; p.heading = h; p.speed = 40;
+    p.mesh.position.set(x, 0, z);
+    p.mesh.rotation.y = h;
   }
-
-  function putPlayerInCar(x, z, heading, specIdx) {
-    const S = CH.S, p = S.player;
-    const spec = CH.drive.CAR_TYPES[specIdx % CH.drive.CAR_TYPES.length];
-    const car = CH.drive.newCar(x, z, heading, spec);
-    S.scene.add(car.mesh);
-    S.traffic.cars.push(car);
-    p.x = x; p.z = z; p.heading = heading;
-    CH.drive.enterCar(car);
-    return car;
+  // Helicopter low + ahead, searchlight pool on the player car.
+  if (G.heli) { G.scene.remove(G.heli.group); G.heli = null; }
+  spawnHelicopter(G);
+  G.heli.height = 15;
+  G.heli.orbitR = 10;
+  G.heli.group.position.set(44, 15, -64);
+  G.heli.pool.position.set(30, 0.12, -38);
+  // Roadblock with spike strips ahead, in front of the casino.
+  deployRoadblock(G, 38);
+  // Explosion + fire glow ahead-right, smoke rising. Re-fired every 0.7s
+  // by the boot loop while this shot is staged, so it never fades out.
+  G.coverFx = { x: 56, z: -80 };
+  G.fx.explosion(56, 1, -80);
+  G.fx.burst(56, 2, -80, "fire", 30, 12);
+  G.fx.burst(56, 4, -80, "smoke", 18, 6);
+  // Denser boulevard traffic in frame.
+  for (const t of G.traffic || []) {
+    t.mesh.visible = true;
   }
+  // Mission panel: the heist escape, exactly as the cover needs it.
+  G.hud.setMission({ id: 20, title: "Casino Heist — Escape", objective: "Escape the Coral Crown — 5 stars, roadblock ahead" });
+  G.hud.setCash(86420);
+  G.hud.setWanted(5);
+  G.hud.setSpeed(116);
+  G.hud.setRadio("PALM WAVE 101.4 — Neon Nights");
+  G.hud.banner("CASINO HEIST — ESCAPE");
+  G.cameraYaw = Math.PI;
+  G.cameraPitch = 0.32;
+  G.save.cash = 86420;
+}
 
-  function stageChase() {
-    const S = CH.S, p = S.player;
-    // Mission 17, the heist escape, so the panel reads the heist.
-    S.missions.idx = 16;
-    CH.story.startMission(CH.story.current());
-    const car = putPlayerInCar(-180, -100, Math.PI, 4); // Muscle car, heading north
-    // The speedometer override: the car is staged still, the dial reads 116.
-    S.shotSpeed = 52;
-    p.cash = 48250;
-    CH.cops.setWanted(5);
-    // Four police cars: two flanking ahead of the player, two holding the
-    // roadblock, all inside the camera frame.
-    const pc1 = CH.cops.spawnPoliceCar(S.scene, p.x, p.z);
-    pc1.x = -186; pc1.z = -112; pc1.heading = Math.PI; pc1.mesh.position.set(-186, 0, -112); pc1.mesh.rotation.y = Math.PI;
-    const pc2 = CH.cops.spawnPoliceCar(S.scene, p.x, p.z);
-    pc2.x = -174; pc2.z = -114; pc2.heading = Math.PI; pc2.mesh.position.set(-174, 0, -114); pc2.mesh.rotation.y = Math.PI;
-    const pc3 = CH.cops.spawnPoliceCar(S.scene, p.x, p.z);
-    pc3.x = -188; pc3.z = -160; pc3.heading = 0; pc3.mesh.position.set(-188, 0, -160); pc3.mesh.rotation.y = 0;
-    const pc4 = CH.cops.spawnPoliceCar(S.scene, p.x, p.z);
-    pc4.x = -172; pc4.z = -162; pc4.heading = 0; pc4.mesh.position.set(-172, 0, -162); pc4.mesh.rotation.y = 0;
-    // Helicopter low and ahead, searchlight on the player.
-    CH.cops.ensureHeli(S.scene);
-    if (S.police.heli) {
-      S.police.heli.mesh.position.set(-170, 24, -138);
-      S.police.heli.angle = 0.6;
-    }
-    // Roadblock with spike strips on the boulevard ahead.
-    CH.cops.makeRoadblock(S.scene, -180, -168, Math.PI);
-    // Extra traffic for density on the boulevard ahead (staged: they hold
-    // their pose for the frame instead of driving off).
-    for (let i = 0; i < 3; i++) {
-      const t = CH.drive.newCar(-180 + (i % 2 ? 4 : -4), -122 - i * 18, Math.PI, CH.drive.CAR_TYPES[i % CH.drive.CAR_TYPES.length]);
-      t.speed = 10; t.staged = true;
-      S.scene.add(t.mesh);
-      S.traffic.cars.push(t);
-    }
-    // Clear pedestrians off the chase boulevard so the frame reads as a
-    // pure car chase, not a crowd scene.
-    for (const ped of S.traffic.peds) {
-      if (Math.abs(ped.x + 180) < 30 && ped.z < -60 && ped.z > -200) {
-        ped.x = U.rand(60, 240); ped.z = U.rand(-240, 240);
-        ped.mesh.position.set(ped.x, 0, ped.z);
-      }
-    }
-    // An explosion blooming beside the roadblock, re-lit by tick().
-    CH.fight.explode(-158, 1, -142, 1.8);
-    CH.fight.explode(-196, 1, -128, 1.1);
-    S._lastBoom = S.clock;
-    S.shotBanner = 'CASINO HEIST — ESCAPE';
-    CH.hud.banner(S.shotBanner);
-    // Sun-side camera: the boot camera already sits behind the car.
-    S.camera.position.set(-180, 4.5, -82);
+export function stageMarina(G) {
+  G.shotMode = true;
+  G.hud.hideStart();
+  // Player speedboat underway along the coast, marina on the left of frame.
+  if (G.playerCar) { G.scene.remove(G.playerCar.mesh); G.playerCar = null; }
+  if (G.playerMesh) G.playerMesh.visible = false;
+  const boat = spawnBoat(G, "coral-speedster", -70, -236, Math.PI / 2);
+  G.player.mode = "boat";
+  G.player.pos.set(-70, 0, -236);
+  G.player.heading = Math.PI / 2;
+  G.player.speed = 30;
+  G.displaySpeed = 78;
+  // Two police boats in the wake.
+  for (const b of [...(G.policeBoats || [])]) G.scene.remove(b.mesh);
+  G.policeBoats = [];
+  spawnPoliceBoat(G, -20, -228);
+  spawnPoliceBoat(G, 5, -246);
+  for (const b of G.policeBoats) { b.heading = Math.PI / 2; b.speed = 28; }
+  G.setWanted(3);
+  G.hud.setMission({ id: 21, title: "Boat Getaway", objective: "Outrun the harbour patrol to open water" });
+  G.hud.setCash(42150);
+  G.hud.setWanted(3);
+  G.hud.setSpeed(78);
+  G.hud.setRadio("CORAL FM 88.1 — Sunset Drive");
+  G.hud.banner("MISSION 21 — BOAT GETAWAY");
+  G.cameraYaw = Math.PI / 2;
+  G.cameraPitch = 0.3;
+}
+
+export function stageFoot(G) {
+  G.shotMode = true;
+  G.hud.hideStart();
+  // On-foot carjacking on the boulevard: Reef beside a stopped car, door
+  // side, a police car closing in behind.
+  if (G.playerCar) { G.scene.remove(G.playerCar.mesh); G.playerCar = null; }
+  if (!G.playerMesh) return;
+  G.playerMesh.visible = true;
+  G.player.mode = "foot";
+  G.player.pos.set(-24, 0, -166);
+  G.player.heading = -Math.PI / 2;
+  G.playerMesh.position.set(-24, 0, -166);
+  G.playerMesh.rotation.y = G.player.heading;
+  const near = (G.traffic || [])[0];
+  if (near) {
+    near.x = -30; near.z = -166;
+    near.heading = -Math.PI / 2;
+    near.mesh.position.set(-30, 0, -166);
+    near.mesh.rotation.y = -Math.PI / 2;
   }
+  for (const p of [...(G.police || [])]) G.scene.remove(p.mesh);
+  G.police = [];
+  const cop = spawnPoliceCar(G, -58, -168);
+  cop.x = -58; cop.z = -168; cop.heading = Math.PI / 2; cop.speed = 0;
+  cop.mesh.position.set(-58, 0, -168);
+  cop.mesh.rotation.y = Math.PI / 2;
+  G.setWanted(2);
+  G.hud.setMission({ id: 3, title: "Hot Wheels", objective: "Carjack a car on the boulevard — press F" });
+  G.hud.setCash(12480);
+  G.hud.setWanted(2);
+  G.hud.setSpeed(0);
+  G.hud.setRadio("TIDE TALK 540 AM — Harbor News");
+  G.hud.banner("ON FOOT — PRESS F TO JACK THE CAR");
+  G.cameraYaw = -Math.PI / 2;
+  G.cameraPitch = 0.3;
+}
 
-  function stageFoot() {
-    const S = CH.S, p = S.player;
-    S.missions.idx = 1;
-    CH.story.startMission(CH.story.current());
-    // On the x=0 road, facing the taxi parked at the kerb.
-    p.x = 0; p.z = 30; p.heading = 0.64;
-    p.mesh.position.set(p.x, 0, p.z);
-    p.mesh.visible = true;
-    const car = CH.drive.newCar(2, 33, Math.PI * 0.75, CH.drive.CAR_TYPES[3]);
-    car.staged = true; // the jack target waits by the kerb for the frame
-    S.scene.add(car.mesh);
-    S.traffic.cars.push(car);
-    CH.cops.setWanted(1);
-    const pc = CH.cops.spawnPoliceCar(S.scene, p.x, p.z);
-    pc.x = 60; pc.z = 60; pc.heading = Math.PI * 0.75;
-    pc.mesh.position.set(60, 0, 60); pc.mesh.rotation.y = pc.heading;
-    p.cash = 1250;
-    S.shotBanner = 'MISSION 2 — BORROWED WHEELS';
-    CH.hud.banner(S.shotBanner);
-    S.camera.position.set(-4, 3.2, 24);
-  }
+export function stageRace(G) {
+  G.shotMode = true;
+  G.hud.hideStart();
+  // Boulevard Sprint mid-race: player P2, lap 1/2, gate 4, rivals ahead.
+  const race = startRace(G, "boulevard-sprint");
+  if (!race) return;
+  race.countdown = 0;
+  race.lap = 1;
+  race.gate = 4;
+  race.position = 2;
+  race.elapsed = 42.6;
+  // Player just before gate 4 so the next gate arch is visible ahead,
+  // with two rivals in front of them on the road.
+  const heading = 0; // north along road x=300 toward gate 4 at (300,-60)
+  placeCar(G, G.playerCar, 300, -100, heading, 40);
+  G.displaySpeed = 104;
+  race.rivals[0].x = 297;
+  race.rivals[0].z = -78;
+  race.rivals[0].heading = heading;
+  race.rivals[0].mesh.position.set(297, 0, -78);
+  race.rivals[0].mesh.rotation.y = heading;
+  race.rivals[1].x = 304;
+  race.rivals[1].z = -68;
+  race.rivals[1].heading = heading;
+  race.rivals[1].mesh.position.set(304, 0, -68);
+  race.rivals[1].mesh.rotation.y = heading;
+  G.setWanted(0);
+  G.hud.setMission({ id: 6, title: "Boulevard Sprint", objective: "Win the Boulevard Sprint — 2 laps" });
+  G.hud.setCash(17350);
+  G.hud.setWanted(0);
+  G.hud.setSpeed(104);
+  G.hud.setRace(race);
+  G.hud.setRadio("PALM WAVE 101.4 — Neon Nights");
+  G.hud.banner("BOULEVARD SPRINT — LAP 1/2 — P2/4");
+  G.cameraYaw = heading;
+  G.cameraPitch = 0.3;
+}
 
-  function stageMarina() {
-    const S = CH.S, p = S.player;
-    S.missions.idx = 20;
-    CH.story.startMission(CH.story.current());
-    // Board the first moored speedboat and run it north past the pier (x=30
-    // keeps it clear of the pier deck), police boats in pursuit behind.
-    const boat = S.boats.list[0];
-    p.x = boat.x; p.z = boat.z; p.heading = Math.PI;
-    CH.boats.board(boat);
-    p.boat.x = 30; p.boat.z = 384; p.boat.heading = Math.PI;
-    p.boat.mesh.position.set(30, 0.1, 384);
-    p.x = 30; p.z = 384; p.heading = Math.PI;
-    CH.boats.spawnPoliceBoat(S.scene, 16, 408);
-    CH.boats.spawnPoliceBoat(S.scene, 44, 414);
-    S.input.keys.KeyW = true; // throttle open, wake trailing
-    S.shotSpeed = 28;
-    p.cash = 51200;
-    S.shotBanner = 'MISSION 21 — BOAT GETAWAY';
-    CH.hud.banner(S.shotBanner);
-    S.camera.position.set(30, 5, 402);
-  }
-
-  function stageRace() {
-    const S = CH.S, p = S.player;
-    S.missions.idx = 5;
-    CH.story.startMission(CH.story.current());
-    // Player car on the Marina Loop start line, already past gate 0 and
-    // closing on gate 1 (the amber ring, 40 m ahead), one rival just ahead
-    // so the HUD reads P2/4 on lap 1.
-    const g0 = CH.raceway.CIRCUITS[0].gates[0];
-    const g1 = CH.raceway.CIRCUITS[0].gates[1];
-    const car = putPlayerInCar(110, 240, Math.atan2(g1[0] - g0[0], g1[1] - g0[1]), 1);
-    S.race.gate = 1; // staged past the start gate, chasing gate 1
-    S.input.keys.KeyW = true;
-    S.shotSpeed = null; // live speed from the race
-    const r0 = S.race.racers[0];
-    if (r0) {
-      r0.x = 168; r0.z = 237;
-      r0.raceGate = 1;
-      r0.mesh.position.set(r0.x, 0, r0.z);
-    }
-    p.cash = 8750;
-    S.shotBanner = 'MISSION 6 — MIDNIGHT CIRCUIT';
-    CH.hud.banner(S.shotBanner);
-    S.camera.position.set(g0[0], 4.5, g0[1] - 24);
-  }
-
-  function tick() {
-    const S = CH.S;
-    if (!S.shot) return;
-    // The staged banner must not fade before the capture.
-    if (S.shotBanner) CH.hud.banner(S.shotBanner);
-    if (S.shot === 'chase') {
-      // Keep the fireball alive on GAME time, not frames: headless runs
-      // ~1.7 fps, so a frame-based retrigger would leave long dark gaps.
-      if (S.clock - (S._lastBoom || 0) > 0.9) {
-        S._lastBoom = S.clock;
-        CH.fight.explode(-158, 1, -142, 1.8);
-        CH.fight.explode(-196, 1, -128, 1.1);
-      }
-      // Keep the police cars glued in their chase slots.
-      const pcs = S.police.cars;
-      if (pcs[0]) { pcs[0].x = -186; pcs[0].z = -112; pcs[0].mesh.position.set(-186, 0, -112); }
-      if (pcs[1]) { pcs[1].x = -174; pcs[1].z = -114; pcs[1].mesh.position.set(-174, 0, -114); }
-      // Keep the helicopter low and ahead in frame: its orbit would
-      // otherwise drift it over the camera and out of the shot.
-      if (S.police.heli) {
-        S.police.heli.mesh.position.set(-168, 24, -140);
-        S.police.heli.mesh.lookAt(S.player.x, 0, S.player.z);
-      }
-    }
-    if (S.frame >= S.shotReadyAt && !window.__shotReady) {
+export function stageShot(G, name) {
+  G.shotName = name;
+  if (name === "cover") stageCover(G);
+  else if (name === "marina") stageMarina(G);
+  else if (name === "foot") stageFoot(G);
+  else if (name === "race") stageRace(G);
+  else stageCover(G);
+  // Let a few frames render, then signal readiness for the screenshot tool.
+  let frames = 0;
+  const tick = () => {
+    frames++;
+    if (frames >= 6) {
       window.__shotReady = true;
+      document.title = "CORAL HEAT — shot " + name + " ready";
+      return;
     }
-  }
-
-  return { stage, tick };
-})();
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}

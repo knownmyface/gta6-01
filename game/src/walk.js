@@ -1,106 +1,132 @@
-// CORAL HEAT — on foot. The player walks the city with WASD, the camera
-// rides directly behind, and pedestrians wander the sidewalks. The player
-// mesh is a simple two-tone figure; what matters is that it reads clearly
-// at screenshot distance and never clips through a building.
-CH.walk = (function () {
-  const U = CH.util;
+// walk.js — on-foot player character + wandering pedestrians.
+// Camera sits directly behind the player (playtest fix from earlier rounds).
+import * as THREE from "../vendor/three/three.module.min.js";
+import { clamp, lerp, lerpAngle, rand, pick, dist2d } from "./util.js";
 
-  function makePersonMesh(shirt, pants, skin) {
-    const g = new THREE.Group();
-    const mat = (c) => new THREE.MeshLambertMaterial({ color: c });
-    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.75, 0.3), mat(pants));
-    legs.position.y = 0.38; g.add(legs);
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.36), mat(shirt));
-    torso.position.y = 1.15; g.add(torso);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), mat(skin));
-    head.position.y = 1.8; g.add(head);
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.5), mat(0x22304a));
-    cap.position.y = 2.0; g.add(cap);
-    g.userData = { legs, torso, head };
-    return g;
+const PED_SHIRTS = [0xe8e8e8, 0xff8a5a, 0x5ac2ff, 0xffd23c, 0x9a6bff, 0x3ac27a, 0xff5a7a];
+const PED_PANTS = [0x2a3550, 0x3a3a3a, 0x5a3a2a, 0x24402e];
+
+export function makePersonMesh(shirt, pants, skin) {
+  const g = new THREE.Group();
+  const skinMat = new THREE.MeshLambertMaterial({ color: skin || 0xd9a066 });
+  const shirtMat = new THREE.MeshLambertMaterial({ color: shirt });
+  const pantsMat = new THREE.MeshLambertMaterial({ color: pants });
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.85, 0.3), pantsMat);
+  legs.position.y = 0.43;
+  g.add(legs);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.75, 0.34), shirtMat);
+  torso.position.y = 1.22;
+  g.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), skinMat);
+  head.position.y = 1.82;
+  g.add(head);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.27, 10, 6, 0, Math.PI * 2, 0, 1.1),
+    new THREE.MeshLambertMaterial({ color: 0x223344 }));
+  cap.position.y = 1.88;
+  g.add(cap);
+  const armMat = shirtMat;
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.7, 0.18), armMat);
+    arm.position.set(s * 0.4, 1.2, 0);
+    g.add(arm);
   }
+  return g;
+}
 
-  function makePlayer() {
-    const mesh = makePersonMesh(0xff5a3c, 0x2a3550, 0xe8b98a);
-    // A coral-red jacket so the player is findable in a crowd.
-    mesh.userData.torso.material = new THREE.MeshLambertMaterial({ color: 0xff5a3c });
-    return mesh;
-  }
+export function spawnPlayerOnFoot(G, x, z, heading) {
+  const mesh = makePersonMesh(0xff5a2a, 0x2a3550, 0xc98a5a);
+  // Player wears a coral jacket so the camera can always find them.
+  mesh.position.set(x, 0, z);
+  mesh.rotation.y = heading;
+  G.scene.add(mesh);
+  G.playerMesh = mesh;
+  G.player.mode = "foot";
+  G.player.pos.set(x, 0, z);
+  G.player.heading = heading;
+  G.player.speed = 0;
+  return mesh;
+}
 
-  function update(dt) {
-    const S = CH.S, p = S.player;
-    if (!p || p.inCar || p.inBoat) return;
-    const k = S.input.keys;
-    let fx = 0, fz = 0;
-    if (k.KeyW) fz += 1;
-    if (k.KeyS) fz -= 1;
-    if (k.KeyA) fx -= 1;
-    if (k.KeyD) fx += 1;
-    // Mouse steers the heading; WASD moves relative to it.
-    p.heading += (S.input.mouseDX || 0) * 0.0032;
-    S.input.mouseDX = 0;
-    const moving = fx !== 0 || fz !== 0;
-    const run = k.ShiftLeft || k.ShiftRight;
-    const speed = moving ? (run ? 7.5 : 4.2) : 0;
-    const sin = Math.sin(p.heading), cos = Math.cos(p.heading);
-    const mx = (sin * fz + cos * fx) * speed * dt;
-    const mz = (cos * fz - sin * fx) * speed * dt;
-    const hit = CH.city.collide(p.x + mx, p.z + mz, 0.7);
-    p.x = U.clamp(hit.x, CH.CFG.cityMin, CH.CFG.cityMax);
-    p.z = U.clamp(hit.z, CH.CFG.cityMin, CH.CFG.waterZ - 1);
+export function updateOnFoot(G, dt, input) {
+  if (G.player.mode !== "foot") return;
+  const p = G.player;
+  const camYaw = G.cameraYaw || 0;
+  let mx = 0;
+  let mz = 0;
+  if (input.forward) { mx += -Math.sin(camYaw); mz += -Math.cos(camYaw); }
+  if (input.back) { mx += Math.sin(camYaw); mz += Math.cos(camYaw); }
+  if (input.left) { mx += -Math.cos(camYaw); mz += Math.sin(camYaw); }
+  if (input.right) { mx += Math.cos(camYaw); mz += -Math.sin(camYaw); }
+  const len = Math.sqrt(mx * mx + mz * mz);
+  const sprint = input.sprint ? 1.7 : 1;
+  const speed = 6.5 * sprint;
+  if (len > 0.01) {
+    mx /= len;
+    mz /= len;
+    p.pos.x += mx * speed * dt;
+    p.pos.z += mz * speed * dt;
+    const want = Math.atan2(mx, mz);
+    p.heading = lerpAngle(p.heading, want, clamp(dt * 10, 0, 1));
     p.speed = speed;
-    p.moving = moving;
-    // Walk bob + facing.
-    const m = p.mesh;
-    if (m) {
-      m.visible = true;
-      m.position.set(p.x, Math.abs(Math.sin(S.clock * 11)) * 0.06, p.z);
-      m.rotation.y = p.heading;
-      m.userData.legs.rotation.x = moving ? Math.sin(S.clock * 11) * 0.55 : 0;
-      m.userData.torso.rotation.x = moving ? 0.08 : 0;
-    }
+    p.moving = true;
+  } else {
+    p.speed = 0;
+    p.moving = false;
   }
-
-  function spawnPeds(scene, count) {
-    const S = CH.S;
-    const shirts = [0x3a7bd5, 0xe8b13c, 0x7a3cd5, 0x3cd5a0, 0xd53c5a, 0xdddddd, 0x2a2a2a];
-    for (let i = 0; i < count; i++) {
-      const x = U.rand(-280, 280), z = U.rand(-280, 280);
-      const mesh = makePersonMesh(U.pick(shirts), 0x2a2f3a, U.pick([0xe8b98a, 0xc98a5a, 0x8a5a3a, 0xf0c8a0]));
-      mesh.position.set(x, 0, z);
-      scene.add(mesh);
-      S.traffic.peds.push({
-        x, z, heading: U.rand(0, Math.PI * 2), speed: U.rand(0.8, 1.6),
-        mesh, turnAt: 0, dead: false, scared: false,
-      });
-    }
+  p.pos.x = clamp(p.pos.x, -330, 330);
+  p.pos.z = clamp(p.pos.z, -198, 330);
+  if (G.playerMesh) {
+    G.playerMesh.position.set(p.pos.x, 0, p.pos.z);
+    G.playerMesh.rotation.y = p.heading;
+    // Walk bob + arm swing illusion via torso tilt.
+    const t = performance.now() / 1000;
+    G.playerMesh.position.y = p.moving ? Math.abs(Math.sin(t * 9)) * 0.07 : 0;
+    G.playerMesh.rotation.z = p.moving ? Math.sin(t * 9) * 0.04 : 0;
   }
+  G.displaySpeed = p.moving ? speed * 2.2 : 0;
+}
 
-  function updatePeds(dt) {
-    const S = CH.S;
-    for (const ped of S.traffic.peds) {
-      if (ped.dead) continue;
-      // Flee from gunfire or a speeding car nearby.
-      const pd = U.dist2(ped.x, ped.z, S.player.x, S.player.z);
-      if (S.player.inCar && S.player.speed > 8 && pd < 9) ped.scared = true;
-      if (ped.scared) {
-        ped.heading = Math.atan2(ped.x - S.player.x, ped.z - S.player.z);
-        ped.speed = 3.4;
-        if (pd > 30) ped.scared = false;
-      } else if (S.clock > ped.turnAt) {
-        ped.heading += U.rand(-1.2, 1.2);
-        ped.turnAt = S.clock + U.rand(2, 6);
-      }
-      const nx = ped.x + Math.sin(ped.heading) * ped.speed * dt;
-      const nz = ped.z + Math.cos(ped.heading) * ped.speed * dt;
-      const hit = CH.city.collide(nx, nz, 0.6);
-      ped.x = U.clamp(hit.x, CH.CFG.cityMin, CH.CFG.cityMax);
-      ped.z = U.clamp(hit.z, CH.CFG.cityMin, CH.CFG.waterZ - 1);
-      ped.mesh.position.set(ped.x, Math.abs(Math.sin(S.clock * 9 + ped.heading * 7)) * 0.05, ped.z);
-      ped.mesh.rotation.y = ped.heading;
-      ped.mesh.userData.legs.rotation.x = Math.sin(S.clock * 9 + ped.heading * 7) * 0.5;
-    }
+export function spawnPedestrians(G, count) {
+  G.peds = G.peds || [];
+  for (let i = 0; i < count; i++) {
+    const mesh = makePersonMesh(pick(PED_SHIRTS), pick(PED_PANTS), pick([0xd9a066, 0x8a5a30, 0xf0c8a0, 0x6b4423]));
+    const x = rand(-300, 300);
+    const z = rand(-160, 300);
+    mesh.position.set(x, 0, z);
+    G.scene.add(mesh);
+    G.peds.push({
+      mesh, x, z,
+      heading: rand(0, Math.PI * 2),
+      speed: rand(1.2, 2.4),
+      targetX: x, targetZ: z,
+      wait: rand(0, 4),
+    });
   }
+  return G.peds;
+}
 
-  return { makePlayer, makePersonMesh, update, spawnPeds, updatePeds };
-})();
+export function updatePedestrians(G, dt) {
+  if (!G.peds) return;
+  for (const ped of G.peds) {
+    if (ped.wait > 0) {
+      ped.wait -= dt;
+      continue;
+    }
+    const d = dist2d(ped.x, ped.z, ped.targetX, ped.targetZ);
+    if (d < 2) {
+      // New stroll target: nearby sidewalk-ish spot.
+      ped.targetX = clamp(ped.x + rand(-45, 45), -320, 320);
+      ped.targetZ = clamp(ped.z + rand(-45, 45), -175, 320);
+      ped.wait = rand(0, 3);
+      continue;
+    }
+    const want = Math.atan2(ped.targetX - ped.x, ped.targetZ - ped.z);
+    ped.heading = lerpAngle(ped.heading, want, clamp(dt * 4, 0, 1));
+    ped.x += Math.sin(ped.heading) * ped.speed * dt;
+    ped.z += Math.cos(ped.heading) * ped.speed * dt;
+    ped.mesh.position.set(ped.x, 0, ped.z);
+    ped.mesh.rotation.y = ped.heading;
+    const t = performance.now() / 1000 + ped.x;
+    ped.mesh.position.y = Math.abs(Math.sin(t * 7)) * 0.05;
+  }
+}

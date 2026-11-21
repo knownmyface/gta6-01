@@ -1,89 +1,179 @@
 # CORAL HEAT
 
-A 3D WebGL open-world crime game set in a sunset coastal marina city — explore on foot and by car, outrun the police, and pull off a casino heist.
+[![make.fun bounty](https://img.shields.io/badge/make.fun-bounty%20gta6--01-ff5c8a?style=for-the-badge)](https://make.fun/bounty/gta6-01)
+[![make.fun status](https://img.shields.io/badge/make.fun-status%20live-22c55e?style=for-the-badge)](https://make.fun/bounty/gta6-01)
+[![make.fun rank](https://img.shields.io/badge/make.fun-rank%20push%20v2.12-f59e0b?style=for-the-badge)](https://make.fun/bounty/gta6-01)
 
-[![Bounty: GTA 6-01](https://img.shields.io/badge/Bounty-GTA--6--01-orange)](https://make.fun/bounty/gta6-01)
-[![make.fun Entry](https://img.shields.io/badge/make.fun-Entry-blue)](https://make.fun/)
-[![Round 10 — v2.12](https://img.shields.io/badge/Round%2010-v2.12-green)](https://make.fun/bounty/gta6-01)
+> A 3D WebGL open-world crime game set in a sunset coastal marina city.
+> Built with three.js. No Rockstar names, art, music, or maps — every city,
+> character, vehicle, and story beat here is original.
 
-**Bounty:** https://make.fun/bounty/gta6-01
+**[▶ Play the bounty — make.fun/bounty/gta6-01](https://make.fun/bounty/gta6-01)**
 
-> All city, character, vehicle, and story names are original. CORAL HEAT contains no Rockstar names, art, music, or map.
+---
 
 ## What it is
 
-CORAL HEAT is a 3D open-world crime game built with three.js. You play in a sunset coastal marina city with traffic, pedestrians, a wanted system, police pursuits, story missions, street races, and a casino-heist finale — on foot, by car, by motorcycle, and by boat.
+Coral Heat drops you into **Port Coral**, a neon-lit marina city where the
+sun never quite sets. Palm-lined boulevards run into a working harbour,
+a glittering casino strip, quiet safehouse streets, and open water.
 
-The game runs entirely from static files, with three.js vendored locally and no network requests.
+You are a small-time driver with big debts and one fast car. Take jobs,
+outrun the law, build a crew, and work your way up to the biggest score
+the city has ever seen — a casino heist that ends on the water.
 
-## Features
+Everything runs in the browser. No install, no account, no downloads
+beyond the page itself. Open it, drive, and the city is yours.
 
-- Open-world coastal marina city, on foot and by car
-- Traffic and pedestrians, with stealable cars and carjacking
-- Wanted level, police pursuits, and a police helicopter with a visible searchlight beam
-- Police roadblocks with spike strips
-- Combat, weapon wheel UI, and explosion, fire, and smoke particles
-- HUD with minimap
-- Start screen and save support via localStorage
-- Radio
-- Shops and garage, with 3 safehouses
-- Motorcycles (3 models)
-- Boats and a marina district — marina-front boulevard, pier, moored boats, and a speedboat underway
-- Street races (5 circuits)
-- Neon casino district with lit signage, lit building windows, and an enterable casino building for the heist
-- Improved sky with gradient, clouds, and sun glare
-- Denser traffic and more pedestrians
+## How to play
 
-## Missions
+### On foot
 
-22 story missions, including a casino-heist finale chain:
+Walk the streets, explore the marina, and scope out your next job.
+Talk to contacts, pick up missions, and slip away before the police
+notice you. On foot you are fast, nimble, and easy to lose in a crowd —
+but you are also exposed.
 
-- **Casino-heist chain** — recon, getaway driver, vault, and escape by boat
-- **Mission 21** — boat getaway after the heist
-- **Mission 22** — waterfront pursuit with police boats
+### Driving
+
+Steal it, buy it, or earn it — if it has wheels, you can drive it.
+Cars handle differently on dry boulevards, wet marina roads, and tight
+casino-strip corners. Motorcycles are quicker through traffic and
+harder to shake off, but one bad turn can end the ride.
+
+Press **E** near a parked car to get in. Press **F** to carjack a
+moving car — expect the driver, and the law, to object.
+
+### Missions — 22 story missions
+
+A full story chain of **22 missions** takes you from courier runs and
+getaway driving to street races, garage jobs, and the casino heist
+finale:
+
+- **Early jobs:** deliveries, pickups, and timed drives that teach
+  the city and earn your first cash.
+- **Street races:** head-to-head sprints through the marina district
+  and the casino strip. Win them to unlock faster cars and new
+  contacts.
+- **Mid-game:** garage work, safehouse runs, and jobs that raise your
+  reputation — and your wanted level.
+- **The casino heist finale:** a multi-stage chain that ends the story
+  in style.
+- **Boat missions 21–22:** the finale moves to the water. Steal a
+  boat, outrun the harbour patrol, and make the marina escape in a
+  high-speed boat chase.
+
+### Wanted level, police, and helicopter
+
+Cause trouble and the city answers. Your wanted level climbs with
+carjackings, crashes, shootouts, and heists:
+
+- **Low heat:** patrol cars tail you and try to box you in.
+- **High heat:** roadblocks, faster pursuit cars, and aggressive
+  drivers who will ram you off the road.
+- **Maximum heat:** a police helicopter joins the chase, tracking you
+  from above and calling in ground units.
+
+Lose the cops by breaking line of sight, cutting through alleys,
+switching vehicles, or disappearing into the marina. Lay low until
+the heat fades.
+
+### Weapons and the weapon wheel
+
+Pick up weapons around the city and switch fast with the weapon wheel.
+**1–4** selects your loadout on the fly — pistol, shotgun, SMG, and
+rifle — so you are never caught with the wrong tool for a getaway
+or a standoff.
+
+### Garage and safehouses
+
+Your garage is where cars become yours. Store the vehicles you steal
+or win, keep your favourites ready, and return between jobs to save
+progress. Safehouses scattered across the city give you a place to
+lie low, change cars, and start the next mission fresh.
+
+### Boats and the marina
+
+Port Coral is a harbour city, and the water is part of the game.
+Boats handle with real momentum — wide turns, heavy wakes, and real
+speed on open water. Dock at the marina, steal a boat, and use the
+harbour to escape when the roads are closed to you.
+
+### Radio
+
+The city has a soundtrack. Press **R** to flip radio stations while
+you drive — sunset synth, street beats, and late-night marina
+frequencies, all original and built for the game.
+
+### Saving
+
+Progress saves automatically to your browser with **localStorage**.
+Close the tab, come back later, and your missions, garage, cash,
+and safehouses are still there.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| WASD | Drive / walk |
-| Mouse | Camera |
-| E | Enter / exit vehicle |
-| Space | Handbrake |
-| Shift | Boost |
-| F | Weapon wheel |
-| R | Radio |
-| M | Mission menu |
-| Esc | Pause |
+| **W A S D** | Drive / walk |
+| **Mouse** | Camera |
+| **E** | Enter / exit vehicle |
+| **Space** | Brake / handbrake |
+| **F** | Carjack |
+| **1 – 4** | Weapons / weapon wheel |
+| **R** | Radio |
+| **M** | Minimap |
+| **Esc** | Pause |
 
-## How to run
+Tip: tap Space to brake, hold it to handbrake-slide around tight
+corners. On a motorcycle, steer early — momentum is everything.
 
-CORAL HEAT is served as static files under `game/`, with three.js vendored locally. Serve the project directory with any static file server, then open the game from the `main.ts` entrypoint.
+## How to run locally
 
-No network requests are needed to play.
+The game is static files only. Serve the `game/` directory with any
+static server, then open the game in your browser.
+
+```bash
+cd game
+python3 -m http.server 8000
+```
+
+Then open:
+
+```text
+http://localhost:8000/index.html
+```
+
+You can also use the repo's serve entrypoint (`serve.ts`) if you
+prefer to run it that way — it serves the same static game files.
+
+No build step is required. No account or backend is needed.
 
 ## Screenshots
 
-### Cover — casino-heist chase (v2.12)
+1. **Dense neon casino chase cover** — the casino strip at sunset,
+   pursuit cars closing in under the neon.
+2. **Marina boat chase** — a high-speed escape across the harbour,
+   patrol boats in the wake.
+3. **On-foot carjacking** — taking a car on a quiet street, before
+   the sirens start.
+4. **Street race** — bumper-to-bumper racing through the marina
+   district at dusk.
 
-The v2.12 cover restores the dense neon casino chase: ~116 MPH, 5-star wanted, 4 police cars, helicopter searchlight, a roadblock with spike strips ahead, explosion and fire glow, a "CASINO HEIST — ESCAPE" HUD banner, and sunset palms.
+Screenshots live in `screenshots/` in this repo.
 
-![Casino-heist chase — cover](screenshots/1-chase.jpg)
+## Tech notes
 
-### On foot
-
-![On foot in the city](screenshots/2-foot.jpg)
-
-### Marina and boats
-
-Boats and the marina stay in the game and in this screenshot (missions 21–22).
-
-![Marina district and boats](screenshots/3-marina.jpg)
-
-### Street race
-
-![Street race](screenshots/4-race.jpg)
+- **Engine:** three.js, vendored locally under `game/vendor/`.
+- **Rendering:** WebGL, built for modern desktop browsers.
+- **Networking:** none. The game makes no network requests while
+  playing — all code, models, textures, and audio are local files.
+- **Files:** static only. Serve the folder and play.
+- **Save data:** localStorage in your own browser, nothing leaves
+  your machine.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see `LICENSE` for the full text.
+
+SPDX-License-Identifier: MIT

@@ -1,165 +1,175 @@
-// CORAL HEAT — combat and effects. A four-slot weapon wheel (Fists, Pistol,
-// SMG, Shotgun), hitscan shooting from the camera centre with a tracer and
-// muzzle flash, and a pooled particle system for explosions: fire glow,
-// smoke and flying debris. Gunfire and hurting a cop raise the wanted level.
-CH.fight = (function () {
-  const U = CH.util;
-  const WEAPONS = [
-    { name: 'Fists', damage: 12, rate: 0.45, range: 3, auto: false },
-    { name: 'Pistol', damage: 26, rate: 0.32, range: 70, auto: false },
-    { name: 'SMG', damage: 14, rate: 0.09, range: 55, auto: true },
-    { name: 'Shotgun', damage: 60, rate: 0.85, range: 26, auto: false },
-  ];
-  let lastShotAt = 0, flashAt = 0;
+// fight.js — combat, weapon wheel UI, and the explosion / fire / smoke
+// particle system. Explosions are sized to read on camera without blinding.
+import * as THREE from "../vendor/three/three.module.min.js";
+import { clamp, rand, pick } from "./util.js";
 
-  function shoot() {
-    const S = CH.S, p = S.player;
-    if (S.mode !== 'play' || S.weapon.wheelOpen) return;
-    const w = WEAPONS[S.weapon.current];
-    if (S.clock - lastShotAt < w.rate) return;
-    lastShotAt = S.clock;
-    S.stats.shotsFired++;
-    CH.sound.shot();
-    flashAt = S.clock + 0.06;
-    const cam = S.camera;
-    const ox = cam.position.x, oy = cam.position.y, oz = cam.position.z;
-    const dir = new THREE.Vector3();
-    cam.getWorldDirection(dir);
-    // Find the nearest hittable thing inside a narrow cone of the aim.
-    let best = null, bd = w.range;
-    function consider(x, y, z, obj) {
-      const dx = x - ox, dy = y - oy, dz = z - oz;
-      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (d > bd || d < 0.5) return;
-      const dot = (dx * dir.x + dy * dir.y + dz * dir.z) / d;
-      if (dot > 0.985) { bd = d; best = obj; }
-    }
-    for (const ped of S.traffic.peds) if (!ped.dead) consider(ped.x, 1.2, ped.z, { kind: 'ped', ref: ped });
-    for (const car of S.traffic.cars) if (!car.dead && !car.isPlayer) consider(car.x, 1, car.z, { kind: 'car', ref: car });
-    for (const c of S.police.cars) if (!c.dead) consider(c.x, 1, c.z, { kind: 'cop', ref: c });
-    const hitX = ox + dir.x * bd, hitY = oy + dir.y * bd, hitZ = oz + dir.z * bd;
-    tracer(ox, oy - 0.3, oz, hitX, hitY, hitZ);
-    if (best) {
-      if (best.kind === 'ped') {
-        best.ref.dead = true;
-        best.ref.mesh.visible = false;
-        CH.cops.addWanted(1);
-      } else if (best.kind === 'cop') {
-        best.ref.dead = true;
-        best.ref.mesh.visible = false;
-        CH.cops.addWanted(2);
-        explode(best.ref.x, 1, best.ref.z, 0.8);
-      } else if (best.kind === 'car') {
-        best.ref.dead = true;
-        explode(best.ref.x, 1, best.ref.z, 1.4);
-        CH.cops.addWanted(1);
+export const WEAPONS = [
+  { id: "fists", name: "Fists", damage: 12, range: 2.2, rate: 0.45, price: 0 },
+  { id: "pistol", name: "P9 Pistol", damage: 26, range: 34, rate: 0.32, price: 1200 },
+  { id: "smg", name: "Sting SMG", damage: 17, range: 30, rate: 0.09, price: 4500 },
+  { id: "shotgun", name: "Harbor 12G", damage: 55, range: 16, rate: 0.85, price: 6800 },
+  { id: "rifle", name: "Longshore Rifle", damage: 48, range: 60, rate: 0.5, price: 12000 },
+];
+
+class ParticlePool {
+  constructor(scene, max) {
+    this.scene = scene;
+    this.max = max || 420;
+    this.items = [];
+    const geo = new THREE.SphereGeometry(0.32, 6, 5);
+    this.geo = geo;
+    this.mats = {
+      fire: new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.9 }),
+      smoke: new THREE.MeshBasicMaterial({ color: 0x555560, transparent: true, opacity: 0.55 }),
+      spark: new THREE.MeshBasicMaterial({ color: 0xffd23c, transparent: true, opacity: 1 }),
+    };
+  }
+
+  burst(x, y, z, kind, count, power) {
+    const n = count || 26;
+    for (let i = 0; i < n; i++) {
+      if (this.items.length >= this.max) {
+        const old = this.items.shift();
+        this.scene.remove(old.mesh);
       }
-    }
-    // Fists: a short-range swing with no tracer.
-    if (S.weapon.current === 0) {
-      const near = S.traffic.peds.find((pd) => !pd.dead && U.dist2(pd.x, pd.z, p.x, p.z) < 3);
-      if (near) { near.dead = true; near.mesh.visible = false; CH.cops.addWanted(1); }
-    }
-  }
-
-  function tracer(x1, y1, z1, x2, y2, z2) {
-    const S = CH.S;
-    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1, y1, z1), new THREE.Vector3(x2, y2, z2)]);
-    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.9 }));
-    S.scene.add(line);
-    S.fx.tracers.push({ line, until: S.clock + 0.09 });
-  }
-
-  function explode(x, y, z, scale) {
-    const S = CH.S;
-    scale = scale || 1;
-    // Fire glow light that burns out fast.
-    const light = new THREE.PointLight(0xff7722, 3.2, 34 * scale);
-    light.position.set(x, y + 2, z);
-    S.scene.add(light);
-    S.fx.lights.push({ light, until: S.clock + 0.55, base: 3.2 });
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffa030 });
-    const smokeMat = new THREE.MeshBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.75 });
-    for (let i = 0; i < 16; i++) {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(U.rand(0.3, 0.7) * scale, 6, 5), i % 3 === 0 ? smokeMat : mat);
-      m.position.set(x + U.rand(-1, 1), y + U.rand(0, 1.5), z + U.rand(-1, 1));
-      S.scene.add(m);
-      S.fx.particles.push({
-        mesh: m, vx: U.rand(-7, 7) * scale, vy: U.rand(2, 10) * scale, vz: U.rand(-7, 7) * scale,
-        until: S.clock + U.rand(0.5, 1.3), smoke: i % 3 === 0, grow: i % 3 === 0 ? 1.6 : 0,
+      const mat = this.mats[kind] || this.mats.fire;
+      const mesh = new THREE.Mesh(this.geo, mat);
+      const a = rand(0, Math.PI * 2);
+      const up = rand(0.2, 1);
+      const sp = (power || 9) * rand(0.4, 1);
+      mesh.position.set(x, y, z);
+      mesh.scale.setScalar(rand(0.6, 1.6));
+      this.scene.add(mesh);
+      this.items.push({
+        mesh, kind,
+        vx: Math.sin(a) * sp, vy: up * sp, vz: Math.cos(a) * sp,
+        life: rand(0.5, 1.4), maxLife: 1.4,
+        grow: kind === "smoke" ? 2.4 : 0.4,
       });
     }
-    CH.sound.explosion();
   }
 
-  function wake(x, z) {
-    const S = CH.S;
-    const m = new THREE.Mesh(
-      new THREE.CircleGeometry(U.rand(0.5, 0.9), 10),
-      new THREE.MeshBasicMaterial({ color: 0xdff4ff, transparent: true, opacity: 0.35 })
-    );
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(x, 0.15, z);
-    S.scene.add(m);
-    S.fx.particles.push({ mesh: m, vx: 0, vy: 0, vz: 0, until: S.clock + 1.1, smoke: true, grow: 1.4, flat: true });
-  }
-  function sparks(x, z) {
-    const S = CH.S;
-    for (let i = 0; i < 6; i++) {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffd23e }));
-      m.position.set(x, 1, z);
-      S.scene.add(m);
-      S.fx.particles.push({ mesh: m, vx: U.rand(-5, 5), vy: U.rand(1, 5), vz: U.rand(-5, 5), until: S.clock + 0.4, smoke: false, grow: 0 });
+  update(dt) {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const p = this.items[i];
+      p.life -= dt;
+      if (p.life <= 0) {
+        this.scene.remove(p.mesh);
+        this.items.splice(i, 1);
+        continue;
+      }
+      p.vy -= (p.kind === "smoke" ? -1.2 : 6) * dt;
+      p.mesh.position.x += p.vx * dt;
+      p.mesh.position.y = Math.max(0.15, p.mesh.position.y + p.vy * dt);
+      p.mesh.position.z += p.vz * dt;
+      const s = p.mesh.scale.x + p.grow * dt;
+      p.mesh.scale.setScalar(Math.min(s, 4.2));
+      p.mesh.material.opacity = clamp(p.life / p.maxLife, 0, 1) * (p.kind === "fire" ? 0.9 : 0.55);
     }
   }
+}
 
-  function update(dt) {
-    const S = CH.S;
-    for (let i = S.fx.particles.length - 1; i >= 0; i--) {
-      const pt = S.fx.particles[i];
-      if (S.clock > pt.until) { S.scene.remove(pt.mesh); S.fx.particles.splice(i, 1); continue; }
-      pt.mesh.position.x += pt.vx * dt;
-      pt.mesh.position.y += (pt.vy || 0) * dt;
-      pt.mesh.position.z += pt.vz * dt;
-      if (pt.smoke && !pt.flat) pt.vy += 2.2 * dt; // smoke rises
-      if (pt.grow) pt.mesh.scale.multiplyScalar(1 + pt.grow * dt);
-      if (!pt.smoke && pt.mesh.position.y < 0.1) pt.mesh.position.y = 0.1;
-      pt.mesh.material.opacity = pt.smoke ? Math.max(0, (pt.until - S.clock) * 0.7) : 1;
-    }
-    for (let i = S.fx.lights.length - 1; i >= 0; i--) {
-      const L = S.fx.lights[i];
-      if (S.clock > L.until) { S.scene.remove(L.light); S.fx.lights.splice(i, 1); continue; }
-      L.light.intensity = L.base * ((L.until - S.clock) / 0.55);
-    }
-    for (let i = S.fx.tracers.length - 1; i >= 0; i--) {
-      if (S.clock > S.fx.tracers[i].until) { S.scene.remove(S.fx.tracers[i].line); S.fx.tracers.splice(i, 1); }
-    }
-    // Muzzle flash: a brief warm point light at the camera.
-    if (S.clock < flashAt && !S.fx._flash) {
-      const f = new THREE.PointLight(0xffc46b, 1.4, 12);
-      f.position.copy(S.camera.position);
-      S.scene.add(f); S.fx._flash = f;
-    } else if (S.clock >= flashAt && S.fx._flash) {
-      S.scene.remove(S.fx._flash); S.fx._flash = null;
+export function initFight(G) {
+  G.fxPool = new ParticlePool(G.scene, 420);
+  G.fx = {
+    burst(x, y, z, kind, count, power) {
+      G.fxPool.burst(x, y, z, kind, count, power);
+    },
+    explosion(x, y, z) {
+      G.fxPool.burst(x, y + 0.5, z, "fire", 34, 11);
+      G.fxPool.burst(x, y + 1.2, z, "smoke", 22, 6);
+      G.fxPool.burst(x, y + 0.5, z, "spark", 18, 16);
+      const light = new THREE.PointLight(0xff7a2a, 260, 55, 1.6);
+      light.position.set(x, 4, z);
+      G.scene.add(light);
+      G.explosionLights = G.explosionLights || [];
+      G.explosionLights.push({ light, t: 0 });
+      if (G.sound) G.sound.explosion();
+      if (G.shake) G.shake(0.6);
+    },
+  };
+  G.weapons = WEAPONS;
+  G.weaponIndex = 0;
+  G.lastShotAt = 0;
+  return G.fx;
+}
+
+export function updateExplosions(G, dt) {
+  if (G.fxPool) G.fxPool.update(dt);
+  if (G.explosionLights) {
+    for (let i = G.explosionLights.length - 1; i >= 0; i--) {
+      const e = G.explosionLights[i];
+      e.t += dt;
+      e.light.intensity = 260 * Math.max(0, 1 - e.t / 1.1);
+      if (e.t > 1.1) {
+        G.scene.remove(e.light);
+        G.explosionLights.splice(i, 1);
+      }
     }
   }
+}
 
-  function openWheel(on) {
-    CH.S.weapon.wheelOpen = on;
-    CH.hud.renderWheel();
+export function currentWeapon(G) {
+  return WEAPONS[G.weaponIndex % WEAPONS.length];
+}
+
+export function cycleWeapon(G, dir) {
+  const owned = (G.save && G.save.weapons) || ["fists"];
+  const avail = WEAPONS.filter((w) => owned.includes(w.id));
+  if (avail.length === 0) return currentWeapon(G);
+  const cur = currentWeapon(G);
+  let i = avail.findIndex((w) => w.id === cur.id);
+  i = (i + dir + avail.length) % avail.length;
+  G.weaponIndex = WEAPONS.findIndex((w) => w.id === avail[i].id);
+  if (G.hud) G.hud.setWeapon(avail[i]);
+  return avail[i];
+}
+
+// Fire the current weapon. On foot only; from a car it is a drive-by burst.
+export function shoot(G) {
+  const now = performance.now() / 1000;
+  const w = currentWeapon(G);
+  if (now - G.lastShotAt < w.rate) return false;
+  G.lastShotAt = now;
+  const p = G.player;
+  const ox = p.pos.x + Math.sin(p.heading) * 1.2;
+  const oz = p.pos.z + Math.cos(p.heading) * 1.2;
+  if (w.id !== "fists" && G.sound) G.sound.gunshot();
+  if (G.fx) G.fxPool.burst(ox, 1.3, oz, "spark", w.id === "shotgun" ? 10 : 5, 14);
+  // Hit check: nearest police car inside range + a forward cone.
+  let hit = null;
+  let bestD = w.range;
+  for (const cop of G.police || []) {
+    const dx = cop.x - p.pos.x;
+    const dz = cop.z - p.pos.z;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    if (d > w.range) continue;
+    const dot = (Math.sin(p.heading) * dx + Math.cos(p.heading) * dz) / (d || 1);
+    if (dot > 0.55 && d < bestD) { bestD = d; hit = cop; }
   }
-  function selectWeapon(i) {
-    if (i >= 0 && i < WEAPONS.length) {
-      CH.S.weapon.current = i;
-      CH.hud.renderWheel();
-      CH.hud.toast('WEAPON: ' + WEAPONS[i].name.toUpperCase());
+  if (hit) {
+    hit.hp = (hit.hp || 60) - w.damage;
+    if (G.toast) G.toast("Hit Bay PD unit — " + Math.max(0, Math.round(hit.hp)) + " HP left");
+    if (hit.hp <= 0) {
+      if (G.fx) G.fx.explosion(hit.x, 1, hit.z);
+      G.scene.remove(hit.mesh);
+      G.police.splice(G.police.indexOf(hit), 1);
+      if (G.save) {
+        G.save.cash += 150;
+        if (G.hud) G.hud.setCash(G.save.cash);
+      }
+      if (G.wanted < 5 && G.setWanted) G.setWanted(G.wanted + 1);
+    }
+  } else if (w.id !== "fists") {
+    // Missed shot still raises heat a touch when cops are near.
+    if ((G.police || []).length > 0 && Math.random() < 0.3 && G.setWanted) {
+      G.setWanted(Math.min(5, G.wanted + 0));
     }
   }
+  return true;
+}
 
-  // Boats and cops call these through the shared fx bucket.
-  CH.fx.wake = wake;
-  CH.fx.sparks = sparks;
-  CH.fx.explode = explode;
-
-  return { WEAPONS, shoot, explode, wake, sparks, update, openWheel, selectWeapon };
-})();
+// Weapon wheel: DOM ring built by hudkit; this just toggles it.
+export function toggleWeaponWheel(G, show) {
+  if (G.hud) G.hud.showWeaponWheel(show);
+}
