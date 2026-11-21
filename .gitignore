@@ -1,10 +1,9 @@
-# CORAL HEAT v2.6 — re-recorded entry; the game is v2.5's, fresh recording, code rewritten in-session.
-# v2.6 — the dossier build in out/ is local-only, never committed
+# CORAL HEAT v2.9 — local-only ignores (never committed)
 # Build output from `node main.ts` (dossier + copied game/screenshots)
 out/
+node_modules/
 # OS noise
 .DS_Store
 Thumbs.db
 # Local scratch logs from playtests
 *.log
-# v2.5 — the dossier build in out/ is local-only, never committed

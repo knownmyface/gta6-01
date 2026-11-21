@@ -3,173 +3,122 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CORAL HEAT — Sunset Marina City</title>
+<title>CORAL HEAT — 16 story missions, street races, garage &amp; bikes, 5-star police, helicopter chases, carjacking, boats &amp; radio in a sunset marina city</title>
 <style>
-  :root { --coral:#ff6b4a; --amber:#ffb347; --teal:#2fd4c4; --ink:#0d0b16; --panel:rgba(10,8,20,.62); }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  html,body { width:100%; height:100%; overflow:hidden; background:#1a0f2e; }
-  body { font-family:"Segoe UI", "Helvetica Neue", Arial, sans-serif; color:#fff; }
-  #viewport { position:fixed; inset:0; }
-  #viewport canvas { display:block; width:100%; height:100%; }
-  .hud { position:fixed; z-index:5; pointer-events:none; user-select:none; }
-  .panel { background:var(--panel); border:1px solid rgba(255,180,120,.45); border-radius:10px;
-    box-shadow:0 2px 14px rgba(0,0,0,.45); }
-  /* top-left job panel */
-  #panel-jobs { top:14px; left:14px; width:340px; padding:10px 12px; }
-  #panel-jobs .j-label { font-size:11px; letter-spacing:2px; color:var(--amber); font-weight:700; }
-  #panel-jobs .j-name { font-size:19px; font-weight:800; letter-spacing:.5px; margin-top:2px; }
-  #panel-jobs .j-task { font-size:13px; color:#ffe9c9; margin-top:4px; line-height:1.35; }
-  #panel-jobs .j-prog { margin-top:7px; height:7px; background:rgba(255,255,255,.16); border-radius:4px; overflow:hidden; }
-  #panel-jobs .j-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--coral),var(--amber)); }
-  /* top-right status cluster */
-  #panel-status { top:14px; right:14px; width:250px; padding:10px 12px; text-align:right; }
-  #cash-amount { font-size:24px; font-weight:800; color:#7dffb0; letter-spacing:.5px; }
-  #wanted-stars { font-size:22px; letter-spacing:3px; color:#ffd23f; margin-top:2px; min-height:26px; }
-  #wanted-stars .off { color:rgba(255,255,255,.28); }
-  .bar-row { display:flex; align-items:center; gap:8px; margin-top:6px; justify-content:flex-end; }
-  .bar-row .b-label { font-size:11px; font-weight:700; letter-spacing:1px; color:#ffd9c2; }
-  .bar { flex:1; height:9px; background:rgba(255,255,255,.16); border-radius:5px; overflow:hidden; max-width:150px; }
-  .bar > div { height:100%; }
-  #health-bar { background:linear-gradient(90deg,#37e08b,#a8ffce); width:100%; }
-  #damage-bar { background:linear-gradient(90deg,#ff5a3c,#ffb347); width:0%; }
-  #nitro-bar { background:linear-gradient(90deg,#2fd4c4,#9fe8ff); width:100%; }
-  #heat-word { font-size:11px; letter-spacing:2px; color:#ffb0a0; margin-top:6px; font-weight:700; }
-  /* bottom-left minimap */
-  #map-wrap { left:14px; bottom:14px; width:196px; height:196px; border-radius:50%;
-    border:3px solid rgba(255,180,120,.65); box-shadow:0 0 0 4px rgba(10,8,20,.5), 0 4px 18px rgba(0,0,0,.5); }
-  #minimap-canvas { width:100%; height:100%; display:block; background:transparent; }
-  #district-tag { left:14px; bottom:216px; padding:5px 10px; font-size:12px; font-weight:700; letter-spacing:1px; }
-  /* bottom-right speed cluster */
-  #panel-drive { right:14px; bottom:14px; width:210px; padding:10px 14px; text-align:right; }
-  #speed-read { font-size:46px; font-weight:800; line-height:.95; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.6); }
-  #speed-read small { font-size:15px; color:var(--amber); }
-  #vehicle-tag { font-size:13px; font-weight:700; letter-spacing:1px; color:#ffe9c9; margin-top:2px; }
-  #driver-tag { font-size:11px; color:#9fe8ff; letter-spacing:2px; margin-top:2px; }
-  /* bottom-centre radio + weapons + objective */
-  #panel-bottom { left:50%; bottom:14px; transform:translateX(-50%); width:430px; text-align:center; }
-  #radio-strip { display:inline-block; padding:6px 14px; font-size:13px; font-weight:700; letter-spacing:1px; }
-  #radio-strip b { color:var(--teal); }
-  #weapon-row { display:flex; gap:8px; justify-content:center; margin-top:8px; }
-  .slot { width:104px; padding:6px 4px; font-size:12px; font-weight:700; border-radius:8px;
-    background:var(--panel); border:1px solid rgba(255,255,255,.25); color:#cfd2e0; }
-  .slot.active { border-color:var(--amber); color:#fff; background:rgba(255,107,74,.35); }
-  .slot .ammo { display:block; font-size:11px; color:#9fe8ff; font-weight:600; margin-top:2px; }
-  #objective-strip { margin-top:8px; padding:7px 12px; font-size:14px; font-weight:700; letter-spacing:.5px; }
-  #action-cue { left:50%; top:58%; transform:translateX(-50%); padding:9px 18px; font-size:16px;
-    font-weight:800; letter-spacing:1px; color:#fff; background:rgba(255,107,74,.85); border-radius:8px;
-    border:1px solid #ffd9c2; display:none; }
-  #mission-banner { left:50%; top:22%; transform:translateX(-50%); padding:12px 26px; font-size:22px;
-    font-weight:800; letter-spacing:2px; color:#ffe9c9; text-align:center; display:none;
-    background:rgba(20,8,30,.78); border:1px solid var(--amber); border-radius:12px; }
-  #mission-banner small { display:block; font-size:13px; color:#9fe8ff; letter-spacing:1px; margin-top:4px; }
-  #aim-dot { left:50%; top:50%; width:22px; height:22px; transform:translate(-50%,-50%); display:none; }
-  #aim-dot::before, #aim-dot::after { content:""; position:absolute; background:#fff;
-    box-shadow:0 0 4px #000; }
-  #aim-dot::before { left:10px; top:0; width:2px; height:22px; }
-  #aim-dot::after { left:0; top:10px; width:22px; height:2px; }
-  #hurt-vignette { position:fixed; inset:0; z-index:4; pointer-events:none; opacity:0;
-    background:radial-gradient(ellipse at center, transparent 55%, rgba(255,30,10,.55) 100%); }
-  #toast-note { left:50%; bottom:150px; transform:translateX(-50%); padding:8px 16px; font-size:14px;
-    font-weight:700; display:none; }
-  /* menu + pause overlays */
-  .overlay { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
-    background:linear-gradient(180deg, rgba(26,8,40,.82), rgba(120,40,10,.78)); }
-  .card { width:640px; max-width:92vw; padding:30px 34px; text-align:center; border-radius:18px;
-    background:rgba(12,8,24,.88); border:2px solid rgba(255,180,120,.55); box-shadow:0 10px 50px rgba(0,0,0,.6); }
-  .card h1 { font-size:52px; letter-spacing:4px; font-weight:900;
-    background:linear-gradient(90deg,#ff6b4a,#ffb347,#2fd4c4); -webkit-background-clip:text; background-clip:text; color:transparent; }
-  .card h2 { font-size:15px; letter-spacing:3px; color:#ffd9c2; margin-top:4px; font-weight:700; }
-  .card p { font-size:14px; line-height:1.55; color:#f2e7ff; margin-top:14px; text-align:left; }
-  .card .keys { display:grid; grid-template-columns:1fr 1fr; gap:4px 18px; text-align:left;
-    font-size:13px; margin-top:14px; color:#d8ecff; }
-  .card .keys b { color:var(--amber); }
-  .big-btn { margin-top:20px; padding:13px 34px; font-size:18px; font-weight:800; letter-spacing:2px;
-    color:#1a0f2e; background:linear-gradient(90deg,#ffb347,#ff6b4a); border:0; border-radius:10px; cursor:pointer; }
-  .big-btn:hover { filter:brightness(1.12); }
-  .fine { font-size:11px; color:#9a8fb5; margin-top:14px; }
-  #pause-screen { display:none; }
-  #loader { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
-    background:#1a0f2e; color:#ffb347; font-size:18px; font-weight:700; letter-spacing:2px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a0f14; font-family: 'Segoe UI', Arial, sans-serif; color: #fff; }
+  #game-root, #game-root canvas { width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .panel { background: rgba(12, 12, 20, 0.72); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 10px; padding: 8px 12px; }
+  #mission-panel { position: absolute; top: 12px; left: 12px; width: 300px; }
+  #mission-panel h3 { font-size: 17px; letter-spacing: 1px; color: #ffd76b; }
+  .m-sub { font-size: 12px; color: #c9c9d4; margin-top: 2px; }
+  .m-step { font-size: 13px; margin-top: 6px; line-height: 1.35; }
+  .m-bar { height: 6px; background: #333; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .m-bar i { display: block; height: 100%; background: #ffd76b; width: 0%; }
+  #top-right { position: absolute; top: 12px; right: 12px; text-align: right; }
+  #cash { font-size: 26px; font-weight: 800; color: #7be495; text-shadow: 0 2px 6px #000; }
+  #stars { font-size: 24px; letter-spacing: 3px; color: #fff; text-shadow: 0 2px 6px #000; }
+  #health-wrap { width: 170px; height: 10px; background: rgba(0,0,0,0.6); border-radius: 5px; margin-top: 6px; overflow: hidden; margin-left: auto; }
+  #health { height: 100%; width: 100%; background: #37d67a; }
+  #damage-wrap { width: 170px; height: 8px; background: rgba(0,0,0,0.6); border-radius: 4px; margin-top: 4px; overflow: hidden; margin-left: auto; }
+  #damage { height: 100%; width: 0%; background: #ff3b30; }
+  .lbl { font-size: 10px; letter-spacing: 2px; color: #bbb; text-align: right; }
+  #weapons { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+  .wslot { background: rgba(12,12,20,0.72); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; padding: 5px 9px; font-size: 12px; }
+  .wslot.active { border-color: #ffd76b; color: #ffd76b; }
+  .wslot span { color: #7be495; }
+  #minimap { position: absolute; left: 12px; bottom: 12px; width: 190px; height: 190px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.55); background: #1a2a3a; box-shadow: 0 4px 18px rgba(0,0,0,0.6); }
+  #speed { position: absolute; right: 16px; bottom: 14px; text-align: right; text-shadow: 0 2px 8px #000; }
+  #speed b { font-size: 62px; line-height: 0.9; font-weight: 800; color: #fff; }
+  #speed span { display: block; font-size: 13px; letter-spacing: 3px; color: #ffd76b; }
+  #bottom-center { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); text-align: center; width: 420px; }
+  #objective { background: rgba(12,12,20,0.78); border: 1px solid rgba(255,215,107,0.55); border-radius: 8px; padding: 7px 12px; font-size: 14px; font-weight: 600; color: #ffe9a8; }
+  #radio { margin-top: 6px; font-size: 12px; color: #ffd7f0; text-shadow: 0 1px 4px #000; }
+  #toast { position: absolute; top: 84px; left: 50%; transform: translateX(-50%); background: rgba(12,12,20,0.85); border: 1px solid #ffd76b; border-radius: 8px; padding: 8px 16px; font-size: 14px; opacity: 0; transition: opacity 0.25s; white-space: nowrap; }
+  #toast.show { opacity: 1; }
+  #prompt { position: absolute; bottom: 130px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); border-radius: 8px; padding: 7px 14px; font-size: 14px; display: none; }
+  #carjack-bar { position: absolute; bottom: 160px; left: 50%; transform: translateX(-50%); width: 240px; height: 12px; background: rgba(0,0,0,0.7); border-radius: 6px; display: none; overflow: hidden; }
+  #carjack-bar i { display: block; height: 100%; background: #ff3b30; width: 0%; }
+  #race-hud { position: absolute; top: 100px; right: 12px; width: 250px; display: none; background: rgba(12,12,20,0.8); border: 1px solid #ff5a3c; border-radius: 10px; padding: 10px 12px; }
+  .r-title { font-size: 16px; font-weight: 800; color: #ff8a5c; letter-spacing: 1px; }
+  .r-row { font-size: 13px; margin-top: 5px; }
+  .r-count { font-size: 52px; font-weight: 800; text-align: center; color: #ffd76b; }
+  #banner { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); text-align: center; opacity: 0; transition: opacity 0.3s; }
+  #banner.show { opacity: 1; }
+  #banner b { display: block; font-size: 54px; letter-spacing: 6px; color: #ffd76b; text-shadow: 0 4px 18px #000; }
+  #banner span { font-size: 16px; color: #fff; text-shadow: 0 2px 8px #000; }
+  .overlay { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(40,10,30,0.82), rgba(20,8,20,0.88)); text-align: center; padding: 20px; }
+  .overlay h1 { font-size: 64px; letter-spacing: 8px; color: #ffd76b; text-shadow: 0 4px 24px #ff5a2a; }
+  .overlay h1 span { color: #ff5a3c; }
+  .overlay p { max-width: 640px; font-size: 15px; line-height: 1.6; color: #e8e8f0; margin: 14px 0; }
+  .overlay .keys { font-size: 13px; color: #c9c9d4; line-height: 1.8; }
+  .bigbtn { pointer-events: auto; cursor: pointer; margin-top: 18px; background: #ff5a3c; color: #fff; border: none; border-radius: 10px; padding: 14px 42px; font-size: 20px; font-weight: 800; letter-spacing: 2px; box-shadow: 0 6px 24px rgba(255,90,60,0.5); }
+  .bigbtn:hover { background: #ff7a5c; }
+  .ghostbtn { pointer-events: auto; cursor: pointer; margin-top: 10px; background: transparent; color: #ffd76b; border: 1px solid #ffd76b; border-radius: 10px; padding: 10px 26px; font-size: 14px; font-weight: 700; }
+  #pause-screen { display: none; }
+  .sheet { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 11; width: 520px; max-width: 92vw; max-height: 86vh; overflow-y: auto; background: rgba(14,14,22,0.97); border: 1px solid rgba(255,215,107,0.5); border-radius: 14px; padding: 18px 20px; display: none; pointer-events: auto; }
+  .sheet h2 { color: #ffd76b; font-size: 20px; margin-bottom: 8px; }
+  .sheet h3 { color: #ff8a5c; font-size: 14px; margin: 12px 0 4px; }
+  .g-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px; }
+  .g-sub { font-size: 11px; color: #aaa; }
+  .g-owned { color: #7be495; font-weight: 800; font-size: 12px; }
+  .g-cash { font-size: 14px; margin-bottom: 6px; }
+  .sheet button { pointer-events: auto; cursor: pointer; background: #2a6bd9; color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .sheet button:hover { background: #3a7be5; }
 </style>
 </head>
 <body>
-<div id="loader">LOADING CORAL HEAT…</div>
-<div id="viewport"></div>
-<div id="hurt-vignette"></div>
-
-<div id="panel-jobs" class="hud panel">
-  <div class="j-label" id="job-label">MISSION 1 / 12</div>
-  <div class="j-name" id="job-name">First Light</div>
-  <div class="j-task" id="job-task">Walk to Coral Plaza — Marta is waiting.</div>
-  <div class="j-prog"><div class="j-fill" id="job-fill"></div></div>
-</div>
-
-<div id="panel-status" class="hud panel">
-  <div id="cash-amount">$2,450</div>
-  <div id="wanted-stars"><span class="off">★★★★★</span></div>
-  <div class="bar-row"><span class="b-label">HEALTH</span><div class="bar"><div id="health-bar"></div></div></div>
-  <div class="bar-row"><span class="b-label">DAMAGE</span><div class="bar"><div id="damage-bar"></div></div></div>
-  <div class="bar-row"><span class="b-label">NITRO</span><div class="bar"><div id="nitro-bar"></div></div></div>
-  <div id="heat-word">CORAL BAY PD — CLEAR</div>
-</div>
-
-<div id="district-tag" class="hud panel">PALM ROW</div>
-<div id="map-wrap" class="hud"><canvas id="minimap-canvas" width="196" height="196"></canvas></div>
-
-<div id="panel-drive" class="hud panel">
-  <div id="speed-read">0 <small>MPH</small></div>
-  <div id="vehicle-tag">ON FOOT</div>
-  <div id="driver-tag">KAI SOLANO</div>
-</div>
-
-<div id="panel-bottom" class="hud">
-  <div id="radio-strip" class="panel">♪ <b>SUNSET FM 101.9</b> — “Golden Hour Drive”</div>
-  <div id="weapon-row">
-    <div class="slot active" id="gun-0">1 · P9 PISTOL<span class="ammo">∞ ammo</span></div>
-    <div class="slot" id="gun-1">2 · STINGER SMG<span class="ammo">120</span></div>
-    <div class="slot" id="gun-2">3 · BOOMSTICK<span class="ammo">24</span></div>
+<div id="game-root"></div>
+<div id="hud">
+  <div id="mission-panel" class="panel"><h3>MISSIONS</h3><div class="m-sub">Press M for the mission list</div></div>
+  <div id="top-right">
+    <div id="cash">$1,250</div>
+    <div id="stars">☆☆☆☆☆</div>
+    <div class="lbl">HEALTH</div>
+    <div id="health-wrap"><div id="health"></div></div>
+    <div class="lbl">CAR DAMAGE</div>
+    <div id="damage-wrap"><div id="damage"></div></div>
   </div>
-  <div id="objective-strip" class="panel">Reach the marker — follow the yellow diamond.</div>
+  <div id="weapons"></div>
+  <canvas id="minimap" width="190" height="190"></canvas>
+  <div id="speed"><b>0</b><span>MPH</span></div>
+  <div id="bottom-center">
+    <div id="objective">Free roam — cause chaos or start a mission (M)</div>
+    <div id="radio">♪ Sunset FM 98.5 — chill synthwave</div>
+  </div>
+  <div id="toast"></div>
+  <div id="prompt"></div>
+  <div id="carjack-bar"><i></i></div>
+  <div id="race-hud"></div>
+  <div id="banner"></div>
 </div>
 
-<div id="action-cue" class="hud">E — CARJACK</div>
-<div id="mission-banner" class="hud">MISSION COMPLETE<small>+$1,500 — next job unlocked</small></div>
-<div id="aim-dot" class="hud"></div>
-<div id="toast-note" class="hud panel"></div>
-
-<div id="menu-screen" class="overlay">
-  <div class="card">
-    <h1>CORAL HEAT</h1>
-    <h2>12 STORY MISSIONS · 5-STAR POLICE · HELICOPTER CHASES · CARJACKING · BOATS &amp; RADIO</h2>
-    <p>Sunset over Coral Bay. Kai Solano is back in the marina city with nothing but a busted
-    scooter and a debt to Marta Reyes. Steal cars, outrun the Coral Bay PD, dodge the police
-    helicopter, and run boats out of the marina — twelve jobs from first light to the final
-    heat wave. Everything here is original: the city, the people, the cars, the boats, the story.</p>
-    <div class="keys">
-      <div><b>W A S D</b> — move / drive / sail</div><div><b>MOUSE</b> — look / aim</div>
-      <div><b>E</b> — enter car · carjack · board boat</div><div><b>CLICK</b> — shoot</div>
-      <div><b>1 / 2 / 3</b> — weapons</div><div><b>R</b> — change radio station</div>
-      <div><b>SHIFT</b> — sprint / nitro boost</div><div><b>SPACE</b> — brake / handbrake</div>
-      <div><b>P</b> — pause &amp; save</div><div><b>H</b> — honk horn</div>
-    </div>
-    <button class="big-btn" id="play-button">▶ &nbsp;START ENGINE</button>
-    <div class="fine">CORAL HEAT v2.8 — an original open-world crime game. No Rockstar content.
-    Saves to this browser. Best played with sound on.</div>
-  </div>
+<div id="start-screen" class="overlay">
+  <h1>CORAL <span>HEAT</span></h1>
+  <p>Sunset over Coral Bay. Sixteen story missions, five street-race circuits, a garage full of upgrades,
+  three motorcycles, drivable boats, carjacking, and a five-star police force with helicopters and roadblocks.
+  Steal a car, outrun the law, and own the city.</p>
+  <div class="keys">WASD drive / walk &nbsp;•&nbsp; E enter &amp; exit vehicle &nbsp;•&nbsp; F hold to carjack &nbsp;•&nbsp; Mouse click shoot<br>
+  SPACE brake / wheelie &nbsp;•&nbsp; SHIFT nitro &nbsp;•&nbsp; 1/2/3 weapons &nbsp;•&nbsp; G garage &nbsp;•&nbsp; M missions &nbsp;•&nbsp; T races &nbsp;•&nbsp; R radio &nbsp;•&nbsp; ESC pause</div>
+  <button id="start-btn" class="bigbtn">▶ START ENGINE</button>
+  <div class="keys" style="margin-top:12px">Saves automatically • 16 missions • 5 race circuits • 3 safehouses • 3 bikes • boats • radio</div>
 </div>
 
 <div id="pause-screen" class="overlay">
-  <div class="card">
-    <h1 style="font-size:38px">PAUSED</h1>
-    <p style="text-align:center">Progress is saved to this browser automatically.</p>
-    <button class="big-btn" id="resume-button">RESUME</button>
-    <div class="fine">P — resume · progress, cash and unlocked missions are kept.</div>
-  </div>
+  <h1 style="font-size:44px">PAUSED</h1>
+  <p>Coral Bay waits for no one — except right now.</p>
+  <button id="resume-btn" class="bigbtn">RESUME</button>
+  <button id="restart-btn" class="ghostbtn">New game (clear save)</button>
 </div>
+
+<div id="garage-panel" class="sheet"></div>
+<div id="race-panel" class="sheet"></div>
+<div id="missions-panel" class="sheet"></div>
 
 <script type="importmap">
 { "imports": { "three": "./vendor/three/three.module.min.js" } }
 </script>
-<script type="module" src="./src/main.js"></script>
+<script type="module" src="./src/boot.js"></script>
 </body>
 </html>

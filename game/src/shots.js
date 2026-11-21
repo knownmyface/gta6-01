@@ -1,85 +1,69 @@
-// CORAL HEAT v2.8 — screenshot staging. The four stills are real renders of
-// the live game: the URL ?shot=chase|foot|marina|mission drops Kai into a
-// composed scene (chase, carjack, marina, boat mission) with the HUD already
-// dense, the menu hidden, and the camera framed. Nothing here is faked: every
-// car, boat and star in the still is a live object in the running game.
+// CORAL HEAT — screenshot scene staging (v2.9, fresh).
+// ?scene=chase|foot|marina|race — deterministic staged shots for the dossier.
+// Each scene drops the player into a live moment with the full HUD on.
+import { createCar } from './drive.js';
+import { startRace } from './raceway.js';
 
-export const STILL_NAMES = ['chase', 'foot', 'marina', 'mission'];
-
-export function stillFromQuery() {
-  const q = new URLSearchParams(window.location.search);
-  const shot = q.get('shot');
-  if (STILL_NAMES.includes(shot)) return shot;
-  return null;
-}
-
-// facade — the live game hands shots.js these hooks; shots.js never touches
-// three.js directly, it just directs the scene.
-export function stageStill(f, name) {
+export function applyScene(G, name) {
+  const p = G.player;
+  G.state = 'play';
+  document.getElementById('start-screen').style.display = 'none';
   if (name === 'chase') {
-    // COVER: Flare GT mid-chase on Beachfront Ave, heading north into the
-    // sunset — two interceptors on the bumper, Air One ahead, palms and the
-    // bay on the left, the city on the right.
-    f.setMission(11, 2); // Heat Wave, final leg: the city is already hunting
-    f.setCash(92450);
-    f.giveRide('flare', -148, 44, Math.PI);
-    f.setSpeed(34);
-    f.spawnPursuit(2, 7);
-    f.spawnHeli();
-    f.setWanted(4);
-    f.setObjective('Lose the PD — get to the marina docks.');
-    // three-quarter side view: hero car big in frame, interceptors behind it
-    // camera low and close, looking slightly up so Air One and the violet
-    // top of the sunset stay in frame
-    f.setCamera({ x: -142, y: 4.2, z: 30 }, { x: -149, y: 3, z: 46 });
-    f.setRadio(0);
-    return 'chase';
+    // player in a red sports car driving NORTH through the city, 2 police + helicopter, wanted 3, mission live
+    // start well north of the plaza so the slow headless frame rate still leaves the car in the city
+    const car = createCar(G, 0, -140, 0, 0xd9302a, 'sport');
+    car.isPlayer = true;
+    p.mode = 'car'; p.car = car;
+    p.mesh.visible = false;
+    p.x = car.x; p.z = car.z;
+    car.speed = 34;
+    G.keys['KeyW'] = true; // auto-drive so the cover shows a real chase at speed
+    G.cops.addWanted(3); // 3 stars: helicopter + police, but no roadblock in the shot
+    G.story.start(4);
+    // two police cars ahead, flanking the road — visible in the chase frame
+    const cop1 = createCar(G, -9, -180, 0, 0x111111, 'police');
+    cop1.isPolice = true; G.copsList.push(cop1);
+    const cop2 = createCar(G, 9, -190, 0, 0x111111, 'police');
+    cop2.isPolice = true; G.copsList.push(cop2);
+    G.camMode = 'chase';
+  } else if (name === 'foot') {
+    // on foot beside a sports car, mid-carjack: traffic car stopped, driver bailing
+    p.mode = 'foot';
+    p.x = 6; p.z = 34; p.heading = Math.PI * 0.75;
+    p.mesh.visible = true;
+    p.mesh.position.set(p.x, 0, p.z);
+    const car = createCar(G, 0, 30, Math.PI, 0xff7a1a, 'sport');
+    car.isTraffic = true;
+    car.speed = 0;
+    G.cops.addWanted(1);
+    G.story.start(2);
+    G.hud.setPrompt('Hold F — carjack this car');
+    G.camMode = 'foot';
+  } else if (name === 'marina') {
+    // on a boat in the marina, moored boats + ferris wheel behind
+    const boat = G.boats[0];
+    p.mode = 'boat'; p.boat = boat;
+    boat.ridden = true;
+    boat.speed = 14;
+    boat.x = 318; boat.z = -150; // start north of the piers, sail south past them
+    boat.heading = Math.PI; // sail south along the marina, piers ahead in frame
+    G.keys['KeyW'] = true;
+    p.x = boat.x; p.z = boat.z;
+    p.mesh.visible = false;
+    G.story.start(6);
+    G.camMode = 'boat';
+  } else if (name === 'race') {
+    // race grid: player + 3 rivals, countdown running, race HUD visible
+    const car = createCar(G, 0, 30, Math.PI, 0xd9302a, 'sport');
+    car.isPlayer = true;
+    p.mode = 'car'; p.car = car;
+    p.mesh.visible = false;
+    p.x = car.x; p.z = car.z;
+    startRace(G, 0);
+    G.keys['KeyW'] = true; // auto-drive once the countdown hits GO
+    G.camMode = 'race';
   }
-  if (name === 'foot') {
-    // ON FOOT: Kai mid-carjack beside a sedan at the -40 / -120 road crossing
-    // (an open junction, no tower in the way), driver half out, prompt on
-    // screen, two stars already lit.
-    f.setMission(1, 0);
-    f.setCash(3450);
-    f.placeWalker(-44, -118, 0.8);
-    f.stageCarjack('sedan', -40, -120, 0);
-    f.setWanted(2);
-    f.setObjective('Carjack a car on the street (walk up and press E).');
-    f.setCamera({ x: -47, y: 3.4, z: -128 }, { x: -39, y: 1.2, z: -118 });
-    return 'foot';
-  }
-  if (name === 'marina') {
-    // MARINA: Kai at the helm of the Reef Runner between the docks, moored
-    // yachts behind, sun low over the bay, patrol boat in the distance.
-    f.setMission(2, 1);
-    f.setCash(18200);
-    f.giveBoat('runner', -232, 190, 0.8);
-    f.setSpeed(20);
-    f.spawnPatrolBoat(-270, 160);
-    f.setWanted(1);
-    f.setObjective('Sail out to the red buoy off the point.');
-    // low view from the east, looking west into the sunset: the runner's
-    // starboard side reads, the sun sits low over the bay behind it
-    f.setCamera({ x: -214, y: 3.8, z: 178 }, { x: -232, y: 1.2, z: 190 });
-    f.setRadio(2);
-    return 'marina';
-  }
-  if (name === 'mission') {
-    // MISSION: Smoke on the Water — cargo run at dusk, patrol boats closing,
-    // objective banner live, speed high, wanted 3.
-    f.setMission(4, 1);
-    f.setCash(26400);
-    f.giveBoat('runner', -302, 182, -0.5);
-    f.setSpeed(32);
-    f.spawnPatrolBoat(-312, 188);
-    f.spawnPatrolBoat(-294, 192);
-    f.setWanted(3);
-    f.setObjective('Run the cargo to the south buoy — patrol boats are out.');
-    // close three-quarter rear view: the runner big, both patrol boats in
-    // frame, the marker beam behind them
-    f.setCamera({ x: -296, y: 4, z: 176 }, { x: -304, y: 1.5, z: 184 });
-    f.setRadio(1);
-    return 'mission';
-  }
-  return null;
+  G.hud.setCash(p.cash);
+  G.hud.setWanted(G.cops.wanted);
+  G.hud.setHealth(p.health);
 }
