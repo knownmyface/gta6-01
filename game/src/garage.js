@@ -1,84 +1,150 @@
-// Coral Heat — garage + property: 3 buyable safehouses, car storage slots,
-// upgrade shop (engine / tires / armor / nitro). Fresh write, round 7.
+// Coral Heat — garage & property: three buyable safehouses with car
+// storage slots, and an upgrade shop (engine / tires / armor / nitro)
+// with increasing prices and a purchase UI.
 import * as THREE from 'three';
-import { clamp } from './util.js';
+import { fmtMoney } from './util.js';
 
 export const SAFEHOUSES = [
-  { id: 'shack', name: 'Palm Court Shack', price: 5000, x: -78, z: 78, color: 0x86efac, slots: 1, desc: 'One car slot, quiet street, save point.' },
-  { id: 'marina', name: 'Marina Loft', price: 25000, x: 78, z: 182, color: 0x4ecdc4, slots: 2, desc: 'Two car slots, boat dock, marina view.' },
-  { id: 'penthouse', name: 'Coral Crown Penthouse', price: 80000, x: 196, z: -104, color: 0xffd166, slots: 4, desc: 'Four car slots, casino views, full garage.' },
+  { id: 'marina', name: 'Marina Loft', price: 15000, x: -196, z: 90, slots: 2, color: 0x2e6fd9 },
+  { id: 'casino', name: 'Casino Penthouse', price: 45000, x: 150, z: -120, slots: 4, color: 0x7a2a6b },
+  { id: 'beach', name: 'Beach Bungalow', price: 8000, x: -196, z: -150, slots: 1, color: 0x2ed9a8 },
 ];
 
 export const UPGRADES = [
-  { id: 'engine', name: 'ENGINE', levels: [4000, 9000, 18000], desc: '+12% top speed / level' },
-  { id: 'tires', name: 'TIRES', levels: [2500, 6000, 12000], desc: '+15% grip / level' },
-  { id: 'armor', name: 'ARMOR', levels: [3500, 8000, 15000], desc: '-25% crash damage / level' },
-  { id: 'nitro', name: 'NITRO', levels: [5000, 11000, 20000], desc: '+16 MPH boost, bigger tank / level' },
+  { id: 'engine', name: 'Engine Tuning', levels: 3, base: 4000, desc: '+8% top speed / level' },
+  { id: 'tires', name: 'Grip Tires', levels: 3, base: 2500, desc: 'Sharper steering, less slide' },
+  { id: 'armor', name: 'Armor Plating', levels: 3, base: 3500, desc: '+25 max health / level' },
+  { id: 'nitro', name: 'Nitro Kit', levels: 2, base: 6000, desc: 'Hold Shift for a nitro burst' },
 ];
 
-export class Garage {
-  constructor(scene) {
-    this.scene = scene;
-    this.owned = {};        // safehouse id -> true
-    this.stored = {};       // safehouse id -> [model names]
-    this.markers = [];
-    for (const sh of SAFEHOUSES) {
-      // glowing marker pillar + sign
-      const pillar = new THREE.Mesh(
-        new THREE.CylinderGeometry(2.2, 2.2, 22, 12, 1, true),
-        new THREE.MeshBasicMaterial({ color: sh.color, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false })
-      );
-      pillar.position.set(sh.x, 11, sh.z);
-      scene.add(pillar);
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(10, 0.3, 10), new THREE.MeshLambertMaterial({ color: sh.color }));
-      pad.position.set(sh.x, 0.15, sh.z);
-      scene.add(pad);
-      this.markers.push({ sh, pillar, pad });
+export function initGarage(G) {
+  G.garage = {
+    owned: [],
+    stored: [], // { model, color, upgrades }
+    shopOpen: false,
+  };
+  // mark the safehouse plots on the map
+  for (const s of SAFEHOUSES) {
+    const marker = new THREE.Mesh(
+      new THREE.BoxGeometry(10, 0.4, 10),
+      new THREE.MeshLambertMaterial({ color: s.color })
+    );
+    marker.position.set(s.x, 0.35, s.z);
+    G.scene.add(marker);
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 7, 1.2),
+      new THREE.MeshLambertMaterial({ color: 0x222222 })
+    );
+    post.position.set(s.x + 6, 3.5, s.z);
+    G.scene.add(post);
+  }
+}
+
+export function nearestSafehouse(G, maxDist = 14) {
+  let best = null;
+  let bestD = maxDist;
+  for (const s of SAFEHOUSES) {
+    const d = Math.hypot(s.x - G.player.pos.x, s.z - G.player.pos.z);
+    if (d < bestD) {
+      bestD = d;
+      best = s;
     }
   }
-  nearestSafehouse(x, z, maxD = 9) {
-    let best = null, bd = maxD * maxD;
-    for (const m of this.markers) {
-      const d = (m.sh.x - x) ** 2 + (m.sh.z - z) ** 2;
-      if (d < bd) { bd = d; best = m.sh; }
-    }
-    return best;
+  return best;
+}
+
+export function buySafehouse(G, id) {
+  const s = SAFEHOUSES.find((h) => h.id === id);
+  if (!s) return false;
+  if (G.garage.owned.includes(id)) {
+    if (G.hud) G.hud.toast('You already own the ' + s.name);
+    return false;
   }
-  buySafehouse(G, sh) {
-    if (this.owned[sh.id]) return { ok: false, msg: 'Already yours.' };
-    if (G.player.cash < sh.price) return { ok: false, msg: 'Need $' + sh.price.toLocaleString('en-US') + ' — you have $' + Math.floor(G.player.cash).toLocaleString('en-US') };
-    G.player.cash -= sh.price;
-    this.owned[sh.id] = true;
-    this.stored[sh.id] = [];
-    G.hud?.toast('SAFEHOUSE BOUGHT — ' + sh.name, '#7CFC00');
-    G.save?.save();
-    return { ok: true, msg: sh.name + ' is yours. ' + sh.slots + ' car slots.' };
+  if (G.player.cash < s.price) {
+    if (G.hud) G.hud.toast('Need ' + fmtMoney(s.price) + ' for the ' + s.name + ' — you have ' + fmtMoney(G.player.cash));
+    return false;
   }
-  storeCar(G, sh) {
-    if (!this.owned[sh.id]) return { ok: false, msg: 'Buy this safehouse first.' };
-    const slots = this.stored[sh.id] || [];
-    if (slots.length >= sh.slots) return { ok: false, msg: 'Garage full (' + sh.slots + ' slots).' };
-    slots.push(G.playerCar.model.name);
-    this.stored[sh.id] = slots;
-    G.hud?.toast('STORED ' + G.playerCar.model.name + ' at ' + sh.name, '#7CFC00');
-    return { ok: true, msg: 'Stored. ' + slots.length + '/' + sh.slots + ' slots used.' };
+  G.player.cash -= s.price;
+  G.garage.owned.push(id);
+  if (G.hud) {
+    G.hud.toast('SAFEHOUSE BOUGHT — ' + s.name + ' (' + s.slots + ' car slots)');
+    G.hud.banner('NEW SAFEHOUSE', s.name + ' · save point + ' + s.slots + ' garage slots');
   }
-  buyUpgrade(G, up) {
-    const lvl = G.playerCar.upgrades[up.id] || 0;
-    if (lvl >= up.levels.length) return { ok: false, msg: up.name + ' is MAXED.' };
-    const price = up.levels[lvl];
-    if (G.player.cash < price) return { ok: false, msg: 'Need $' + price.toLocaleString('en-US') + ' for ' + up.name + ' Lv' + (lvl + 1) };
-    G.player.cash -= price;
-    G.playerCar.upgrades[up.id] = lvl + 1;
-    if (up.id === 'armor') G.playerCar.damage = Math.max(0, G.playerCar.damage - 30);
-    G.hud?.toast(up.name + ' → Lv' + (lvl + 1) + ' INSTALLED', '#7CFC00');
-    G.save?.save();
-    return { ok: true, msg: up.name + ' Lv' + (lvl + 1) + ' installed. ' + up.desc };
+  if (G.sfx) G.sfx('buy');
+  if (G.missions) G.missions.onSafehouseBought?.(id);
+  return true;
+}
+
+export function storeCurrentCar(G) {
+  const s = nearestSafehouse(G, 16);
+  if (!s || !G.garage.owned.includes(s.id)) {
+    if (G.hud) G.hud.toast('Park at a safehouse you own to store this car (G near the marker)');
+    return false;
   }
-  update(dt, t) {
-    for (const m of this.markers) {
-      m.pillar.material.opacity = 0.2 + Math.sin(t * 2 + m.sh.x) * 0.08;
-      m.pillar.rotation.y += dt * 0.4;
-    }
+  const car = G.player.car;
+  if (!car) return false;
+  if (G.garage.stored.length >= totalSlots(G)) {
+    if (G.hud) G.hud.toast('Garage full — buy a bigger safehouse');
+    return false;
   }
+  G.garage.stored.push({ model: car.model.name, color: car.model.color, upgrades: { ...car.upgrades } });
+  G.scene.remove(car.mesh);
+  G.player.car = null;
+  G.player.mode = 'foot';
+  G.player.footMesh.visible = true;
+  G.player.footMesh.position.copy(G.player.pos);
+  if (G.hud) G.hud.toast('Car stored at the ' + s.name + ' (' + G.garage.stored.length + '/' + totalSlots(G) + ')');
+  return true;
+}
+
+export function totalSlots(G) {
+  return G.garage.owned.reduce((n, id) => n + (SAFEHOUSES.find((s) => s.id === id)?.slots || 0), 0);
+}
+
+export function upgradePrice(G, partId) {
+  const part = UPGRADES.find((u) => u.id === partId);
+  const car = G.player.car;
+  const level = car ? car.upgrades[partId] || 0 : 0;
+  return part.base * (level + 1);
+}
+
+export function buyUpgrade(G, partId) {
+  const car = G.player.car;
+  if (!car) {
+    if (G.hud) G.hud.toast('Bring a car to the shop to upgrade it');
+    return false;
+  }
+  const part = UPGRADES.find((u) => u.id === partId);
+  if (!part) return false;
+  const level = car.upgrades[partId] || 0;
+  if (level >= part.levels) {
+    if (G.hud) G.hud.toast(part.name + ' is already maxed');
+    return false;
+  }
+  const price = part.base * (level + 1);
+  if (G.player.cash < price) {
+    if (G.hud) G.hud.toast('Need ' + fmtMoney(price) + ' for ' + part.name + ' Lv' + (level + 1));
+    return false;
+  }
+  G.player.cash -= price;
+  car.upgrades[partId] = level + 1;
+  if (partId === 'armor') car.health = Math.min(100 + level * 25, car.health + 25);
+  if (partId === 'nitro') car.nitro = 100;
+  if (G.hud) {
+    G.hud.toast(part.name + ' Lv' + (level + 1) + ' installed — ' + fmtMoney(price));
+    G.hud.refreshShop?.();
+  }
+  if (G.sfx) G.sfx('buy');
+  if (G.missions) G.missions.onUpgradeBought?.(partId, level + 1);
+  return true;
+}
+
+export function openShop(G) {
+  G.garage.shopOpen = true;
+  if (G.hud) G.hud.showShop(true);
+}
+
+export function closeShop(G) {
+  G.garage.shopOpen = false;
+  if (G.hud) G.hud.showShop(false);
 }

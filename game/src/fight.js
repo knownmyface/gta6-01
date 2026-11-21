@@ -1,168 +1,223 @@
-// Coral Heat — combat: weapons, weapon wheel, shooting, explosions + fire/smoke.
-// Fresh write, round 7.
+// Coral Heat — combat: four weapons, hitscan shooting with tracers,
+// the weapon wheel UI, and explosion / fire / smoke particle effects
+// sized to read clearly without overwhelming the frame.
 import * as THREE from 'three';
-import { clamp, rand, pick } from './util.js';
+import { clamp, rand } from './util.js';
 
 export const WEAPONS = [
-  { id: 'fist', name: 'FISTS', slot: 1, damage: 12, range: 3, rate: 0.35, ammo: Infinity, color: 0xffffff },
-  { id: 'pistol', name: 'P9 PISTOL', slot: 2, damage: 26, range: 46, rate: 0.28, ammo: 120, color: 0xffd166 },
-  { id: 'smg', name: 'REEF SMG', slot: 3, damage: 15, range: 40, rate: 0.09, ammo: 240, color: 0x7dd3fc },
-  { id: 'shotgun', name: 'TIDE SHOTGUN', slot: 4, damage: 70, range: 20, rate: 0.85, ammo: 48, color: 0xff8c5a },
-  { id: 'rifle', name: 'CORAL RIFLE', slot: 5, damage: 55, range: 90, rate: 0.16, ammo: 150, color: 0xf472b6 },
-  { id: 'launcher', name: 'BOOM TUBE', slot: 6, damage: 120, range: 70, rate: 1.4, ammo: 12, color: 0xff4444 },
+  { id: 'pistol', name: 'P9 Pistol', damage: 22, rate: 0.32, range: 70, ammo: 120, color: 0xffe9a8 },
+  { id: 'smg', name: 'Sting SMG', damage: 12, rate: 0.09, range: 60, ammo: 240, color: 0xffd75a },
+  { id: 'shotgun', name: 'Boomstick', damage: 16, rate: 0.85, range: 34, ammo: 48, color: 0xff8a5a },
+  { id: 'rifle', name: 'Coral Rifle', damage: 42, rate: 0.5, range: 130, ammo: 90, color: 0x7affc9 },
 ];
 
-export class Particles {
-  constructor(scene) {
-    this.scene = scene;
-    this.bursts = [];
+export function initWeapons(G) {
+  G.weapons = WEAPONS.map((w) => ({ ...w, reserve: w.ammo }));
+  G.weaponIndex = 0;
+  G.player.weapon = G.weapons[0];
+  G.player.firing = false;
+  G.shotCooldown = 0;
+}
+
+export function cycleWeapon(G, dir = 1) {
+  G.weaponIndex = (G.weaponIndex + dir + G.weapons.length) % G.weapons.length;
+  G.player.weapon = G.weapons[G.weaponIndex];
+  if (G.hud) G.hud.setWeapon(G.player.weapon);
+  if (G.sfx) G.sfx('swap');
+}
+
+export function selectWeapon(G, index) {
+  if (index < 0 || index >= G.weapons.length) return;
+  G.weaponIndex = index;
+  G.player.weapon = G.weapons[index];
+  if (G.hud) G.hud.setWeapon(G.player.weapon);
+}
+
+function muzzleWorld(G) {
+  const p = G.player.pos;
+  const fx = Math.sin(G.player.heading);
+  const fz = Math.cos(G.player.heading);
+  const y = G.player.mode === 'foot' ? 1.4 : 1.1;
+  return new THREE.Vector3(p.x + fx * 1.4, y, p.z + fz * 1.4);
+}
+
+export function shoot(G) {
+  if (G.shotCooldown > 0) return;
+  const w = G.player.weapon;
+  if (!w || w.reserve <= 0) {
+    if (G.sfx) G.sfx('empty');
+    G.shotCooldown = 0.25;
+    return;
   }
-  spawnExplosion(x, y, z, scale = 1) {
-    const group = new THREE.Group();
-    const n = 26;
-    const geo = new THREE.SphereGeometry(0.5, 6, 5);
-    const parts = [];
-    for (let i = 0; i < n; i++) {
-      const isSmoke = i % 3 === 0;
-      const mat = new THREE.MeshBasicMaterial({
-        color: isSmoke ? 0x444444 : pick([0xff6b00, 0xffa500, 0xffdd33, 0xff3300]),
-        transparent: true, opacity: 0.95,
-      });
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(x, y, z);
-      m.scale.setScalar(rand(0.6, 1.6) * scale);
-      group.add(m);
-      parts.push({
-        mesh: m,
-        vx: rand(-1, 1) * 9 * scale, vy: rand(2, 11) * scale, vz: rand(-1, 1) * 9 * scale,
-        life: rand(0.5, 1.3), maxLife: 1.3, smoke: isSmoke,
-      });
+  w.reserve -= 1;
+  G.shotCooldown = w.rate;
+  G.player.firing = true;
+  const from = muzzleWorld(G);
+  const spread = w.id === 'shotgun' ? 0.09 : 0.02;
+  const pellets = w.id === 'shotgun' ? 6 : 1;
+  const fx = Math.sin(G.player.heading);
+  const fz = Math.cos(G.player.heading);
+  for (let i = 0; i < pellets; i++) {
+    const a = G.player.heading + rand(-spread, spread);
+    const dir = new THREE.Vector3(Math.sin(a), rand(-0.02, 0.03), Math.cos(a));
+    const to = from.clone().addScaledVector(dir, w.range);
+    const tracer = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.06, w.range),
+      new THREE.MeshBasicMaterial({ color: w.color, transparent: true, opacity: 0.85 })
+    );
+    tracer.position.copy(from).addScaledVector(dir, w.range / 2);
+    tracer.lookAt(to);
+    G.scene.add(tracer);
+    G.tracers.push({ mesh: tracer, life: 0.09 });
+    // hit the nearest cop / ped roughly along the shot line
+    const targets = [...G.cops, ...G.peds];
+    for (const t of targets) {
+      const tx = t.pos.x - from.x;
+      const tz = t.pos.z - from.z;
+      const along = tx * dir.x + tz * dir.z;
+      if (along > 0 && along < w.range) {
+        const perp = Math.abs(tx * dir.z - tz * dir.x);
+        if (perp < 2.2) {
+          if (t.health === undefined) t.health = 100;
+          t.health -= w.damage;
+          if (t.health <= 0) {
+            if (G.cops.includes(t)) {
+              const idx = G.cops.indexOf(t);
+              G.cops.splice(idx, 1);
+              G.scene.remove(t.mesh);
+              spawnExplosion(G, t.pos, 1.1);
+              G.player.cash += 150;
+            } else {
+              const idx = G.peds.indexOf(t);
+              if (idx >= 0) {
+                G.peds.splice(idx, 1);
+                G.scene.remove(t.mesh);
+              }
+            }
+          }
+          break;
+        }
+      }
     }
-    // fire glow light
-    const light = new THREE.PointLight(0xff7722, 60, 42 * scale);
-    light.position.set(x, y + 2, z);
-    group.add(light);
-    // ground scorch ring
-    const ring = new THREE.Mesh(new THREE.CircleGeometry(4.5 * scale, 20), new THREE.MeshBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.7 }));
-    ring.rotation.x = -Math.PI / 2; ring.position.set(x, 0.06, z);
-    group.add(ring);
-    this.scene.add(group);
-    this.bursts.push({ group, parts, light, life: 1.4, maxLife: 1.4 });
-    return group;
   }
-  spawnMuzzle(x, y, z, heading) {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(0.35, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
-    m.position.set(x + Math.sin(heading) * 1.6, y, z + Math.cos(heading) * 1.6);
-    this.scene.add(m);
-    this.bursts.push({ group: m, parts: [], light: null, life: 0.07, maxLife: 0.07, single: true });
+  // muzzle flash
+  const flash = new THREE.Mesh(
+    new THREE.SphereGeometry(0.32, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xfff2b0 })
+  );
+  flash.position.copy(from);
+  G.scene.add(flash);
+  G.tracers.push({ mesh: flash, life: 0.06 });
+  if (G.sfx) G.sfx('shot');
+  if (G.player.mode === 'foot') setWantedIfNeeded(G);
+}
+
+function setWantedIfNeeded(G) {
+  // firing a gun in public draws the law
+  if (G.player.wanted < 2) {
+    import('./cops.js').then((m) => m.setWanted(G, 2, 'shots fired in public'));
   }
-  update(dt) {
-    for (const b of [...this.bursts]) {
-      b.life -= dt;
-      if (b.life <= 0) {
-        this.scene.remove(b.group);
-        this.bursts = this.bursts.filter((x) => x !== b);
-        continue;
+}
+
+export function updateCombat(G, dt) {
+  G.shotCooldown = Math.max(0, G.shotCooldown - dt);
+  if (!G.keys['Mouse0']) G.player.firing = false;
+  for (let i = G.tracers.length - 1; i >= 0; i--) {
+    const t = G.tracers[i];
+    t.life -= dt;
+    if (t.life <= 0) {
+      G.scene.remove(t.mesh);
+      G.tracers.splice(i, 1);
+    }
+  }
+  updateExplosions(G, dt);
+}
+
+// --- explosions: fire ball + smoke column, sized to read, not swamp ---
+export function spawnExplosion(G, pos, scale = 1) {
+  const group = new THREE.Group();
+  group.position.set(pos.x, 1.2, pos.z);
+  const fireMat = new THREE.MeshBasicMaterial({ color: 0xff7a1e, transparent: true, opacity: 0.95 });
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.95 });
+  const fire = new THREE.Mesh(new THREE.SphereGeometry(2.4 * scale, 12, 10), fireMat);
+  fire.scale.y = 0.8;
+  group.add(fire);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(1.3 * scale, 10, 8), coreMat);
+  group.add(core);
+  const smokeMat = new THREE.MeshLambertMaterial({ color: 0x2a2a2a, transparent: true, opacity: 0.75 });
+  const puffs = [];
+  for (let i = 0; i < 7; i++) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(rand(0.9, 1.6) * scale, 8, 6), smokeMat);
+    puff.position.set(rand(-1.6, 1.6) * scale, rand(1.5, 5.5) * scale, rand(-1.6, 1.6) * scale);
+    group.add(puff);
+    puffs.push(puff);
+  }
+  const glow = new THREE.PointLight(0xff8a2a, 5, 42 * scale);
+  glow.position.y = 2;
+  group.add(glow);
+  G.scene.add(group);
+  G.explosions.push({ group, fire, core, puffs, glow, life: 1.6, maxLife: 1.6, scale });
+  if (G.sfx) G.sfx('explosion');
+  // collateral: nearby cops take damage
+  for (const c of [...G.cops]) {
+    if (Math.hypot(c.pos.x - pos.x, c.pos.z - pos.z) < 9 * scale) {
+      c.health = (c.health ?? 100) - 120;
+      if (c.health <= 0) {
+        G.cops.splice(G.cops.indexOf(c), 1);
+        G.scene.remove(c.mesh);
       }
-      const k = b.life / b.maxLife;
-      if (b.light) b.light.intensity = 60 * k;
-      for (const p of b.parts) {
-        p.mesh.position.x += p.vx * dt;
-        p.mesh.position.y += p.vy * dt;
-        p.mesh.position.z += p.vz * dt;
-        p.vy -= (p.smoke ? -2 : 14) * dt;   // smoke rises, fire falls
-        p.mesh.material.opacity = Math.max(0, k);
-        p.mesh.scale.multiplyScalar(1 + dt * (p.smoke ? 1.6 : 0.4));
-      }
-      if (b.single) b.group.material.opacity = k;
     }
   }
 }
 
-export class Combat {
-  constructor(scene, particles) {
-    this.scene = scene;
-    this.particles = particles;
-    this.weaponIndex = 1;   // pistol
-    this.ammo = {};
-    for (const w of WEAPONS) this.ammo[w.id] = w.ammo === Infinity ? Infinity : w.ammo;
-    this.cooldown = 0;
-    this.wheelOpen = false;
-  }
-  get weapon() { return WEAPONS[this.weaponIndex]; }
-  select(i) {
-    this.weaponIndex = clamp(i, 0, WEAPONS.length - 1);
-  }
-  // Hitscan shot from the player toward aim point; damages peds, cops, cars.
-  shoot(G, origin, heading) {
-    if (this.cooldown > 0) return false;
-    const w = this.weapon;
-    if (this.ammo[w.id] !== Infinity && this.ammo[w.id] <= 0) {
-      G.hud?.toast('OUT OF AMMO — ' + w.name, '#ff8844');
-      this.cooldown = 0.4;
-      return false;
+export function updateExplosions(G, dt) {
+  for (let i = G.explosions.length - 1; i >= 0; i--) {
+    const e = G.explosions[i];
+    e.life -= dt;
+    const t = clamp(e.life / e.maxLife, 0, 1);
+    const grow = 1 + (1 - t) * 0.9;
+    e.fire.scale.set(grow, grow * 0.8, grow);
+    e.fire.material.opacity = 0.95 * t;
+    e.core.scale.setScalar(grow * 0.9);
+    e.core.material.opacity = 0.95 * t;
+    e.glow.intensity = 5 * t;
+    for (const p of e.puffs) {
+      p.position.y += dt * 4.5;
+      p.scale.multiplyScalar(1 + dt * 1.4);
+      p.material.opacity = 0.75 * t;
     }
-    this.cooldown = w.rate;
-    if (this.ammo[w.id] !== Infinity) this.ammo[w.id] -= 1;
-    const ox = origin.x + Math.sin(heading) * 1.2;
-    const oz = origin.z + Math.cos(heading) * 1.2;
-    this.particles.spawnMuzzle(ox, 1.5, oz, heading);
-    G.sound?.shot(w.id);
-    // tracer line
-    const endX = ox + Math.sin(heading) * w.range;
-    const endZ = oz + Math.cos(heading) * w.range;
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(ox, 1.5, oz), new THREE.Vector3(endX, 1.4, endZ),
-    ]);
-    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.9 }));
-    this.scene.add(line);
-    setTimeout(() => this.scene.remove(line), 70);
-    let hitAnything = false;
-    // peds
-    for (const p of G.peds.list) {
-      const d = Math.hypot(p.x - ox, p.z - oz);
-      if (d < w.range) {
-        const ang = Math.atan2(p.x - ox, p.z - oz);
-        let diff = Math.abs(((ang - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-        if (diff < 0.16) {
-          p.panic = 3;
-          G.player.cash += 12;
-          G.police.addHeat(4);
-          hitAnything = true;
-        }
-      }
+    if (e.life <= 0) {
+      G.scene.remove(e.group);
+      G.explosions.splice(i, 1);
     }
-    // police cars
-    for (const c of G.police.cars) {
-      const d = Math.hypot(c.x - ox, c.z - oz);
-      if (d < w.range) {
-        const ang = Math.atan2(c.x - ox, c.z - oz);
-        let diff = Math.abs(((ang - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-        if (diff < 0.2) {
-          G.police.addHeat(10);
-          if (w.id === 'launcher' || Math.random() < 0.25) {
-            this.particles.spawnExplosion(c.x, 1, c.z, 1.3);
-            G.sound?.explosion();
-            this.scene.remove(c.mesh);
-            G.police.cars = G.police.cars.filter((x) => x !== c);
-            G.player.cash += 250;
-            G.hud?.toast('POLICE CAR DESTROYED +$250', '#ffd166');
-          }
-          hitAnything = true;
-        }
-      }
-    }
-    // traffic cars explode with launcher
-    if (w.id === 'launcher') {
-      this.particles.spawnExplosion(endX, 1, endZ, 1.6);
-      G.sound?.explosion();
-      G.police.addHeat(12);
-      hitAnything = true;
-    }
-    if (hitAnything) G.player.kills = (G.player.kills || 0) + 1;
-    return true;
   }
-  update(dt) {
-    if (this.cooldown > 0) this.cooldown -= dt;
-  }
+}
+
+// --- weapon wheel: radial picker, hold Q ---
+export function buildWeaponWheel(G) {
+  const wheel = document.getElementById('weapon-wheel');
+  if (!wheel) return;
+  wheel.innerHTML = '';
+  G.weapons.forEach((w, i) => {
+    const slot = document.createElement('div');
+    slot.className = 'wheel-slot';
+    slot.textContent = (i + 1) + '  ' + w.name + '  ·  ' + w.reserve;
+    slot.dataset.index = i;
+    slot.addEventListener('click', () => {
+      selectWeapon(G, i);
+      wheel.style.display = 'none';
+    });
+    wheel.appendChild(slot);
+  });
+  G.weaponWheelEl = wheel;
+}
+
+export function refreshWeaponWheel(G) {
+  if (!G.weaponWheelEl) return;
+  const slots = G.weaponWheelEl.querySelectorAll('.wheel-slot');
+  slots.forEach((s, i) => {
+    const w = G.weapons[i];
+    s.textContent = (i + 1) + '  ' + w.name + '  ·  ' + w.reserve;
+    s.classList.toggle('active', i === G.weaponIndex);
+  });
 }

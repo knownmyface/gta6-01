@@ -1,30 +1,28 @@
-// CORAL HEAT — entrypoint for make.fun competition gta6-01 (round 7).
-// Copies game/ and screenshots/ from beside THIS file (never from the working
-// directory) into the output dir and writes dossier.json with the kit library.
-// Node 22, standard library only.
+// CORAL HEAT — make.fun gta6-01 entry program (Node 22, standard library only).
+// Hands the game in: copies game/ and screenshots/ from beside this file
+// into the output directory and writes output/dossier.json with the
+// vendored make.fun library. The game and screenshots folders are resolved
+// from this file's own location, never from the working directory, so the
+// program works when run from anywhere; only the output directory comes
+// from MAKEFUN_OUTPUT_DIR (default /output).
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-// Resolve from the entrypoint file's own location, never from process.cwd().
 const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
+mkdirSync(outDir, { recursive: true });
+cpSync(join(here, 'game'), join(outDir, 'game'), { recursive: true });
+mkdirSync(join(outDir, 'screenshots'), { recursive: true });
 if (existsSync(join(here, 'screenshots'))) {
-  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+  cpSync(join(here, 'screenshots'), join(outDir, 'screenshots'), { recursive: true });
 }
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
-// bytes; the others refuse an entry the scorer would refuse (more than 4
-// screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of
-// game files in all, or a path under game/ over 1000 bytes).
 writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
+  join(outDir, 'dossier.json'),
+  buildDossier(outDir, {
     text_max_bytes: 163840,
     screenshots: { max: 4, max_bytes: 262144 },
     game_max_files: 993,

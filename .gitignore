@@ -3,6 +3,3 @@ out/
 dist/
 .DS_Store
 *.log
-# Coral Heat v2.10 — local build + screenshot scratch
-out-*/
-shots-*.png
