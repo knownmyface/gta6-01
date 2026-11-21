@@ -1,316 +1,353 @@
-// boot.js — Coral Heat entry: renderer, world build, input, camera, main loop.
-// Wires every system together: city, driving, walking, police, combat, boats,
-// bikes, races, garage, story, HUD, radio, save.
+// boot.js — CORAL HEAT entry point: renderer + camera, input, the main loop,
+// and the wiring that makes every system play together. Loads from index.html.
 import * as THREE from 'three';
-import { clamp, lerp, rand, fmtCash } from './util.js';
+import { clamp, damp } from './util.js';
 import { buildCity } from './coralcity.js';
-import { spawnCar, spawnTraffic, spawnParkedCars, updatePlayerCar, updateTraffic, CAR_MODELS } from './drive.js';
-import { makePlayerMesh, updateOnFoot, tryEnterVehicle, exitCar, startCarjack, updateCarjack, spawnPedestrians, updatePedestrians } from './walk.js';
-import { createWanted, updatePolice, checkBusted } from './cops.js';
-import { createArsenal, fireWeapon, updateThugs, spawnPickups, updatePickups } from './fight.js';
-import { spawnMarinaBoats, updateBoat, nearestBoat, boardBoat, leaveBoat, spawnBuoys, boatRaceCheckpoints } from './boats.js';
-import { spawnStreetBikes, updateBike, nearestBike, mountBike, dismountBike } from './bikes.js';
-import { createRaceState, startRace, updateRace, raceStartPoints, CIRCUITS } from './raceway.js';
-import { createGarageState, buildShopUI, refreshShopUI, nearestSafehouse, storeCar } from './garage.js';
-import { createMissionState, startMission, updateMission, MISSIONS_1_8 } from './story.js';
-import { registerMissions9_16, startMissionWithSetup } from './story2.js';
-import { createHUD, updateHUD } from './hudkit.js';
-import { createSound } from './sound.js';
-import { createSave } from './savegame.js';
+import { spawnTraffic, spawnPeds, updateTraffic, updatePeds, driveVehicle, makeVehicle } from './drive.js';
+import { initPlayer, updateOnFoot, enterVehicle, exitVehicle, spawnParkedCars, nearestStealable } from './walk.js';
+import { initCops, updateCops, setWanted } from './cops.js';
+import { initFight, updateFight } from './fight.js';
+import { spawnMarina, updateBoats, driveBoat, nearestBoat, enterBoat, exitBoat } from './boats.js';
+import { spawnBikes, driveBike, nearestBike, enterBike, exitBike } from './bikes.js';
+import { initRace, updateRace, quitRace } from './raceway.js';
+import { initGarage, atGarageShop, toggleShop, buyUpgrade, buySafehouse } from './garage.js';
+import { initStory, updateStory, startMission, currentMission } from './story.js';
+import { initStory2, updateStory2, startMission2, currentMission2 } from './story2.js';
+import { buildHud, updateHud } from './hudkit.js';
+import { initSound } from './sound.js';
+import { saveGame, loadGame, hasSave } from './savegame.js';
 import { stageShot } from './shots.js';
 
-const params = new URLSearchParams(location.search);
-const SHOT = params.get('shot');
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-document.body.appendChild(renderer.domElement);
-
-const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xff8a4a, 180, 720);
-const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 2000);
-
-// Sunset lighting: low warm sun + purple ambient
-const sun = new THREE.DirectionalLight(0xffb36b, 2.2);
-sun.position.set(-260, 190, -180);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -160; sun.shadow.camera.right = 160;
-sun.shadow.camera.top = 160; sun.shadow.camera.bottom = -160;
-sun.shadow.camera.far = 800;
-scene.add(sun);
-scene.add(new THREE.AmbientLight(0x8a6ab0, 0.85));
-const hemi = new THREE.HemisphereLight(0xff9a5c, 0x2a2a4a, 0.6);
-scene.add(hemi);
-
-// Mission target marker ring
-const marker = new THREE.Mesh(
-  new THREE.RingGeometry(4, 5.2, 32),
-  new THREE.MeshBasicMaterial({ color: 0xffd23c, transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
-);
-marker.rotation.x = -Math.PI / 2;
-marker.position.y = 0.3;
-marker.visible = false;
-scene.add(marker);
-
-const G = {
-  scene, camera, renderer, time: 0, keys: {}, events: [],
-  cars: [], peds: [], thugs: [], cops: [], roadblocks: [], pickups: [],
-  boats: [], bikes: [], colliders: [], heli: null, ocean: null, ferris: null,
-  camYaw: 0, camPitch: 0.32, camDist: 12, camYawOffset: 0,
-  started: false, paused: false, dead: false, deadKind: null,
-  fx: { flashes: [], wake: [], hitmarks: [], nitro: false },
-  marker,
-  boatApi: { spawnBuoys, boatRaceCheckpoints },
-  player: {
-    pos: new THREE.Vector3(6, 1.2, 6), heading: 0, walkPhase: 0,
-    onFoot: true, vehicle: null, boat: null, bike: null,
-    mesh: null, moving: false, punchT: 0, carjack: null,
-    health: 100, armor: 0, cash: 2500, damageFlash: 0,
-  },
+const W = {
+  time: 0,
+  keys: new Set(),
+  mouseDown: false,
+  events: [],
+  started: false,
+  paused: false,
+  gameOver: null,
+  camYaw: 0,
+  camMode: 'follow',
+  objective: 'Press N to start Mission 1 — BACK IN THE BAY',
+  raceBanner: '',
+  flashTimer: 0,
+  flashText: '',
+  shot: null,
+  shotFxTimer: 0,
+  bestLaps: {},
 };
-G.wanted = createWanted(G);
-G.arsenal = createArsenal();
-G.race = createRaceState();
-G.garage = createGarageState();
-G.missions = createMissionState();
-G.hud = createHUD(G);
-G.sound = createSound();
-G.save = createSave(G);
 
-// Build the world
-registerMissions9_16();
-buildCity(G);
-G.player.mesh = makePlayerMesh();
-G.player.mesh.group.position.set(6, 0, 6);
-scene.add(G.player.mesh.group);
-spawnTraffic(G, 16);
-spawnParkedCars(G, 14);
-spawnPedestrians(G, 26);
-spawnMarinaBoats(G);
-spawnStreetBikes(G);
-spawnPickups(G);
-G.garage.panel = buildShopUI(G);
+window.__game = W;
+window.__garageApi = { buyUpgrade, buySafehouse };
 
-// restore save if there is one
-const saved = G.save.load();
-if (saved) {
-  document.getElementById('save-note').textContent = 'Save found — cash ' + fmtCash(G.player.cash) + ', mission ' + (G.missions.index + 1) + ' of 16. Progress kept.';
+function initRenderer() {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = false;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  document.getElementById('game-root').appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1200);
+  camera.position.set(0, 8, 24);
+  W.renderer = renderer;
+  W.scene = scene;
+  W.camera = camera;
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
 }
 
-// ---------- input ----------
-addEventListener('keydown', (e) => {
-  G.keys[e.code] = true;
-  if (['Space', 'Tab', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
-  if (e.code === 'KeyE') onEnterKey();
-  if (e.code === 'KeyF') onCarjackKey();
-  if (e.code === 'KeyR') onRaceKey();
-  if (e.code === 'KeyG') onGarageKey();
-  if (e.code === 'KeyM') onMissionKey();
-  if (e.code === 'KeyP') togglePause();
-  if (e.code === 'Tab') { G.sound.nextStation(); }
-  if (e.code.startsWith('Digit')) {
-    const n = parseInt(e.code.slice(5), 10) - 1;
-    if (n >= 0 && n < 4) G.arsenal.switchSlot(n);
+function initInput() {
+  window.addEventListener('keydown', (e) => {
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+      e.preventDefault();
+    }
+    W.keys.add(e.code);
+    if (e.code === 'KeyN') startNextMission();
+    if (e.code === 'KeyR') W.sound?.nextStation();
+    if (e.code === 'KeyM') {
+      if (W.sound) W.sound.muted = !W.sound.muted;
+    }
+    if (e.code === 'KeyG' && atGarageShop(W)) toggleShop(W);
+    if (e.code === 'Escape') {
+      if (W.garage.shopOpen) toggleShop(W);
+      W.paused = !W.paused;
+    }
+  });
+  window.addEventListener('keyup', (e) => W.keys.delete(e.code));
+  window.addEventListener('mousedown', (e) => {
+    if (e.target.closest('#start-screen') || e.target.closest('#shop-panel') || e.target.closest('button')) return;
+    W.mouseDown = true;
+    W.sound?.ensure();
+    W.sound?.startEngine();
+    W.sound?.startSiren();
+  });
+  window.addEventListener('mouseup', () => { W.mouseDown = false; });
+  // Drag to orbit the on-foot camera.
+  let dragging = false;
+  let lastX = 0;
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    W.camYaw -= (e.clientX - lastX) * 0.005;
+    lastX = e.clientX;
+  });
+  window.addEventListener('mousedown', (e) => { dragging = true; lastX = e.clientX; });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  document.getElementById('play-btn').addEventListener('click', startGame);
+}
+
+function startNextMission() {
+  if (W.story.active || W.story2.active || W.race.active) return;
+  if (W.story.index < 12) {
+    startMission(W, W.story.index);
+  } else if (W.story2.index < 8) {
+    startMission2(W, W.story2.index);
+  } else {
+    W.hudFlash('ALL 20 MISSIONS DONE — free roam!');
   }
-  if (e.code === 'KeyX') G.sound.muted = !G.sound.muted;
-});
-addEventListener('keyup', (e) => { G.keys[e.code] = false; });
-addEventListener('mousedown', (e) => {
-  if (!G.started || G.paused) return;
-  if (e.button === 0) fireWeapon(G);
-});
-let dragging = false, lastX = 0, lastY = 0;
-renderer.domElement.addEventListener('mousedown', (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
-addEventListener('mousemove', (e) => {
-  if (!dragging) return;
-  G.camYawOffset -= (e.clientX - lastX) * 0.005;
-  G.camPitch = clamp(G.camPitch + (e.clientY - lastY) * 0.003, 0.08, 0.9);
-  lastX = e.clientX; lastY = e.clientY;
-});
-addEventListener('mouseup', () => { dragging = false; });
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-
-function onEnterKey() {
-  if (!G.started || G.paused || G.dead) return;
-  const p = G.player;
-  if (p.vehicle) { exitCar(G); return; }
-  if (p.bike) { dismountBike(G); return; }
-  if (p.boat) { leaveBoat(G); return; }
-  const boat = nearestBoat(G);
-  if (boat) { boardBoat(G, boat); return; }
-  const bike = nearestBike(G);
-  if (bike) { mountBike(G, bike); return; }
-  tryEnterVehicle(G);
 }
 
-function onCarjackKey() {
-  if (!G.started || G.paused || G.dead) return;
-  const p = G.player;
-  if (!p.onFoot || p.carjack) return;
-  // find the nearest traffic car with a driver and start the yank sequence
-  let best = null, bd = 5;
-  for (const car of G.cars) {
-    if (!car.traffic) continue;
-    const d = Math.hypot(car.x - p.pos.x, car.z - p.pos.z);
-    if (d < bd) { bd = d; best = car; }
+function startGame() {
+  W.started = true;
+  document.getElementById('start-screen').style.display = 'none';
+  W.sound?.ensure();
+  W.sound?.startEngine();
+  W.sound?.startSiren();
+  W.sound?.blip();
+  if (!W.story.active && W.story.index === 0) {
+    W.objective = 'Press N to start Mission 1 — BACK IN THE BAY';
   }
-  if (best) { best.driver = { fleeing: false }; startCarjack(G, best); }
-  else G.hud.say('No car close enough to jack — walk up to a moving car', 2);
 }
 
-function onRaceKey() {
-  if (!G.started || G.paused || G.dead || G.race.active) return;
-  const p = G.player;
-  if (!p.vehicle) { G.hud.say('You need a car to race — press E to get in one first', 2.5); return; }
-  const pts = raceStartPoints();
-  let best = null, bd = 18;
-  for (const pt of pts) {
-    const d = Math.hypot(pt.x - p.pos.x, pt.z - p.pos.z);
-    if (d < bd) { bd = d; best = pt; }
+W.hudFlash = (text) => {
+  W.flashText = text;
+  W.flashTimer = 3;
+  const el = document.getElementById('hud-flash');
+  if (el) el.textContent = text;
+};
+
+W.saveGame = () => saveGame(W);
+
+function readDriveInput() {
+  const k = W.keys;
+  return {
+    throttle: (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 0.7 : 0),
+    steer: (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0),
+    brake: k.has('Space'),
+    nitro: k.has('ShiftLeft') || k.has('ShiftRight'),
+  };
+}
+
+function handleEnterExit(dt) {
+  const p = W.player;
+  const k = W.keys;
+  if (!k.has('KeyE')) return;
+  if (p.mode === 'foot') {
+    // Carjacking is handled in walk.js (it eats KeyE when a car is near).
+    // Bikes and boats are handled here.
+    const bike = nearestBike(W);
+    if (bike) {
+      enterBike(W, bike);
+      k.delete('KeyE');
+      return;
+    }
+    const boat = nearestBoat(W);
+    if (boat) {
+      enterBoat(W, boat);
+      k.delete('KeyE');
+      return;
+    }
+    // No vehicle near: the E press is stale, clear it.
+    k.delete('KeyE');
+  } else {
+    // In a vehicle: E steps out.
+    if (p.mode === 'car') exitVehicle(W);
+    else if (p.mode === 'bike') exitBike(W);
+    else if (p.mode === 'boat') exitBoat(W);
+    k.delete('KeyE');
   }
-  if (best) startRace(G, best.circuit);
-  else G.hud.say('No race start nearby — gold gates mark the circuits', 2.5);
 }
 
-function onGarageKey() {
-  if (!G.started || G.paused || G.dead) return;
-  const house = nearestSafehouse(G, 20);
-  if (!house) { G.hud.say('No safehouse nearby — garage opens at a owned/buyable house (gold roof = owned)', 2.5); return; }
-  const g = G.garage;
-  g.shopOpen = !g.shopOpen;
-  g.panel.classList.toggle('hidden', !g.shopOpen);
-  if (g.shopOpen) { refreshShopUI(G); }
-}
-
-function onMissionKey() {
-  if (!G.started || G.paused || G.dead) return;
-  if (G.missions.active) { G.hud.say('Mission already running — finish it or fail it first', 2); return; }
-  const idx = Math.min(G.missions.index, 15);
-  if (idx >= 8) startMissionWithSetup(G, idx);
-  startMission(G, idx);
-}
-
-function togglePause() {
-  if (!G.started || G.dead) return;
-  G.paused = !G.paused;
-  G.hud.paused.classList.toggle('hidden', !G.paused);
-}
-
-document.getElementById('play-btn').addEventListener('click', () => {
-  G.started = true;
-  G.hud.start.classList.add('hidden');
-  G.sound.ensure();
-  G.sound.startRadio();
-  if (!G.missions.active && G.missions.index < 16) {
-    if (G.missions.index >= 8) startMissionWithSetup(G, G.missions.index);
-    startMission(G, G.missions.index);
-  }
-  G.hud.say('Welcome to Coral Bay — follow the gold marker', 3.5);
-});
-document.getElementById('respawn-btn').addEventListener('click', () => {
-  const p = G.player;
-  p.health = 100; p.armor = 0;
-  p.cash = Math.max(0, p.cash - 250);
-  G.wanted.level = 0; G.wanted.heat = 0;
-  p.pos.set(6, 1.2, 6);
-  p.vehicle = null; p.boat = null; p.bike = null;
-  p.mesh.group.visible = true;
-  p.mesh.group.position.set(6, 0, 6);
-  G.dead = false; G.deadKind = null;
-  G.hud.dead.classList.add('hidden');
-  G.hud.say('Back on your feet — the city is still yours', 2.5);
-});
-
-// ---------- camera ----------
 function updateCamera(dt) {
-  const p = G.player;
-  const targetYaw = p.heading + Math.PI + G.camYawOffset;
-  G.camYaw = lerp(G.camYaw, targetYaw, 1 - Math.pow(0.001, dt));
-  const dist = G.camDist;
-  const cx = p.pos.x + Math.sin(G.camYaw) * dist;
-  const cz = p.pos.z + Math.cos(G.camYaw) * dist;
-  // keep the camera above the street so rooftops never swallow the shot
-  const cy = Math.max(7, 4 + Math.sin(G.camPitch) * dist * 0.9);
-  camera.position.set(cx, cy, cz);
-  camera.lookAt(p.pos.x, 2.2, p.pos.z);
-}
-
-// ---------- main loop ----------
-const clock = new THREE.Clock();
-let saveT = 0;
-function animate() {
-  requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
-  if (!G.paused) G.time += dt;
-  const p = G.player;
-
-  if (G.started && !G.paused && !G.dead) {
-    // wanted heat decays over time
-    G.wanted.update(dt);
-    // movement by mode
-    if (p.vehicle) updatePlayerCar(G, dt);
-    else if (p.bike) updateBike(G, dt);
-    else if (p.boat) updateBoat(G, dt);
-    else { updateOnFoot(G, dt); updateCarjack(G, dt); }
-    updateTraffic(G, dt);
-    updatePedestrians(G, dt);
-    updatePolice(G, dt);
-    updateThugs(G, dt);
-    updatePickups(G, dt);
-    updateRace(G, dt);
-    updateMission(G, dt);
-    // ocean shimmer + ferris wheel turn
-    if (G.ocean) G.ocean.position.y = 0.1 + Math.sin(G.time * 0.8) * 0.05;
-    if (G.ferris) G.ferris.rotation.z += dt * 0.12;
-    // nitro flame marker
-    if (G.fx.nitro && p.vehicle) {
-      p.vehicle.group.position.y = Math.sin(G.time * 40) * 0.02;
-    }
-    // damage flash decay
-    p.damageFlash = Math.max(0, p.damageFlash - dt * 2);
-    // flash cleanup
-    for (let i = G.fx.flashes.length - 1; i >= 0; i--) {
-      const f = G.fx.flashes[i];
-      f.t -= dt;
-      if (f.t <= 0) { scene.remove(f.mesh); G.fx.flashes.splice(i, 1); }
-    }
-    // car wrecked / busted / wasted
-    for (const ev of G.events.splice(0)) {
-      if (ev === 'car-wrecked') {
-        G.hud.say('Your car is wrecked — get out and find another', 3);
-        if (p.vehicle) exitCar(G);
-      }
-    }
-    const end = checkBusted(G);
-    if (end) {
-      G.dead = true; G.deadKind = end;
-      document.getElementById('dead-title').textContent = end === 'busted' ? 'BUSTED' : 'WASTED';
-      G.hud.dead.classList.remove('hidden');
-      G.sound.blip(80, 0.5);
-    }
-    // autosave every 20 s
-    saveT += dt;
-    if (saveT > 20) { saveT = 0; G.save.save(); }
-    updateHUD(G);
-    G.hud.tick(dt);
+  const cam = W.camera;
+  const p = W.player;
+  const v = p.vehicle;
+  let targetPos;
+  let lookAt;
+  if (v) {
+    const fx = Math.sin(p.heading);
+    const fz = Math.cos(p.heading);
+    const back = p.mode === 'boat' ? 16 : 12.5;
+    const up = p.mode === 'boat' ? 7 : 6.5;
+    targetPos = new THREE.Vector3(p.x - fx * back, up, p.z - fz * back);
+    lookAt = new THREE.Vector3(p.x + fx * 10, 1.6, p.z + fz * 10);
+  } else {
+    // On foot: camera behind the player, orbiting with camYaw.
+    const fx = Math.sin(W.camYaw);
+    const fz = Math.cos(W.camYaw);
+    targetPos = new THREE.Vector3(p.x - fx * 7.5, 4.2, p.z - fz * 7.5);
+    lookAt = new THREE.Vector3(p.x + fx * 4, 1.5, p.z + fz * 4);
+    // Ease the camera yaw toward the player's heading when not dragging.
+    const diff = p.heading - W.camYaw;
+    const wrapped = Math.atan2(Math.sin(diff), Math.cos(diff));
+    W.camYaw += wrapped * Math.min(1, dt * 1.5);
   }
+  cam.position.x = damp(cam.position.x, targetPos.x, 6, dt);
+  cam.position.y = damp(cam.position.y, targetPos.y, 6, dt);
+  cam.position.z = damp(cam.position.z, targetPos.z, 6, dt);
+  // In shot mode the camera must be in place on the very first frame, or
+  // the still catches it mid-flight from the spawn view.
+  if (W.camSnap) {
+    cam.position.copy(targetPos);
+    W.camSnap = false;
+  }
+  cam.lookAt(lookAt);
+}
+
+function updatePlayer(dt) {
+  const p = W.player;
+  if (p.mode === 'foot') {
+    updateOnFoot(W, dt);
+  } else if (p.mode === 'car') {
+    const input = readDriveInput();
+    driveVehicle(W, p.vehicle, input, dt);
+    p.x = p.vehicle.x;
+    p.z = p.vehicle.z;
+    p.heading = p.vehicle.heading;
+    if (W.race.active && W.race.countdown > 0) p.vehicle.speed = 0;
+    W.sound?.updateEngine(p.vehicle.speed, input.throttle > 0);
+  } else if (p.mode === 'bike') {
+    const input = readDriveInput();
+    driveBike(W, p.vehicle, input, dt);
+    p.x = p.vehicle.x;
+    p.z = p.vehicle.z;
+    p.heading = p.vehicle.heading;
+    W.sound?.updateEngine(p.vehicle.speed, input.throttle > 0);
+  } else if (p.mode === 'boat') {
+    const input = readDriveInput();
+    driveBoat(W, p.vehicle, input, dt);
+    p.x = p.vehicle.x;
+    p.z = p.vehicle.z;
+    p.heading = p.vehicle.heading;
+    W.sound?.updateEngine(p.vehicle.speed * 0.6, input.throttle > 0);
+  }
+  // Wrecked vehicle explodes and dumps the player out.
+  const v = p.vehicle;
+  if (v && (v.damage || 0) >= 100) {
+    W.fx.explode(p.x, 1, p.z, true);
+    if (p.mode === 'car') exitVehicle(W);
+    else if (p.mode === 'bike') exitBike(W);
+    else if (p.mode === 'boat') exitBoat(W);
+    p.health = Math.max(10, p.health - 35);
+    p.wanted = Math.min(5, p.wanted + 1);
+    W.hudFlash('VEHICLE DESTROYED!');
+  }
+  // Health regen slowly out of combat.
+  if (p.wanted === 0) p.health = Math.min(100, p.health + 2 * dt);
+  if (p.health <= 0 && !W.gameOver) {
+    W.gameOver = p.wanted > 0 ? 'BUSTED' : 'WASTED';
+    W.hudFlash(W.gameOver + ' — respawning…');
+    setTimeout(() => {
+      p.health = 100;
+      p.wanted = 0;
+      setWanted(W, 0);
+      p.x = 0;
+      p.z = 12;
+      p.mode = 'foot';
+      p.vehicle = null;
+      p.mesh.visible = true;
+      p.mesh.position.set(0, 0, 12);
+      W.gameOver = null;
+    }, 1800);
+  }
+}
+
+let lastSave = 0;
+function loop(t) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, W.clock.getDelta());
+  W.time += dt;
+  if (!W.started || W.paused) {
+    // Still render the scene behind the start screen.
+    W.renderer.render(W.scene, W.camera);
+    return;
+  }
+  // Clouds drift; ocean swells.
+  for (const c of W.city.clouds) {
+    c.position.x += dt * 1.2;
+    if (c.position.x > 340) c.position.x = -340;
+  }
+  updateTraffic(W, dt);
+  updatePeds(W, dt);
+  handleEnterExit(dt);
+  updatePlayer(dt);
+  updateCops(W, dt);
+  updateFight(W, dt);
+  updateBoats(W, dt);
+  updateRace(W, dt);
+  updateStory(W, dt);
+  updateStory2(W, dt);
+  // Chase-shot fire glow: keep the explosion burning for the screenshot.
+  if (W.shot === 'chase') {
+    W.shotFxTimer -= dt;
+    if (W.shotFxTimer <= 0) {
+      W.shotFxTimer = 0.9;
+      W.fx.burst(-98, 1.2, -64, 'fire', 8);
+      W.fx.burst(-98, 2, -64, 'smoke', 5);
+    }
+  }
+  // Radio + siren follow the game.
+  W.sound?.radioTick(W.time);
+  W.sound?.updateSiren(W.player.wanted, W.time);
   updateCamera(dt);
-  renderer.render(scene, camera);
+  updateHud(W);
+  // Autosave every 45 seconds.
+  if (W.time - lastSave > 45) {
+    lastSave = W.time;
+    saveGame(W);
+  }
+  W.renderer.render(W.scene, W.camera);
 }
 
-// expose a tiny debug handle for playtesting
-window.__CORAL = G;
-animate();
-
-// screenshot staging: ?shot=chase|foot|marina|race
-if (SHOT) {
-  setTimeout(() => stageShot(G, SHOT), 600);
+function boot() {
+  W.clock = new THREE.Clock();
+  initRenderer();
+  buildCity(W);
+  initPlayer(W);
+  initCops(W);
+  initFight(W);
+  initRace(W);
+  initGarage(W);
+  initStory(W);
+  initStory2(W);
+  initSound(W);
+  buildHud(W);
+  spawnTraffic(W, 26);
+  spawnPeds(W, 42);
+  spawnParkedCars(W);
+  spawnMarina(W);
+  spawnBikes(W);
+  initInput();
+  // Give the player a starter car so the first minutes are driving, not walking.
+  const starter = makeVehicle(W, 0xd92828, 0, 18, 0, { topSpeed: 34, name: 'Comet GT', player: false });
+  W.parked.push(starter);
+  // Restore a previous save if there is one.
+  const saved = loadGame(W);
+  if (saved) {
+    W.hudFlash('SAVE LOADED — welcome back to Coral Bay');
+    document.getElementById('save-note').textContent =
+      'Save found: ' + saved.cash + ' cash, ' + saved.missions.length + ' missions done.';
+  }
+  // Screenshot staging (?shot=chase|foot|marina|race).
+  const shot = new URLSearchParams(window.location.search).get('shot');
+  if (shot) {
+    stageShot(W, shot);
+  }
+  requestAnimationFrame(loop);
 }
+
+boot();

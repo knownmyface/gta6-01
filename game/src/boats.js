@@ -1,129 +1,168 @@
-// boats.js — drivable boats, marina district, water bobbing, 2 boat missions hook.
+// boats.js — drivable boats, the marina district with moored boats, and
+// the water the player can sail on (east bay + south ocean).
 import * as THREE from 'three';
-import { box, cyl, clamp, lerp, rand, pick } from './util.js';
-import { MARINA } from './coralcity.js';
+import { rand, pick, clamp, damp, angleLerp } from './util.js';
+import { PLACES } from './coralcity.js';
 
-export const BOAT_MODELS = [
-  { name: 'Wave Runner', color: 0xf0f0f0, top: 34, accel: 18, turn: 1.9 },
-  { name: 'Coral Skiff', color: 0x3ca8ff, top: 30, accel: 15, turn: 1.7 },
-  { name: 'Sunset Yacht', color: 0xffe08a, top: 38, accel: 20, turn: 1.6 },
-];
+export const BOAT_NAMES = ['Wave Runner', 'Coral Cruiser', 'Reef Racer', 'Sunset Yacht'];
 
-export function makeBoatMesh(model) {
+export function makeBoatMesh(color, big = false) {
   const g = new THREE.Group();
-  // hull: tapered box + bow wedge
-  const hull = box(3.4, 1.4, 9, model.color, 0, 0.7, 0);
+  const hullMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.3 });
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, big ? 7.5 : 5.2), hullMat);
+  hull.position.y = 0.55;
   g.add(hull);
-  const bow = new THREE.Mesh(new THREE.ConeGeometry(1.7, 3, 4), new THREE.MeshLambertMaterial({ color: model.color }));
-  bow.rotation.x = Math.PI / 2; bow.rotation.y = Math.PI / 4;
-  bow.position.set(0, 0.7, 6); bow.scale.set(1, 1, 1); bow.castShadow = true;
+  const bow = new THREE.Mesh(new THREE.ConeGeometry(1.2, 1.8, 4), hullMat);
+  bow.rotation.x = Math.PI / 2;
+  bow.rotation.y = Math.PI / 4;
+  bow.position.set(0, 0.55, big ? 4.6 : 3.4);
   g.add(bow);
-  g.add(box(2.4, 1.5, 3.4, 0x2e3a4a, 0, 1.9, -1));
-  g.add(box(2.0, 0.9, 1.6, 0x9ad2e8, 0, 2.6, -1));
-  const stripe = box(3.5, 0.3, 9.1, 0xff5a3c, 0, 1.1, 0); g.add(stripe);
-  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.25, big ? 4.5 : 3.0),
+    new THREE.MeshStandardMaterial({ color: 0xf2ead8, roughness: 0.8 }));
+  deck.position.set(0, 1.1, big ? -0.6 : -0.3);
+  g.add(deck);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 1.8),
+    new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.4 }));
+  cabin.position.set(0, 1.65, big ? -1.2 : -0.8);
+  g.add(cabin);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.5, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0x1a3a5a, roughness: 0.15, metalness: 0.5 }));
+  glass.position.set(0, 1.8, big ? -0.2 : 0.2);
+  g.add(glass);
+  const motor = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.5),
+    new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 }));
+  motor.position.set(0, 0.8, big ? -3.9 : -2.8);
+  g.add(motor);
+  // Wake strip (fades in when moving).
+  const wake = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 7),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }));
+  wake.rotation.x = -Math.PI / 2;
+  wake.position.set(0, 0.15, -3.5);
+  g.add(wake);
+  g.userData.wake = wake;
   return g;
 }
 
-export function spawnBoat(G, model, x, z, heading) {
-  const group = makeBoatMesh(model);
-  group.position.set(x, 0, z);
-  group.rotation.y = heading;
-  G.scene.add(group);
-  const boat = { model, group, x, z, heading, speed: 0, name: model.name, inWater: true };
-  G.boats.push(boat);
-  return boat;
+export function makeBoat(W, color, x, z, heading, opts = {}) {
+  const mesh = makeBoatMesh(color, opts.big);
+  mesh.position.set(x, 0.3, z);
+  mesh.rotation.y = heading;
+  W.scene.add(mesh);
+  return {
+    mesh, x, z, heading, speed: 0,
+    topSpeed: opts.topSpeed || 26,
+    name: opts.name || pick(BOAT_NAMES),
+    color, isPlayer: false, big: !!opts.big,
+    bobPhase: rand(0, 6),
+  };
 }
 
-export function spawnMarinaBoats(G) {
-  spawnBoat(G, BOAT_MODELS[0], MARINA.x - 20, MARINA.z + 8, 0);
-  spawnBoat(G, BOAT_MODELS[1], MARINA.x + 70, MARINA.z + 34, Math.PI / 2);
-  spawnBoat(G, BOAT_MODELS[2], MARINA.x + 160, MARINA.z - 20, -Math.PI / 2);
-  // moored visual boats already in coralcity; these three are drivable
-}
-
-export function updateBoat(G, dt) {
-  const b = G.player.boat;
-  if (!b) return;
-  const k = G.keys;
-  const fwd = (k['KeyW'] || k['ArrowUp'] ? 1 : 0) - (k['KeyS'] || k['ArrowDown'] ? 1 : 0);
-  const steer = (k['KeyA'] || k['ArrowLeft'] ? 1 : 0) - (k['KeyD'] || k['ArrowRight'] ? 1 : 0);
-  b.speed += fwd * b.model.accel * dt;
-  b.speed *= Math.pow(0.97, dt * 60);
-  b.speed = clamp(b.speed, -8, b.model.top);
-  b.heading += steer * b.model.turn * clamp(Math.abs(b.speed) / 15, 0.2, 1) * dt * (b.speed >= 0 ? 1 : -1);
-  b.x += Math.sin(b.heading) * b.speed * dt;
-  b.z += Math.cos(b.heading) * b.speed * dt;
-  // keep inside the bay / ocean band
-  b.x = clamp(b.x, -380, 380);
-  b.z = clamp(b.z, MARINA.z - 80, 760);
-  // bobbing + wake
-  const bob = Math.sin(G.time * 2.2 + b.x * 0.05) * 0.25;
-  b.group.position.set(b.x, bob, b.z);
-  b.group.rotation.y = b.heading;
-  b.group.rotation.z = -steer * 0.04;
-  b.group.rotation.x = Math.sin(G.time * 1.7) * 0.02;
-  G.player.pos.set(b.x, 1.2, b.z);
-  G.player.heading = b.heading;
-  // wake particles (cheap: reuse fx splash markers)
-  if (Math.abs(b.speed) > 12 && Math.random() < dt * 20) {
-    G.fx.wake.push({ x: b.x - Math.sin(b.heading) * 4, z: b.z - Math.cos(b.heading) * 4, t: 0.8 });
+// Moored boats at the marina docks (scenery + stealable).
+export function spawnMarina(W) {
+  W.boats = [];
+  W.moored = [];
+  const dockZ = [20, 56, 92, 128];
+  for (let i = 0; i < dockZ.length; i++) {
+    const b = makeBoat(W, pick([0xffffff, 0xff7a1a, 0x1a6fd4, 0xd92828]), 206, dockZ[i], Math.PI / 2, { big: i === 3 });
+    b.moored = true;
+    W.moored.push(b);
+    W.boats.push(b);
+  }
+  // A couple of boats cruising the bay.
+  for (let i = 0; i < 3; i++) {
+    const b = makeBoat(W, pick([0xeeeeee, 0x22b573]), rand(225, 300), rand(-100, 140), rand(0, 6));
+    b.cruising = true;
+    b.cruiseHeading = rand(0, Math.PI * 2);
+    W.boats.push(b);
   }
 }
 
-export function nearestBoat(G, maxD = 6) {
-  let best = null, bd = maxD;
-  for (const b of G.boats) {
-    if (b === G.player.boat) continue;
-    const d = Math.hypot(b.x - G.player.pos.x, b.z - G.player.pos.z);
-    if (d < bd) { bd = d; best = b; }
+export function nearestBoat(W, maxDist = 5) {
+  let best = null;
+  let bestD = maxDist;
+  for (const b of W.boats) {
+    const d = Math.hypot(b.x - W.player.x, b.z - W.player.z);
+    if (d < bestD) { bestD = d; best = b; }
   }
   return best;
 }
 
-export function boardBoat(G, boat) {
-  const p = G.player;
-  p.boat = boat;
-  p.vehicle = null;
-  p.onFoot = false;
-  p.mesh.group.visible = false;
-  G.hud.say('Aboard the ' + boat.name + ' — throttle up!', 2.4);
-  G.sound.blip(440, 0.1);
+export function enterBoat(W, b) {
+  const p = W.player;
+  p.mode = 'boat';
+  p.vehicle = b;
+  b.isPlayer = true;
+  b.moored = false;
+  p.x = b.x;
+  p.z = b.z;
+  p.heading = b.heading;
+  p.mesh.visible = false;
+  W.camMode = 'chase';
+  W.hudFlash(b.name.toUpperCase() + ' — SET SAIL');
 }
 
-export function leaveBoat(G) {
-  const p = G.player;
-  const b = p.boat;
+export function exitBoat(W) {
+  const p = W.player;
+  const b = p.vehicle;
   if (!b) return;
-  p.boat = null;
-  p.onFoot = true;
-  // step onto the nearest pier / shore
-  p.pos.set(b.x - 6, 1.2, b.z);
-  p.mesh.group.visible = true;
-  G.sound.blip(330, 0.08);
+  p.mode = 'foot';
+  p.vehicle = null;
+  b.isPlayer = false;
+  // Step onto the nearest dock / shore.
+  p.x = Math.min(b.x, 200);
+  p.z = b.z;
+  p.mesh.visible = true;
+  p.mesh.position.set(p.x, 0, p.z);
+  W.camMode = 'follow';
 }
 
-export function boatRaceCheckpoints(G) {
-  // buoys for the two boat missions, around the marina and out to sea
-  return [
-    { x: MARINA.x - 40, z: MARINA.z + 40 },
-    { x: MARINA.x + 120, z: MARINA.z + 90 },
-    { x: 60, z: 480 },
-    { x: -140, z: 520 },
-    { x: MARINA.x + 40, z: MARINA.z + 60 },
-  ];
-}
-
-export function spawnBuoys(G, points) {
-  const buoys = [];
-  for (const pt of points) {
-    const buoy = new THREE.Group();
-    buoy.add(cyl(0.5, 0.9, 1.6, 0xff5a3c, 0, 0.6, 0, 8));
-    buoy.add(new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 8), new THREE.MeshLambertMaterial({ color: 0xffd23c }))).children;
-    buoy.children[buoy.children.length - 1].position.set(0, 2, 0);
-    buoy.position.set(pt.x, 0, pt.z);
-    G.scene.add(buoy);
-    buoys.push(buoy);
+export function driveBoat(W, b, input, dt) {
+  const acc = 11;
+  if (input.throttle > 0) b.speed += acc * dt;
+  else if (input.throttle < 0) b.speed -= acc * 0.8 * dt;
+  if (input.brake) b.speed = damp(b.speed, 0, 4, dt);
+  b.speed = damp(b.speed, 0, 0.15, dt);
+  b.speed = clamp(b.speed, -7, b.topSpeed);
+  b.heading += clamp(input.steer, -1, 1) * 1.1 * clamp(Math.abs(b.speed) / 8, 0.2, 1) * Math.sign(b.speed || 1) * dt;
+  b.x += Math.sin(b.heading) * b.speed * dt;
+  b.z += Math.cos(b.heading) * b.speed * dt;
+  // Stay in the water: east bay (x > 208) or south ocean (z > 214).
+  if (b.x < 206 && b.z < 210) {
+    b.x = Math.max(b.x, 206);
+    if (b.z < 210) b.z = Math.min(b.z, 210);
+    b.speed *= 0.5;
   }
-  return buoys;
+  b.x = clamp(b.x, 206, 320);
+  b.z = clamp(b.z, -230, 330);
+  b.bobPhase += dt * 2;
+  b.mesh.position.set(b.x, 0.3 + Math.sin(b.bobPhase) * 0.12, b.z);
+  b.mesh.rotation.y = b.heading;
+  b.mesh.rotation.z = Math.sin(b.bobPhase * 0.7) * 0.03 - clamp(input.steer, -1, 1) * 0.06;
+  b.mesh.userData.wake.material.opacity = clamp(Math.abs(b.speed) / b.topSpeed, 0, 0.55);
+  return b;
+}
+
+export function updateBoats(W, dt) {
+  for (const b of W.boats) {
+    if (b.isPlayer) continue;
+    if (b.cruising) {
+      // Slow cruise around the bay, turning at the edges.
+      if (b.x > 305 || b.x < 218 || b.z > 180 || b.z < -180) b.cruiseHeading += Math.PI * 0.75;
+      b.heading = angleLerp(b.heading, b.cruiseHeading, 1 - Math.exp(-0.8 * dt));
+      b.speed = damp(b.speed, 9, 1, dt);
+      b.x += Math.sin(b.heading) * b.speed * dt;
+      b.z += Math.cos(b.heading) * b.speed * dt;
+      b.bobPhase += dt * 2;
+      b.mesh.position.set(b.x, 0.3 + Math.sin(b.bobPhase) * 0.12, b.z);
+      b.mesh.rotation.y = b.heading;
+    } else if (b.moored) {
+      b.bobPhase += dt * 1.4;
+      b.mesh.position.y = 0.3 + Math.sin(b.bobPhase) * 0.1;
+      b.mesh.rotation.z = Math.sin(b.bobPhase * 0.6) * 0.015;
+    }
+  }
+  // Ocean swell.
+  if (W.city?.ocean) {
+    W.city.ocean.position.y = 0.4 + Math.sin(W.time * 0.5) * 0.08;
+  }
 }

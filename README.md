@@ -1,40 +1,32 @@
-# CORAL HEAT — 16 story missions, street races, garage & bikes, 5-star police, helicopter chases, carjacking, boats & radio in a sunset marina city
+# CORAL HEAT
 
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/knownmyface/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/knownmyface/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-A 3D open-world crime game in a sunset coastal marina city, built with three.js and playable right in the browser. Drive and walk through the city, steal cars, race on the streets, upgrade your rides in the garage, ride motorcycles, take boats out on the water, and outrun a police wanted system with helicopters and roadblocks — all across 16 story missions, with radio stations and save support.
+An open-world crime game set in a sunset coastal marina city, built with three.js.
 
-Built for the [make.fun gta6-01 bounty](https://make.fun/bounty/gta6-01).
+Cruise the neon-lit waterfront, pull off jobs, and build your name from small-time hustler to the crew that hits the casino. CORAL HEAT packs a full open world into the browser: 20 story missions that climb from street-level errands to a casino heist finale, street races across the marina, a garage full of cars and bikes to collect and drive, a 5-star police system with helicopter chases, carjacking, boats on the water, and radio to ride to.
 
 ## Features
 
-- Open-world sunset marina city — streets, waterfront, and open water to explore on foot, by car, by bike, or by boat
-- 16 story missions that drive the campaign forward
-- Street races and carjacking — take any car you want and put it to the test
-- Garage upgrades for your vehicles, plus motorcycles to ride
-- 5-star police wanted system with helicopter chases and roadblocks
-- Boats for getting around the marina and open water
-- Radio stations to listen to while you drive
-- Save support — pick up where you left off
+- Open-world sunset marina city to explore on foot, by car, by bike, or by boat
+- 20 story missions, ending in a casino heist finale
+- Street races with rival drivers
+- Garage & bikes — collect, store, and drive your rides
+- 5-star wanted system with police and helicopter chases
+- Carjacking, boats, and radio
 
-## How to run it
+## How to run
 
-Serve the `game/` folder with any static server, then open `index.html` in desktop Chrome. For example, from inside `game/`:
+Open `game/index.html` in a desktop browser, or run the local server:
 
 ```bash
-python3 -m http.server
+node serve.ts
 ```
 
-Then open `http://localhost:8000` in your browser.
+Then open http://localhost:8080 in your browser.
 
-## Controls
+## Bounty
 
-| Key | Action |
-| --- | --- |
-| WASD | Drive / walk |
-| E | Enter / exit vehicle |
-| Space | Handbrake |
-| F | Carjack |
-| Mouse | Camera |
+Built for the make.fun competition: https://make.fun/bounty/gta6-01
