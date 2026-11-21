@@ -1,165 +1,148 @@
-// CORAL HEAT — story missions 1-12 + mission engine (v2.9, fresh).
-// Each mission is a list of steps: goto / drive / pickup / boat / race / survive.
-// A beacon marks the current objective; completing all steps pays cash.
-import * as THREE from 'three';
-import { dist2d, fmtCash } from './util.js';
+// story.js — story missions 1-8: Coral Bay's rise. Each mission: intro text,
+// objective marker, completion check, cash reward, next mission unlock.
+import { fmtCash } from './util.js';
+import { spawnThugs } from './fight.js';
 
-export const MISSIONS = [
-  { id: 1, title: 'Welcome to Coral Bay', giver: 'Rosa', reward: 400, steps: [{ type: 'goto', x: 70, z: 0, text: 'Meet Rosa at the plaza cafe' }, { type: 'goto', x: 0, z: 70, text: 'Drive Rosa to the marina overlook' }] },
-  { id: 2, title: 'Hot Wheels', giver: 'Rosa', reward: 600, steps: [{ type: 'carjack', text: 'Carjack a sports car (hold F near a traffic car)' }, { type: 'goto', x: -140, z: -70, text: 'Bring the car to the chop shop' }] },
-  { id: 3, title: 'First Blood', giver: 'Vex', reward: 800, steps: [{ type: 'goto', x: 140, z: 140, text: 'Reach the alley behind the market' }, { type: 'fight', count: 3, text: 'Deal with the 3 street thugs' }] },
-  { id: 4, title: 'Getaway Driver', giver: 'Vex', reward: 1000, steps: [{ type: 'goto', x: -210, z: 210, text: 'Pick up the crew at the villa district' }, { type: 'escape', text: 'Lose the cops — get wanted to 0' }] },
-  { id: 5, title: 'Radio Silence', giver: 'Dita', reward: 900, steps: [{ type: 'goto', x: 210, z: -140, text: 'Reach the radio tower on Marina Row' }, { type: 'wait', seconds: 12, text: 'Hold the tower while Dita uploads the signal' }] },
-  { id: 6, title: 'Harbor Lights', giver: 'Dita', reward: 1200, steps: [{ type: 'boat', text: 'Take a boat from the marina' }, { type: 'goto', x: 380, z: -120, text: 'Sail to the north buoy' }, { type: 'goto', x: 380, z: 120, text: 'Sail to the south buoy' }] },
-  { id: 7, title: 'The Pickup', giver: 'Marlo', reward: 1400, steps: [{ type: 'goto', x: -70, z: -210, text: 'Collect the package at the north gate' }, { type: 'goto', x: 70, z: 210, text: 'Deliver it to Marlo at the south docks' }] },
-  { id: 8, title: 'Heat Wave', giver: 'Marlo', reward: 1600, steps: [{ type: 'goto', x: 0, z: -70, text: 'Stir up trouble downtown' }, { type: 'wanted', level: 3, text: 'Reach 3-star wanted — then lose it' }, { type: 'escape', text: 'Lose the cops completely' }] },
-  { id: 9, title: 'Ferry Tales', giver: 'Rosa', reward: 1500, steps: [{ type: 'boat', text: 'Board a boat at the marina' }, { type: 'goto', x: 420, z: 0, text: 'Cross to the far buoy' }, { type: 'goto', x: 330, z: 40, text: 'Return to the main pier' }] },
-  { id: 10, title: 'Wheelman', giver: 'Vex', reward: 2000, steps: [{ type: 'goto', x: 140, z: -210, text: 'Reach the race pad on Marina Row' }, { type: 'race', circuit: 0, text: 'Win the Marina Mile street race' }] },
-  { id: 11, title: 'King of the Bay', giver: 'Dita', reward: 2400, steps: [{ type: 'wanted', level: 4, text: 'Draw out a 4-star response' }, { type: 'survive', seconds: 45, text: 'Survive the heat for 45 seconds' }, { type: 'escape', text: 'Lose the cops' }] },
-  { id: 12, title: 'Coral Crown', giver: 'Rosa', reward: 3000, steps: [{ type: 'goto', x: -210, z: -210, text: 'Meet Rosa at the north-west corner' }, { type: 'goto', x: 210, z: 210, text: 'Race across town to the villa' }, { type: 'fight', count: 4, text: 'Clear the villa guards' }] },
+export const MISSIONS_1_8 = [
+  { id: 1, name: 'Welcome to Coral Bay', brief: 'Meet Riko at the plaza. Drive there — the city is yours now.', target: { x: 0, z: 0 }, reward: 500, kind: 'goto' },
+  { id: 2, name: 'First Wheels', brief: 'Steal any parked car (walk up, press E) and bring it to the marina.', target: { x: 150, z: 210 }, reward: 800, kind: 'goto-car' },
+  { id: 3, name: 'Hot Wheels', brief: 'The cops noticed. Lose the heat — stay unseen until your wanted stars drop to 0.', target: null, reward: 1200, kind: 'lose-heat' },
+  { id: 4, name: 'Payback at the Docks', brief: 'Thugs took Riko\'s cash. Drive to the docks and take them down (click to shoot).', target: { x: 228, z: 228 }, reward: 2000, kind: 'combat', thugs: 4 },
+  { id: 5, name: 'Getaway Driver', brief: 'Grab a fast car and reach the beach checkpoint before the timer ends. 90 seconds.', target: { x: -228, z: 304 }, reward: 2500, kind: 'timed', time: 90 },
+  { id: 6, name: 'Harbor Run', brief: 'Take a boat from the marina and hit all 5 buoys. Board a boat with E at the pier.', target: { x: 150, z: 250 }, reward: 3000, kind: 'boat-buoys', buoys: 5 },
+  { id: 7, name: 'Smoke on the Water', brief: 'A rival crew is waiting at sea. Reach the far buoy, then lose the 2-star heat.', target: { x: -140, z: 520 }, reward: 3500, kind: 'boat-goto' },
+  { id: 8, name: 'The Big Score', brief: 'Hit the Coral Bank vault crew: 5 thugs guard the plaza. Clear them, then grab the cash.', target: { x: 0, z: 0 }, reward: 5000, kind: 'combat', thugs: 5 },
 ];
 
-export function setupStory(G) {
-  G.mission = null;
-  G.missionDone = [];
-  G.beacon = null;
-  G.story = {
-    start(id) {
-      const def = MISSIONS.find((m) => m.id === id);
-      if (!def) return false;
-      if (G.mission) { G.hud.toast('Finish the current mission first'); return false; }
-      G.mission = { def, step: 0, timer: 0, kills: 0, done: false };
-      G.hud.toast('MISSION: ' + def.title + ' — ' + def.steps[0].text);
-      G.hud.setMission(def, 0);
-      G.audio?.blip(740);
-      return true;
-    },
-    abort() {
-      if (!G.mission) return;
-      G.hud.toast('Mission failed: ' + G.mission.def.title);
-      G.mission = null;
-      G.hud.setMission(null, 0);
-      hideBeacon(G);
-    },
+export function createMissionState() {
+  return {
+    index: 0, // 0-based into the combined 16
+    active: null, // running mission object + runtime fields
+    completed: [],
+    raceWins: 0,
+    startedAt: 0,
   };
 }
 
-function showBeacon(G, x, z) {
-  hideBeacon(G);
-  const beacon = new THREE.Mesh(
-    new THREE.CylinderGeometry(5, 5, 60, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffd76b, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false })
-  );
-  beacon.position.set(x, 30, z);
-  G.scene.add(beacon);
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(3.5, 5, 24),
-    new THREE.MeshBasicMaterial({ color: 0xffd76b, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.set(x, 0.3, z);
-  G.scene.add(ring);
-  G.beacon = { beam: beacon, ring, x, z };
+export function allMissions() {
+  // story2 registers its 8 missions here at boot so the list is one arc
+  return MISSIONS_1_8.concat(window.__CORAL_MISSIONS_9_16 || []);
 }
 
-function hideBeacon(G) {
-  if (!G.beacon) return;
-  G.scene.remove(G.beacon.beam);
-  G.scene.remove(G.beacon.ring);
-  G.beacon = null;
-}
-
-function nextStep(G) {
-  const m = G.mission;
-  m.step++;
-  m.timer = 0;
-  if (m.step >= m.def.steps.length) {
-    completeMission(G);
-    return;
+export function startMission(G, idx) {
+  const list = allMissions();
+  const m = list[idx];
+  if (!m) return false;
+  const run = { ...m, t: 0, done: false, buoysHit: 0, thugsDown: 0,
+    raceWinsBefore: G.missions.raceWins || 0,
+    ownedBefore: G.garage.owned.length,
+    upBefore: G.garage.upgrades.engine + G.garage.upgrades.tires + G.garage.upgrades.armor + G.garage.upgrades.nitro };
+  if (m.kind === 'combat') {
+    spawnThugs(G, m.thugs, m.target.x, m.target.z);
+    run.thugsTotal = m.thugs;
   }
-  const s = m.def.steps[m.step];
-  G.hud.toast('Objective: ' + s.text);
-  G.hud.setMission(m.def, m.step);
-  G.audio?.blip(880);
+  if (m.kind === 'lose-heat') G.wanted.add(2);
+  if (m.kind === 'boat-buoys' || m.kind === 'boat-goto') {
+    const { spawnBuoys, boatRaceCheckpoints } = G.boatApi;
+    run.buoyMeshes = spawnBuoys(G, boatRaceCheckpoints(G));
+    run.buoyPoints = boatRaceCheckpoints(G);
+  }
+  G.missions.active = run;
+  G.missions.startedAt = G.time;
+  G.hud.setObjective('MISSION ' + m.id + ' — ' + m.name, m.brief);
+  G.hud.say('MISSION ' + m.id + ': ' + m.name, 3);
+  G.sound.mission();
+  return true;
 }
 
-function completeMission(G) {
-  const m = G.mission;
-  G.player.cash += m.def.reward;
-  G.missionDone.push(m.def.id);
-  G.hud.toast('MISSION COMPLETE: ' + m.def.title + ' — +' + fmtCash(m.def.reward));
-  G.audio?.win();
-  G.hud.setMission(null, 0);
-  hideBeacon(G);
-  G.mission = null;
-  G.saveGame();
-}
-
-export function updateStory(G, dt) {
-  const m = G.mission;
-  if (!m) return;
-  const s = m.def.steps[m.step];
-  if (!s) return;
-  const p = G.player;
-  switch (s.type) {
-    case 'goto': {
-      if (!G.beacon) showBeacon(G, s.x, s.z);
-      if (dist2d(p.x, p.z, s.x, s.z) < 10) nextStep(G);
+export function updateMission(G, dt) {
+  const run = G.missions.active;
+  if (!run) return;
+  run.t += dt;
+  const px = G.player.pos.x, pz = G.player.pos.z;
+  const d = run.target ? Math.hypot(run.target.x - px, run.target.z - pz) : 9999;
+  switch (run.kind) {
+    case 'goto':
+      if (d < 10) completeMission(G, run);
+      break;
+    case 'goto-car':
+      if (d < 12 && G.player.vehicle) completeMission(G, run);
+      break;
+    case 'lose-heat':
+      if (G.wanted.level === 0) completeMission(G, run);
+      break;
+    case 'combat': {
+      const alive = G.thugs.filter((t) => t.alive).length;
+      if (alive === 0) completeMission(G, run);
       break;
     }
-    case 'carjack': {
-      if (p.mode === 'car') nextStep(G);
+    case 'timed':
+      if (d < 12) completeMission(G, run);
+      else if (run.t > run.time) failMission(G, run, 'Out of time — the drop closed.');
       break;
-    }
-    case 'boat': {
-      if (p.mode === 'boat') nextStep(G);
-      break;
-    }
-    case 'fight': {
-      if (!G.beacon) showBeacon(G, p.x + 20, p.z + 20);
-      if (m.kills >= s.count) nextStep(G);
-      break;
-    }
-    case 'wait': {
-      m.timer += dt;
-      G.hud.setMissionProgress(m.timer / s.seconds);
-      if (m.timer >= s.seconds) nextStep(G);
-      break;
-    }
-    case 'survive': {
-      m.timer += dt;
-      G.hud.setMissionProgress(m.timer / s.seconds);
-      if (p.health <= 0) { G.story.abort(); break; }
-      if (m.timer >= s.seconds) nextStep(G);
-      break;
-    }
-    case 'wanted': {
-      if (G.cops.wanted >= s.level) nextStep(G);
-      break;
-    }
-    case 'escape': {
-      if (G.cops.wanted === 0) nextStep(G);
-      break;
-    }
-    case 'race': {
-      if (!m.raceStarted) {
-        m.raceStarted = true;
-        import('./raceway.js').then((rw) => {
-          if (G.mission !== m) return;
-          if (!rw.startRace(G, s.circuit)) { G.story.abort(); }
-        });
-      }
-      if (m.raceStarted && !G.race) {
-        // race finished or was abandoned — check result via lastRaceWin flag
-        if (G.lastRaceWin) { G.lastRaceWin = false; nextStep(G); }
-        else if (G.lastRaceLose) { G.lastRaceLose = false; G.story.abort(); }
+    case 'boat-buoys': {
+      if (G.player.boat && run.buoyPoints) {
+        for (let i = 0; i < run.buoyPoints.length; i++) {
+          if (run['buoy' + i]) continue;
+          const bp = run.buoyPoints[i];
+          if (Math.hypot(bp.x - px, bp.z - pz) < 14) {
+            run['buoy' + i] = true; run.buoysHit++;
+            G.hud.say('Buoy ' + run.buoysHit + '/' + run.buoys + ' — keep going!', 1.8);
+            G.sound.blip(700, 0.1);
+          }
+        }
+        if (run.buoysHit >= run.buoys) completeMission(G, run);
       }
       break;
     }
+    case 'boat-goto':
+      if (d < 16 && G.player.boat) completeMission(G, run);
+      break;
+    case 'race-win':
+      if ((G.missions.raceWins || 0) > (run.raceWinsBefore || 0)) completeMission(G, run);
+      break;
+    case 'bike-goto':
+      if (d < 12 && G.player.bike) completeMission(G, run);
+      break;
+    case 'buy-safehouse':
+      if (G.garage.owned.length > (run.ownedBefore || 0)) completeMission(G, run);
+      break;
+    case 'upgrade-car':
+      if (G.garage.upgrades.engine + G.garage.upgrades.tires + G.garage.upgrades.armor + G.garage.upgrades.nitro > (run.upBefore || 0)) completeMission(G, run);
+      break;
+    case 'finale':
+      if (d < 12 && G.thugs.filter((t) => t.alive).length === 0) completeMission(G, run);
+      break;
   }
-  // beacon pulse
-  if (G.beacon) {
-    G.beacon.beam.material.opacity = 0.2 + Math.sin(G.time * 3) * 0.08;
-    G.beacon.ring.scale.setScalar(1 + Math.sin(G.time * 3) * 0.08);
+  // mission marker beacon: pulse the target ring
+  if (run.target && G.marker) {
+    G.marker.position.set(run.target.x, 0.3, run.target.z);
+    G.marker.visible = true;
+    const s = 1 + Math.sin(G.time * 4) * 0.12;
+    G.marker.scale.set(s, 1, s);
   }
+}
+
+export function completeMission(G, run) {
+  G.player.cash += run.reward;
+  G.missions.completed.push(run.id);
+  G.missions.active = null;
+  if (G.marker) G.marker.visible = false;
+  if (run.buoyMeshes) for (const b of run.buoyMeshes) G.scene.remove(b);
+  G.hud.setObjective('MISSION COMPLETE', run.name + ' — +' + fmtCash(run.reward));
+  G.hud.say('MISSION COMPLETE — +' + fmtCash(run.reward), 3.5);
+  G.sound.win();
+  G.missions.index++;
+  G.save.save();
+  // auto-start the next mission after a beat
+  setTimeout(() => { if (!G.missions.active) startMission(G, G.missions.index); }, 2500);
+}
+
+export function failMission(G, run, why) {
+  G.missions.active = null;
+  if (G.marker) G.marker.visible = false;
+  if (run.buoyMeshes) for (const b of run.buoyMeshes) G.scene.remove(b);
+  G.hud.setObjective('MISSION FAILED', why + ' — press M to retry');
+  G.hud.say('MISSION FAILED — ' + why, 3);
+  G.sound.blip(120, 0.4);
 }

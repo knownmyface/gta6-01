@@ -1,202 +1,193 @@
-// CORAL HEAT — on-foot movement, enter/exit vehicles, carjacking (v2.9, fresh).
+// walk.js — on-foot player: capsule character, walk/run, carjacking sequence,
+// enter/exit vehicles, punch combat hooks.
 import * as THREE from 'three';
-import { clamp, collideCircle, dist2d, rand } from './util.js';
+import { box, cyl, clamp, lerp, rand, pick } from './util.js';
+import { collideCircle, clampToCity } from './coralcity.js';
 
-export function makeWalkerMesh() {
+export function makePlayerMesh() {
   const g = new THREE.Group();
-  const skin = new THREE.MeshLambertMaterial({ color: 0xc98d64 });
-  const shirt = new THREE.MeshLambertMaterial({ color: 0xff5a3c });
-  const pants = new THREE.MeshLambertMaterial({ color: 0x2a3a5c });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.85, 0.34), shirt);
-  body.position.y = 1.15;
-  g.add(body);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), skin);
-  head.position.y = 1.82;
-  g.add(head);
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.14, 0.46), new THREE.MeshLambertMaterial({ color: 0x1c1c22 }));
-  cap.position.y = 2.06;
-  g.add(cap);
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.75, 0.26), pants);
-  legL.position.set(-0.17, 0.38, 0);
-  g.add(legL);
-  const legR = legL.clone();
-  legR.position.x = 0.17;
-  g.add(legR);
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.2), shirt);
-  armL.position.set(-0.42, 1.15, 0);
-  g.add(armL);
-  const armR = armL.clone();
-  armR.position.x = 0.42;
-  g.add(armR);
-  g.userData.legs = [legL, legR];
-  g.userData.arms = [armL, armR];
-  return g;
-}
-
-// Nearest drivable thing (car / bike / boat) within reach of the walker.
-export function nearestRideable(G, maxD = 4.5) {
-  const p = G.player;
-  let best = null, bestD = maxD;
-  for (const car of G.cars) {
-    if (car.isPolice) continue;
-    const d = dist2d(p.x, p.z, car.x, car.z);
-    if (d < bestD) { bestD = d; best = { kind: 'car', obj: car, d }; }
+  const shirt = new THREE.Color(0xff5a3c);
+  const body = box(0.9, 1.1, 0.5, 0xff5a3c, 0, 1.35, 0); g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 10), new THREE.MeshLambertMaterial({ color: 0xe8b98a }));
+  head.position.set(0, 2.25, 0); head.castShadow = true; g.add(head);
+  const cap = cyl(0.36, 0.38, 0.16, 0x2a4a6a, 0, 2.5, 0, 12); g.add(cap);
+  const legs = [];
+  for (const sx of [-0.22, 0.22]) {
+    const leg = box(0.32, 0.9, 0.36, 0x2a3a5a, sx, 0.45, 0); g.add(leg); legs.push(leg);
   }
-  for (const bike of G.bikes || []) {
-    if (bike.ridden) continue;
-    const d = dist2d(p.x, p.z, bike.x, bike.z);
-    if (d < bestD) { bestD = d; best = { kind: 'bike', obj: bike, d }; }
+  const arms = [];
+  for (const sx of [-0.55, 0.55]) {
+    const arm = box(0.26, 0.85, 0.3, 0xff5a3c, sx, 1.35, 0); g.add(arm); arms.push(arm);
   }
-  for (const boat of G.boats || []) {
-    if (boat.ridden) continue;
-    const d = dist2d(p.x, p.z, boat.x, boat.z);
-    if (d < bestD) { bestD = d; best = { kind: 'boat', obj: boat, d }; }
-  }
-  return best;
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return { group: g, legs, arms };
 }
 
-export function setupWalker(G) {
-  const mesh = makeWalkerMesh();
-  G.scene.add(mesh);
-  G.player.mesh = mesh;
-  G.player.x = G.city.spawn.x;
-  G.player.z = G.city.spawn.z;
-  G.player.heading = G.city.spawn.heading;
-  G.player.walkPhase = 0;
-  mesh.position.set(G.player.x, 0, G.player.z);
-  mesh.visible = true;
-}
-
-export function enterVehicle(G, ride) {
-  const p = G.player;
-  if (ride.kind === 'car') {
-    p.mode = 'car';
-    p.car = ride.obj;
-    ride.obj.isPlayer = true;
-    ride.obj.driver = null;
-    p.mesh.visible = false;
-    G.hud.toast('You took the ' + (ride.obj.kind === 'sport' ? 'sports car' : ride.obj.kind) + ' — drive!');
-    G.audio?.blip(660);
-  } else if (ride.kind === 'bike') {
-    p.mode = 'bike';
-    p.bike = ride.obj;
-    ride.obj.ridden = true;
-    p.mesh.visible = false;
-    G.hud.toast('On the bike — lean with A/D, wheelie with SPACE');
-    G.audio?.blip(880);
-  } else if (ride.kind === 'boat') {
-    p.mode = 'boat';
-    p.boat = ride.obj;
-    ride.obj.ridden = true;
-    p.mesh.visible = false;
-    G.hud.toast('On the boat — cruise the marina');
-    G.audio?.blip(520);
-  }
-}
-
-export function exitVehicle(G) {
-  const p = G.player;
-  if (p.mode === 'car' && p.car) {
-    p.x = p.car.x + Math.sin(p.car.heading + Math.PI / 2) * 3;
-    p.z = p.car.z + Math.cos(p.car.heading + Math.PI / 2) * 3;
-    p.car.isPlayer = false;
-    p.car.speed = 0;
-    p.car = null;
-  } else if (p.mode === 'bike' && p.bike) {
-    p.x = p.bike.x + 2; p.z = p.bike.z + 2;
-    p.bike.ridden = false;
-    p.bike.speed = 0;
-    p.bike = null;
-  } else if (p.mode === 'boat' && p.boat) {
-    // hop back to the nearest dock
-    let dock = G.city.docks[0];
-    let bd = 1e9;
-    for (const d of G.city.docks) {
-      const dd = dist2d(p.boat.x, p.boat.z, d.x, d.z);
-      if (dd < bd) { bd = dd; dock = d; }
-    }
-    p.x = dock.x - 6; p.z = dock.z;
-    p.boat.ridden = false;
-    p.boat.speed = 0;
-    p.boat = null;
-  } else return;
-  p.mode = 'foot';
-  p.heading = rand(0, Math.PI * 2);
-  p.mesh.visible = true;
-  p.mesh.position.set(p.x, 0, p.z);
-}
-
-// On-foot update: WASD relative to camera, E to enter, F to carjack.
-export function updateWalker(G, dt) {
+export function updateOnFoot(G, dt) {
   const p = G.player;
   const k = G.keys;
-  const camYaw = G.camYaw || 0;
-  let mx = 0, mz = 0;
-  if (k['KeyW']) mz -= 1;
-  if (k['KeyS']) mz += 1;
-  if (k['KeyA']) mx -= 1;
-  if (k['KeyD']) mx += 1;
+  let ix = (k['KeyD'] || k['ArrowRight'] ? 1 : 0) - (k['KeyA'] || k['ArrowLeft'] ? 1 : 0);
+  let iz = (k['KeyW'] || k['ArrowUp'] ? 1 : 0) - (k['KeyS'] || k['ArrowDown'] ? 1 : 0);
+  const run = k['ShiftLeft'] || k['ShiftRight'];
+  const speed = run ? 9.5 : 5.2;
+  // camera-relative movement: W walks AWAY from the camera (camera sits behind
+  // the player at +dir(camYaw), so forward is -dir(camYaw)); this keeps camYaw
+  // stable instead of chasing the heading around in a circle.
+  const cy = G.camYaw || 0;
+  const mx = -(ix * Math.cos(cy) + iz * Math.sin(cy));
+  const mz = -(-ix * Math.sin(cy) + iz * Math.cos(cy));
   const len = Math.hypot(mx, mz);
-  if (len > 0) {
-    mx /= len; mz /= len;
-    const run = k['ShiftLeft'] ? 8.5 : 5.2;
-    // camera-relative: forward is -sin/-cos of camYaw
-    const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);
-    const rx = -fz, rz = fx;
-    const vx = fx * -mz + rx * mx;
-    const vz = fz * -mz + rz * mx;
-    let nx = p.x + vx * run * dt;
-    let nz = p.z + vz * run * dt;
-    [nx, nz] = collideCircle(nx, nz, 0.6, G.city.colliders);
-    nx = clamp(nx, -338, 338); nz = clamp(nz, -338, 338);
-    p.x = nx; p.z = nz;
-    p.heading = Math.atan2(-vx, -vz);
-    p.walkPhase += dt * 11;
-  } else {
-    p.walkPhase *= 0.85;
-  }
-  p.mesh.position.set(p.x, 0, p.z);
-  p.mesh.rotation.y = p.heading;
-  const swing = Math.sin(p.walkPhase) * 0.5;
-  p.mesh.userData.legs[0].rotation.x = swing;
-  p.mesh.userData.legs[1].rotation.x = -swing;
-  p.mesh.userData.arms[0].rotation.x = -swing * 0.8;
-  p.mesh.userData.arms[1].rotation.x = swing * 0.8;
-
-  // --- carjacking: hold F near an occupied traffic car -------------------
-  const near = nearestRideable(G, 4.5);
-  G.hud.setPrompt(near ? (near.kind === 'car' && near.obj.isTraffic ? 'Hold F — carjack this car' : 'Press E — get in') : '');
-  if (near && near.kind === 'car' && near.obj.isTraffic && k['KeyF']) {
-    G.carjack = G.carjack || { car: near.obj, t: 0 };
-    if (G.carjack.car !== near.obj) G.carjack = { car: near.obj, t: 0 };
-    G.carjack.t += dt;
-    G.hud.setCarjack(G.carjack.t / 1.2);
-    if (G.carjack.t >= 1.2) {
-      const car = near.obj;
-      car.isTraffic = false;
-      // driver bails and runs away on foot
-      spawnFleeingDriver(G, car);
-      G.carjack = null;
-      G.hud.setCarjack(0);
-      G.audio?.alarm();
-      enterVehicle(G, { kind: 'car', obj: car });
-      G.hud.toast('CARJACKED! The driver ran off — wanted level up');
-      G.cops.addWanted(1);
+  p.moving = len > 0.1;
+  if (p.moving) {
+    const nx = p.pos.x + (mx / len) * speed * dt;
+    const nz = p.pos.z + (mz / len) * speed * dt;
+    const hit = collideCircle(G, nx, nz, 0.8);
+    if (!hit) { p.pos.x = nx; p.pos.z = nz; }
+    else {
+      if (!collideCircle(G, nx, p.pos.z, 0.8)) p.pos.x = nx;
+      else if (!collideCircle(G, p.pos.x, nz, 0.8)) p.pos.z = nz;
     }
-  } else {
-    if (G.carjack) { G.carjack = null; G.hud.setCarjack(0); }
+    p.heading = Math.atan2(mx / len, mz / len);
+    p.walkPhase += dt * (run ? 13 : 9);
+  }
+  const [cx, cz] = clampToCity(p.pos.x, p.pos.z);
+  p.pos.x = cx; p.pos.z = cz;
+  p.mesh.group.position.set(p.pos.x, 0, p.pos.z);
+  p.mesh.group.rotation.y = p.heading;
+  // walk-cycle swing
+  const sw = p.moving ? Math.sin(p.walkPhase) * 0.5 : 0;
+  p.mesh.legs[0].rotation.x = sw; p.mesh.legs[1].rotation.x = -sw;
+  p.mesh.arms[0].rotation.x = -sw * 0.8; p.mesh.arms[1].rotation.x = sw * 0.8;
+  // punch animation
+  if (p.punchT > 0) {
+    p.punchT -= dt;
+    p.mesh.arms[1].rotation.x = -1.6;
   }
 }
 
-function spawnFleeingDriver(G, car) {
-  const ped = {
-    x: car.x + 2, z: car.z + 2, heading: rand(0, Math.PI * 2),
-    speed: 6, mesh: makeWalkerMesh(), flee: true, health: 100, kind: 'driver',
-  };
-  ped.mesh.position.set(ped.x, 0, ped.z);
-  ped.mesh.scale.set(0.96, 0.96, 0.96);
-  const shirt = ped.mesh.children[0];
-  G.scene.add(ped.mesh);
-  G.peds.push(ped);
-  G.fleeingDriver = ped;
+export function tryEnterVehicle(G) {
+  const p = G.player;
+  if (p.vehicle) return false;
+  // nearest car (parked or traffic with driver) within reach
+  let best = null, bd = 5.5;
+  for (const car of G.cars) {
+    if (car.police || car === p.vehicle || car.dead) continue;
+    const d = Math.hypot(car.x - p.pos.x, car.z - p.pos.z);
+    if (d < bd) { bd = d; best = car; }
+  }
+  if (!best) return false;
+  if (best.traffic && best.driver) {
+    // carjacking sequence: yank the driver out, they stumble away
+    startCarjack(G, best);
+    return true;
+  }
+  best.parked = false; best.traffic = false;
+  enterCar(G, best);
+  return true;
+}
+
+export function enterCar(G, car) {
+  const p = G.player;
+  p.vehicle = car;
+  p.onFoot = false;
+  p.mesh.group.visible = false;
+  car.speed = 0;
+  G.hud.say('You took the ' + car.name, 2.2);
+  G.sound.blip(520, 0.08);
+}
+
+export function exitCar(G) {
+  const p = G.player;
+  const car = p.vehicle;
+  if (!car) return;
+  p.vehicle = null;
+  p.onFoot = true;
+  p.pos.set(car.x - Math.sin(car.heading) * 3, 1.2, car.z - Math.cos(car.heading) * 3);
+  p.heading = car.heading;
+  p.mesh.group.visible = true;
+  G.sound.blip(330, 0.08);
+}
+
+export function startCarjack(G, car) {
+  const p = G.player;
+  p.carjack = { t: 0, car, phase: 'approach' };
+  G.hud.say('CARJACKING — hold on!', 2.5);
+  G.sound.horn();
+}
+
+export function updateCarjack(G, dt) {
+  const p = G.player;
+  const cj = p.carjack;
+  if (!cj) return;
+  cj.t += dt;
+  const car = cj.car;
+  // phase 1: yank driver — driver ped stumbles out and runs
+  if (cj.phase === 'approach' && cj.t > 0.5) {
+    cj.phase = 'yank';
+    if (car.driver) {
+      car.driver.fleeing = true;
+      car.driver = null;
+    }
+    G.hud.say('Driver pulled out — the ' + car.name + ' is yours!', 2.5);
+    G.wanted.add(1);
+    G.sound.blip(180, 0.2);
+  }
+  // phase 2: slide in
+  if (cj.phase === 'yank' && cj.t > 1.4) {
+    cj.phase = 'done';
+    car.traffic = false; car.parked = false;
+    p.carjack = null;
+    enterCar(G, car);
+  }
+  // player walks to the door during the sequence
+  if (cj.phase === 'approach') {
+    const dx = car.x - p.pos.x, dz = car.z - p.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 0.5) {
+      p.pos.x += (dx / d) * 4 * dt;
+      p.pos.z += (dz / d) * 4 * dt;
+      p.heading = Math.atan2(dx, dz);
+      p.mesh.group.position.set(p.pos.x, 0, p.pos.z);
+      p.mesh.group.rotation.y = p.heading;
+    }
+  }
+}
+
+export function spawnPedestrians(G, n) {
+  const colors = [0xffd23c, 0x7ae0a0, 0xff8ac2, 0x9ad2e8, 0xf0f0f0, 0xc98a4b];
+  for (let i = 0; i < n; i++) {
+    const g = new THREE.Group();
+    const shirt = pick(colors);
+    g.add(box(0.85, 1.05, 0.45, shirt, 0, 1.3, 0));
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), new THREE.MeshLambertMaterial({ color: pick([0xe8b98a, 0x8a5a3a, 0xf0c8a0]) }));
+    head.position.set(0, 2.15, 0); head.castShadow = true; g.add(head);
+    g.add(box(0.3, 0.85, 0.32, 0x2a3a5a, -0.2, 0.42, 0));
+    g.add(box(0.3, 0.85, 0.32, 0x2a3a5a, 0.2, 0.42, 0));
+    g.position.set(rand(-300, 300), 0, rand(-300, 300));
+    G.scene.add(g);
+    G.peds.push({ group: g, x: g.position.x, z: g.position.z, heading: rand(0, Math.PI * 2), speed: rand(1, 2.2), phase: rand(0, 6), fleeing: false, panic: 0 });
+  }
+}
+
+export function updatePedestrians(G, dt) {
+  const px = G.player.pos.x, pz = G.player.pos.z;
+  for (const ped of G.peds) {
+    const d = Math.hypot(ped.x - px, ped.z - pz);
+    if (G.wanted.level >= 3 && d < 18) ped.fleeing = true;
+    if (ped.fleeing) {
+      ped.speed = 5;
+      const dx = ped.x - px, dz = ped.z - pz;
+      const l = Math.hypot(dx, dz) || 1;
+      ped.heading = Math.atan2(dx / l, dz / l);
+    } else if (Math.random() < dt * 0.08) {
+      ped.heading = rand(0, Math.PI * 2);
+    }
+    ped.x += Math.sin(ped.heading) * ped.speed * dt;
+    ped.z += Math.cos(ped.heading) * ped.speed * dt;
+    ped.x = clamp(ped.x, -330, 330); ped.z = clamp(ped.z, -330, 360);
+    ped.phase += dt * 7;
+    ped.group.position.set(ped.x, Math.abs(Math.sin(ped.phase)) * 0.08, ped.z);
+    ped.group.rotation.y = ped.heading;
+    if (d > 40) ped.fleeing = false;
+  }
 }

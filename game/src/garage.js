@@ -1,138 +1,134 @@
-// CORAL HEAT — garage + property + upgrade shop (NEW in v2.9).
-// Three buyable safehouses, car storage slots, upgrade shop selling
-// engine / tires / armor / nitro levels at increasing prices, purchase UI.
-import { fmtCash } from './util.js';
+// garage.js — property + garage system: 3 buyable safehouses, car storage slots,
+// upgrade shop (engine / tires / armor / nitro) with purchase UI.
+import { box, fmtCash, clamp } from './util.js';
+import * as THREE from 'three';
 
-export const UPGRADES = [
-  { id: 'engine', name: 'Engine Tuning', desc: '+12% top speed per level', prices: [1200, 2600, 5200], max: 3 },
-  { id: 'tires', name: 'Grip Tires', desc: '+15% cornering grip per level', prices: [900, 2000, 4200], max: 3 },
-  { id: 'armor', name: 'Armor Plating', desc: '+40 car health per level', prices: [1000, 2200, 4600], max: 3 },
-  { id: 'nitro', name: 'Nitro Boost', desc: 'Hold SHIFT for a speed boost', prices: [1500, 3200, 6400], max: 3 },
+export const SAFEHOUSES = [
+  { id: 'palm-apartment', name: 'Palm Court Apartment', price: 8000, x: -228, z: -76, slots: 2, color: 0x7ae0a0 },
+  { id: 'marina-loft', name: 'Marina Loft', price: 22000, x: 228, z: 152, slots: 4, color: 0x3ca8ff },
+  { id: 'coral-villa', name: 'Coral Villa', price: 60000, x: 228, z: -228, slots: 6, color: 0xffd23c },
 ];
 
-export function setupGarage(G) {
-  G.garage = {
-    owned: [],
-    stored: [], // {color, kind, top}
-    open: false,
-    buySafehouse(id) {
-      const spot = G.city.safehouseSpots.find((s) => s.id === id);
-      if (!spot) return false;
-      if (this.owned.includes(id)) { G.hud.toast('You already own the ' + spot.name); return false; }
-      if (G.player.cash < spot.price) {
-        G.hud.toast('Not enough cash — the ' + spot.name + ' costs ' + fmtCash(spot.price));
-        G.audio?.click();
-        return false;
-      }
-      G.player.cash -= spot.price;
-      this.owned.push(id);
-      G.hud.toast('BOUGHT: ' + spot.name + ' — ' + spot.desc);
-      G.audio?.win();
-      G.saveGame();
-      return true;
-    },
-    buyUpgrade(id) {
-      const up = UPGRADES.find((u) => u.id === id);
-      const level = G.player.upgrades[id] || 0;
-      if (level >= up.max) { G.hud.toast(up.name + ' is already maxed out'); return false; }
-      const price = up.prices[level];
-      if (G.player.cash < price) {
-        G.hud.toast('Not enough cash — ' + up.name + ' Lv' + (level + 1) + ' costs ' + fmtCash(price));
-        G.audio?.click();
-        return false;
-      }
-      G.player.cash -= price;
-      G.player.upgrades[id] = level + 1;
-      G.hud.toast(up.name + ' upgraded to Lv' + (level + 1) + '!');
-      G.audio?.win();
-      G.saveGame();
-      return true;
-    },
-    storeCar() {
-      const car = G.player.car;
-      if (!car) { G.hud.toast('Get in a car first, then store it'); return false; }
-      const slots = this.totalSlots();
-      if (this.stored.length >= slots) {
-        G.hud.toast('Garage full (' + slots + ' slots) — buy a bigger safehouse');
-        return false;
-      }
-      this.stored.push({ color: car.color, kind: car.kind, top: car.top });
-      G.hud.toast('Car stored in your garage (' + this.stored.length + '/' + slots + ')');
-      G.saveGame();
-      return true;
-    },
-    totalSlots() {
-      let slots = 1; // street parking always holds one
-      for (const id of this.owned) {
-        if (id === 'flat') slots += 1;
-        if (id === 'loft') slots += 2;
-        if (id === 'villa') slots += 4;
-      }
-      return slots;
-    },
+export const UPGRADES = [
+  { id: 'engine', name: 'Engine Tuning', desc: '+9% top speed per level', base: 1500, max: 4 },
+  { id: 'tires', name: 'Grip Tires', desc: '+12% cornering per level', base: 900, max: 3 },
+  { id: 'armor', name: 'Body Armor', desc: '+25 car HP per level', base: 1200, max: 4 },
+  { id: 'nitro', name: 'Nitro Kit', desc: 'Shift = boost, refills at garage', base: 2000, max: 2 },
+];
+
+export function createGarageState() {
+  return {
+    owned: [], // safehouse ids
+    stored: {}, // safehouse id -> [car names]
+    upgrades: { engine: 0, tires: 0, armor: 0, nitro: 0 },
+    shopOpen: false,
   };
-  G.player.upgrades = { engine: 0, tires: 0, armor: 0, nitro: 0 };
-  G.player.ownedSafehouses = G.garage.owned;
 }
 
-// Is the player standing near a safehouse marker? Returns the spot or null.
-export function nearSafehouse(G) {
-  const p = G.player;
-  for (const s of G.city.safehouseSpots) {
-    const dx = p.x - s.x, dz = p.z - s.z;
-    if (dx * dx + dz * dz < 100) return s;
-  }
-  return null;
+export function upgradePrice(up, level) {
+  return Math.round(up.base * Math.pow(1.8, level));
 }
 
-// Render the garage / property / upgrade shop panel into #garage-panel.
-export function renderGaragePanel(G) {
-  const el = document.getElementById('garage-panel');
-  if (!el) return;
-  const p = G.player;
-  let html = '<h2>GARAGE &amp; PROPERTIES</h2>';
-  html += '<div class="g-cash">Cash: <b>' + fmtCash(p.cash) + '</b> &nbsp; Slots: <b>' + G.garage.stored.length + '/' + G.garage.totalSlots() + '</b></div>';
-  html += '<h3>Safehouses</h3>';
-  for (const s of G.city.safehouseSpots) {
-    const owned = G.garage.owned.includes(s.id);
-    html += '<div class="g-row"><div><b>' + s.name + '</b><br><span class="g-sub">' + s.desc + '</span></div>' +
-      (owned ? '<span class="g-owned">OWNED</span>' :
-        '<button data-buy-house="' + s.id + '">' + fmtCash(s.price) + '</button>') + '</div>';
-  }
-  html += '<h3>Upgrades</h3>';
-  for (const u of UPGRADES) {
-    const level = p.upgrades[u.id] || 0;
-    const maxed = level >= u.max;
-    const price = maxed ? null : u.prices[level];
-    html += '<div class="g-row"><div><b>' + u.name + ' — Lv' + level + '/' + u.max + '</b><br><span class="g-sub">' + u.desc + '</span></div>' +
-      (maxed ? '<span class="g-owned">MAX</span>' :
-        '<button data-buy-up="' + u.id + '">' + fmtCash(price) + '</button>') + '</div>';
-  }
-  html += '<h3>Stored cars</h3>';
-  if (G.garage.stored.length === 0) html += '<div class="g-sub">No cars stored yet. Get in a car and press Store.</div>';
-  for (let i = 0; i < G.garage.stored.length; i++) {
-    const c = G.garage.stored[i];
-    html += '<div class="g-row"><div><b>' + c.kind + '</b> — top ' + Math.round(c.top) + ' mph</div>' +
-      '<button data-take-car="' + i + '">Take out</button></div>';
-  }
-  html += '<div class="g-row"><button data-store-car="1">Store current car</button>' +
-    '<button data-close-garage="1">Close [G]</button></div>';
-  el.innerHTML = html;
-  el.querySelectorAll('[data-buy-house]').forEach((b) => b.onclick = () => { G.garage.buySafehouse(b.dataset.buyHouse); renderGaragePanel(G); });
-  el.querySelectorAll('[data-buy-up]').forEach((b) => b.onclick = () => { G.garage.buyUpgrade(b.dataset.buyUp); renderGaragePanel(G); });
-  el.querySelectorAll('[data-store-car]').forEach((b) => b.onclick = () => { G.garage.storeCar(); renderGaragePanel(G); });
-  el.querySelectorAll('[data-take-car]').forEach((b) => b.onclick = () => { takeStoredCar(G, parseInt(b.dataset.takeCar, 10)); renderGaragePanel(G); });
-  el.querySelectorAll('[data-close-garage]').forEach((b) => b.onclick = () => G.hud.toggleGarage(false));
+export function buySafehouse(G, house) {
+  const g = G.garage;
+  if (g.owned.includes(house.id)) return 'owned';
+  if (G.player.cash < house.price) return 'poor';
+  G.player.cash -= house.price;
+  g.owned.push(house.id);
+  g.stored[house.id] = [];
+  // mark it owned in the world: gold roof trim
+  const trim = box(16, 1, 16, 0xffd23c, house.x, 12.5, house.z);
+  G.scene.add(trim);
+  G.hud.say('SAFEHOUSE BOUGHT — ' + house.name + ' (' + house.slots + ' car slots)', 3.5);
+  G.sound.win();
+  G.save.save();
+  return 'bought';
 }
 
-export function takeStoredCar(G, idx) {
-  const c = G.garage.stored[idx];
-  if (!c) return;
-  G.garage.stored.splice(idx, 1);
-  // spawn it next to the player via the drive module (imported lazily to avoid a cycle)
-  import('./drive.js').then((drive) => {
-    const car = drive.createCar(G, G.player.x + 6, G.player.z + 4, G.player.heading, c.color, c.kind);
-    car.top = c.top;
-    G.hud.toast('Your ' + c.kind + ' is out of the garage');
-  });
+export function buyUpgrade(G, up) {
+  const g = G.garage;
+  const lvl = g.upgrades[up.id];
+  if (lvl >= up.max) return 'maxed';
+  const price = upgradePrice(up, lvl);
+  if (G.player.cash < price) return 'poor';
+  G.player.cash -= price;
+  g.upgrades[up.id] = lvl + 1;
+  // apply to the current vehicle right away
+  const v = G.player.vehicle;
+  if (v) {
+    if (up.id === 'engine') v.engine = g.upgrades.engine;
+    if (up.id === 'tires') v.tires = g.upgrades.tires;
+    if (up.id === 'armor') { v.armor = g.upgrades.armor; v.hp = Math.min(100 + v.armor * 25, v.hp + 25); }
+    if (up.id === 'nitro') { v.nitro = 100; }
+  }
+  G.hud.say(up.name + ' LV' + (lvl + 1) + ' installed — ' + fmtCash(price), 2.5);
+  G.sound.blip(760, 0.12);
+  G.save.save();
+  return 'bought';
+}
+
+export function storeCar(G, houseId) {
+  const g = G.garage;
+  const v = G.player.vehicle;
+  if (!v) return 'nocar';
+  const slots = SAFEHOUSES.find((h) => h.id === houseId).slots;
+  const stored = g.stored[houseId] || [];
+  if (stored.length >= slots) return 'full';
+  stored.push(v.name + ' (' + v.model.name + ')');
+  g.stored[houseId] = stored;
+  // car disappears into the garage
+  G.scene.remove(v.group);
+  const i = G.cars.indexOf(v); if (i >= 0) G.cars.splice(i, 1);
+  G.player.vehicle = null;
+  G.player.onFoot = true;
+  G.player.pos.set(v.x - 3, 1.2, v.z - 3);
+  G.player.mesh.group.visible = true;
+  G.hud.say('Car stored at ' + houseId + ' — ' + stored.length + '/' + slots + ' slots used', 2.5);
+  G.save.save();
+  return 'stored';
+}
+
+export function nearestSafehouse(G, maxD = 14) {
+  let best = null, bd = maxD;
+  for (const h of SAFEHOUSES) {
+    const d = Math.hypot(h.x - G.player.pos.x, h.z - G.player.pos.z);
+    if (d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
+
+export function buildShopUI(G) {
+  // DOM panel listing safehouses + upgrades, toggled with G key near a safehouse
+  const panel = document.createElement('div');
+  panel.id = 'garage-panel';
+  panel.className = 'panel hidden';
+  panel.innerHTML = '<h2>GARAGE &amp; PROPERTIES</h2><div class="sub">Coral Bay Motors — safehouses &amp; upgrades</div><div id="garage-houses"></div><h3>UPGRADE SHOP</h3><div id="garage-ups"></div><div class="hint">Cash: <b id="garage-cash"></b> — click to buy. G closes.</div>';
+  document.body.appendChild(panel);
+  return panel;
+}
+
+export function refreshShopUI(G) {
+  const panel = G.garage.panel;
+  if (!panel) return;
+  const houses = panel.querySelector('#garage-houses');
+  houses.innerHTML = '';
+  for (const h of SAFEHOUSES) {
+    const owned = G.garage.owned.includes(h.id);
+    const b = document.createElement('button');
+    b.className = 'shop-row' + (owned ? ' owned' : '');
+    b.textContent = (owned ? 'OWNED ✓ ' : '') + h.name + ' — ' + h.slots + ' slots — ' + fmtCash(h.price);
+    b.onclick = () => { const r = buySafehouse(G, h); if (r === 'poor') G.hud.say('Not enough cash for ' + h.name, 2); refreshShopUI(G); };
+    houses.appendChild(b);
+  }
+  const ups = panel.querySelector('#garage-ups');
+  ups.innerHTML = '';
+  for (const up of UPGRADES) {
+    const lvl = G.garage.upgrades[up.id];
+    const b = document.createElement('button');
+    b.className = 'shop-row' + (lvl >= up.max ? ' owned' : '');
+    b.textContent = up.name + ' LV' + lvl + '/' + up.max + ' — ' + up.desc + ' — ' + (lvl >= up.max ? 'MAXED' : fmtCash(upgradePrice(up, lvl)));
+    b.onclick = () => { const r = buyUpgrade(G, up); if (r === 'poor') G.hud.say('Not enough cash for ' + up.name, 2); refreshShopUI(G); };
+    ups.appendChild(b);
+  }
+  panel.querySelector('#garage-cash').textContent = fmtCash(G.player.cash);
 }

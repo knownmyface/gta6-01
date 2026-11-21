@@ -1,117 +1,31 @@
-// CORAL HEAT — story missions 13-16 (NEW in v2.9).
-// Built on the new systems: street races, bikes, garage and safehouses.
-// These four close the story arc and unlock the "Coral Crown" finale.
-import { dist2d, fmtCash } from './util.js';
+// story2.js — story missions 9-16: the race / bike / garage arc that ends the game.
+import { spawnThugs } from './fight.js';
 
-export const MISSIONS2 = [
-  {
-    id: 13, title: 'Rookie Racer', giver: 'Vex', reward: 1800,
-    steps: [
-      { type: 'goto', x: 0, z: -210, text: 'Reach the Marina Mile start pad' },
-      { type: 'race', circuit: 0, text: 'Win the Marina Mile (2 laps)' },
-      { type: 'goto', x: -35, z: -105, text: 'Meet Vex at the Coral Court Flat' },
-    ],
-  },
-  {
-    id: 14, title: 'Two Wheels, One Job', giver: 'Dita', reward: 2200,
-    steps: [
-      { type: 'bike', text: 'Get on a motorcycle' },
-      { type: 'goto', x: 175, z: -105, text: 'Ride to the east bike meet' },
-      { type: 'wheelie', seconds: 3, text: 'Hold a wheelie for 3 seconds (SPACE while riding)' },
-      { type: 'goto', x: -105, z: 105, text: 'Ride back to the west meet' },
-    ],
-  },
-  {
-    id: 15, title: 'Keys to the City', giver: 'Marlo', reward: 2600,
-    steps: [
-      { type: 'garage', text: 'Buy your first safehouse (press G near a green sign)' },
-      { type: 'upgrade', text: 'Buy any garage upgrade' },
-      { type: 'goto', x: 210, z: 105, text: 'Show off the ride at the Marina Loft' },
-    ],
-  },
-  {
-    id: 16, title: 'Sunset Grand Tour', giver: 'Rosa', reward: 5000,
-    steps: [
-      { type: 'race', circuit: 4, text: 'Win the Sunset Grand Tour (2 laps, 5 circuits mastered)' },
-      { type: 'goto', x: 268, z: -190, text: 'Meet Rosa under the ferris wheel' },
-      { type: 'wanted', level: 5, text: 'One last 5-star stand — draw the full force' },
-      { type: 'escape', text: 'Lose them all. You own Coral Bay now.' },
-    ],
-  },
+export const MISSIONS_9_16 = [
+  { id: 9, name: 'Rookie Racer', brief: 'The street-race scene runs at the Sunset Loop. Drive to the start line (gold gate) and press R to race.', target: { x: -152, z: 0 }, reward: 1500, kind: 'race-win' },
+  { id: 10, name: 'Two Wheels', brief: 'Steal a bike — there is one parked near the plaza. Ride it to the marina (Q = wheelie).', target: { x: 150, z: 210 }, reward: 1800, kind: 'bike-goto' },
+  { id: 11, name: 'Grand Coral GP', brief: 'Win the Grand Coral GP — 3 laps, 6 gates, 3 rivals. Press R at the start line.', target: { x: -304, z: -304 }, reward: 4000, kind: 'race-win' },
+  { id: 12, name: 'A Place to Sleep', brief: 'You need a safehouse. Buy the Palm Court Apartment ($8,000) from the garage menu (G near the house).', target: { x: -228, z: -76 }, reward: 2000, kind: 'buy-safehouse' },
+  { id: 13, name: 'Tuned Up', brief: 'Buy any upgrade at the garage shop — engine, tires, armor or nitro. Press G near a safehouse.', target: { x: -228, z: -76 }, reward: 1500, kind: 'upgrade-car' },
+  { id: 14, name: 'Bike Courier', brief: 'A package run on two wheels: ride a bike to the beach checkpoint, then to the marina.', target: { x: -228, z: 304 }, reward: 3000, kind: 'bike-goto' },
+  { id: 15, name: 'Marina Sprint Champ', brief: 'Win the Marina Sprint — 2 laps around the docks. The crew is watching.', target: { x: 76, z: 228 }, reward: 4500, kind: 'race-win' },
+  { id: 16, name: 'King of Coral Bay', brief: 'FINALE: clear the last crew at the plaza (5 thugs), then stand on the fountain. The city is yours.', target: { x: 0, z: 0 }, reward: 10000, kind: 'finale', thugs: 5 },
 ];
 
-export function setupStory2(G) {
-  G.story2 = { defs: MISSIONS2 };
+export function registerMissions9_16() {
+  window.__CORAL_MISSIONS_9_16 = MISSIONS_9_16;
 }
 
-// Extra step types used only by missions 13-16. Called from boot's mission update.
-export function updateStory2Steps(G, dt) {
-  const m = G.mission;
-  if (!m || m.def.id < 13) return false;
-  const s = m.def.steps[m.step];
-  if (!s) return false;
-  const p = G.player;
-  switch (s.type) {
-    case 'bike': {
-      if (p.mode === 'bike') return stepDone(G);
-      return true;
-    }
-    case 'wheelie': {
-      if (p.mode === 'bike' && p.bike && p.bike.wheelie > 0.5) {
-        m.timer += dt;
-        G.hud.setMissionProgress(m.timer / s.seconds);
-        if (m.timer >= s.seconds) return stepDone(G);
-      } else {
-        m.timer = Math.max(0, m.timer - dt * 0.5);
-        G.hud.setMissionProgress(m.timer / s.seconds);
-      }
-      return true;
-    }
-    case 'garage': {
-      if (G.garage.owned.length > 0) return stepDone(G);
-      return true;
-    }
-    case 'upgrade': {
-      const ups = p.upgrades || {};
-      const total = (ups.engine || 0) + (ups.tires || 0) + (ups.armor || 0) + (ups.nitro || 0);
-      if (total > 0) return stepDone(G);
-      return true;
-    }
-    default:
-      return false;
+export function startMissionWithSetup(G, idx) {
+  // extra setup for the second arc's kinds, run by boot before startMission
+  const list = MISSIONS_9_16;
+  const m = list[idx - 8];
+  if (!m) return;
+  if (m.kind === 'race-win') G.missions.raceWinsBefore = G.missions.raceWins || 0;
+  if (m.kind === 'buy-safehouse') G.missions.ownedBefore = G.garage.owned.length;
+  if (m.kind === 'upgrade-car') {
+    const u = G.garage.upgrades;
+    G.missions.upBefore = u.engine + u.tires + u.armor + u.nitro;
   }
-}
-
-// Advance one step inside the shared mission object (mirrors story.js).
-function stepDone(G) {
-  const m = G.mission;
-  m.step++;
-  m.timer = 0;
-  if (m.step >= m.def.steps.length) {
-    G.player.cash += m.def.reward;
-    G.missionDone.push(m.def.id);
-    G.hud.toast('MISSION COMPLETE: ' + m.def.title + ' — +' + fmtCash(m.def.reward));
-    G.audio?.win();
-    G.hud.setMission(null, 0);
-    G.mission = null;
-    G.saveGame();
-    return true;
-  }
-  const s = m.def.steps[m.step];
-  G.hud.toast('Objective: ' + s.text);
-  G.hud.setMission(m.def, m.step);
-  G.audio?.blip(880);
-  return true;
-}
-
-// Start a mission 13-16 by id. Returns false when the id is not in this file.
-export function startMission2(G, id) {
-  const def = MISSIONS2.find((mm) => mm.id === id);
-  if (!def) return false;
-  if (G.mission) { G.hud.toast('Finish the current mission first'); return false; }
-  G.mission = { def, step: 0, timer: 0, kills: 0, done: false };
-  G.hud.toast('MISSION: ' + def.title + ' — ' + def.steps[0].text);
-  G.hud.setMission(def, 0);
-  G.audio?.blip(740);
-  return true;
+  if (m.kind === 'finale') spawnThugs(G, m.thugs, m.target.x, m.target.z);
 }

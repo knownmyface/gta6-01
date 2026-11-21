@@ -1,9 +1,5 @@
-# CORAL HEAT v2.9 — local-only ignores (never committed)
-# Build output from `node main.ts` (dossier + copied game/screenshots)
-out/
 node_modules/
-# OS noise
+out/
+dist/
 .DS_Store
-Thumbs.db
-# Local scratch logs from playtests
 *.log

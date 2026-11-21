@@ -1,69 +1,60 @@
-// CORAL HEAT — screenshot scene staging (v2.9, fresh).
-// ?scene=chase|foot|marina|race — deterministic staged shots for the dossier.
-// Each scene drops the player into a live moment with the full HUD on.
-import { createCar } from './drive.js';
-import { startRace } from './raceway.js';
+// shots.js — screenshot staging: ?shot=chase|foot|marina|race sets up a dense,
+// legible frame of the live game (no fake renders — the same code the player runs).
+import { spawnPolice } from './cops.js';
+import { spawnCar, CAR_MODELS } from './drive.js';
+import { startRace, CIRCUITS } from './raceway.js';
+import { spawnThugs } from './fight.js';
 
-export function applyScene(G, name) {
+export function stageShot(G, name) {
   const p = G.player;
-  G.state = 'play';
-  document.getElementById('start-screen').style.display = 'none';
   if (name === 'chase') {
-    // player in a red sports car driving NORTH through the city, 2 police + helicopter, wanted 3, mission live
-    // start well north of the plaza so the slow headless frame rate still leaves the car in the city
-    const car = createCar(G, 0, -140, 0, 0xd9302a, 'sport');
-    car.isPlayer = true;
-    p.mode = 'car'; p.car = car;
-    p.mesh.visible = false;
-    p.x = car.x; p.z = car.z;
-    car.speed = 34;
-    G.keys['KeyW'] = true; // auto-drive so the cover shows a real chase at speed
-    G.cops.addWanted(3); // 3 stars: helicopter + police, but no roadblock in the shot
-    G.story.start(4);
-    // two police cars ahead, flanking the road — visible in the chase frame
-    const cop1 = createCar(G, -9, -180, 0, 0x111111, 'police');
-    cop1.isPolice = true; G.copsList.push(cop1);
-    const cop2 = createCar(G, 9, -190, 0, 0x111111, 'police');
-    cop2.isPolice = true; G.copsList.push(cop2);
-    G.camMode = 'chase';
+    // cover: sports car at speed on a clear road, 3-star heat, 2 cruisers + heli
+    // cover: chase down the beachfront road — ocean + sunset on the left,
+    // cruisers staged ahead in the road so the chase reads in frame
+    const car = spawnCar(G, CAR_MODELS[0], 60, 304, -Math.PI / 2, {});
+    car.speed = 24;
+    G.player.vehicle = car; G.player.onFoot = false; p.mesh.group.visible = false;
+    p.pos.set(car.x, 1.2, car.z); p.heading = car.heading;
+    G.wanted.level = 3; G.wanted.heat = 100;
+    const hold1 = spawnPolice(G, 35, 300); hold1.hold = true; hold1.heading = Math.PI / 2;
+    const hold2 = spawnPolice(G, 22, 309); hold2.hold = true; hold2.heading = Math.PI / 2;
+    hold1.group.rotation.y = hold1.heading; hold2.group.rotation.y = hold2.heading;
+    p.cash = 18450; p.health = 82;
+    G.hud.setObjective('MISSION 8 — The Big Score', 'Clear the plaza crew, then grab the cash.');
+    G.camDist = 11; G.camPitch = 0.25; G.camYawOffset = 0.15;
   } else if (name === 'foot') {
-    // on foot beside a sports car, mid-carjack: traffic car stopped, driver bailing
-    p.mode = 'foot';
-    p.x = 6; p.z = 34; p.heading = Math.PI * 0.75;
-    p.mesh.visible = true;
-    p.mesh.position.set(p.x, 0, p.z);
-    const car = createCar(G, 0, 30, Math.PI, 0xff7a1a, 'sport');
-    car.isTraffic = true;
-    car.speed = 0;
-    G.cops.addWanted(1);
-    G.story.start(2);
-    G.hud.setPrompt('Hold F — carjack this car');
-    G.camMode = 'foot';
+    // on foot beside a car mid-carjack, thugs nearby, plaza in frame
+    p.pos.set(10, 1.2, 10); p.heading = Math.PI * 0.75;
+    p.mesh.group.visible = true; p.mesh.group.position.set(10, 0, 10);
+    const car = spawnCar(G, CAR_MODELS[2], 14, 14, Math.PI * 0.8, { parked: true });
+    spawnThugs(G, 3, 24, 24);
+    p.cash = 9420; p.health = 100;
+    G.wanted.level = 1; G.wanted.heat = 100;
+    G.arsenal.give('shotgun');
+    G.hud.setObjective('MISSION 4 — Payback at the Docks', 'Take the thugs down — click to shoot.');
+    G.camDist = 11;
   } else if (name === 'marina') {
-    // on a boat in the marina, moored boats + ferris wheel behind
+    // aboard a boat in the marina, moored boats + piers behind, 2-star heat
     const boat = G.boats[0];
-    p.mode = 'boat'; p.boat = boat;
-    boat.ridden = true;
-    boat.speed = 14;
-    boat.x = 318; boat.z = -150; // start north of the piers, sail south past them
-    boat.heading = Math.PI; // sail south along the marina, piers ahead in frame
-    G.keys['KeyW'] = true;
-    p.x = boat.x; p.z = boat.z;
-    p.mesh.visible = false;
-    G.story.start(6);
-    G.camMode = 'boat';
+    if (boat) {
+      boat.x = 150; boat.z = 170; boat.heading = 0; boat.speed = 12;
+      G.player.boat = boat; G.player.onFoot = false; p.mesh.group.visible = false;
+      p.pos.set(boat.x, 1.2, boat.z); p.heading = boat.heading;
+    }
+    p.cash = 25000; p.health = 95;
+    G.wanted.level = 2; G.wanted.heat = 100;
+    G.hud.setObjective('MISSION 6 — Harbor Run', 'Hit all 5 buoys around the marina.');
+    G.camDist = 16;
   } else if (name === 'race') {
-    // race grid: player + 3 rivals, countdown running, race HUD visible
-    const car = createCar(G, 0, 30, Math.PI, 0xd9302a, 'sport');
-    car.isPlayer = true;
-    p.mode = 'car'; p.car = car;
-    p.mesh.visible = false;
-    p.x = car.x; p.z = car.z;
-    startRace(G, 0);
-    G.keys['KeyW'] = true; // auto-drive once the countdown hits GO
-    G.camMode = 'race';
+    // race-start grid: player + 3 rivals, countdown, race HUD live
+    const car = spawnCar(G, CAR_MODELS[0], -152, -12, Math.PI, {});
+    G.player.vehicle = car; G.player.onFoot = false; p.mesh.group.visible = false;
+    p.pos.set(car.x, 1.2, car.z); p.heading = car.heading;
+    p.cash = 11200;
+    startRace(G, CIRCUITS[0]);
+    G.hud.setObjective('MISSION 9 — Rookie Racer', 'Sunset Loop — 3 laps, beat 3 rivals for $1,500.');
+    G.camDist = 14;
   }
-  G.hud.setCash(p.cash);
-  G.hud.setWanted(G.cops.wanted);
-  G.hud.setHealth(p.health);
+  G.started = true;
+  G.hud.start.classList.add('hidden');
 }
