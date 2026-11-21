@@ -1,202 +1,106 @@
-// Coral Heat — on foot: the player walker, pedestrians, entering cars
-// and the carjacking sequence (pull a driver out, take the car, wanted +1).
-import * as THREE from 'three';
-import { clamp, rand, pick } from './util.js';
-import { nearestTrafficCar, stealTrafficCar } from './drive.js';
+// CORAL HEAT — on foot. The player walks the city with WASD, the camera
+// rides directly behind, and pedestrians wander the sidewalks. The player
+// mesh is a simple two-tone figure; what matters is that it reads clearly
+// at screenshot distance and never clips through a building.
+CH.walk = (function () {
+  const U = CH.util;
 
-const PED_SHIRTS = [0xe8e8e8, 0x3a6fd9, 0xe8a832, 0x7a4ad9, 0x2ed9a8, 0xd95a7a, 0x8a8a8a];
-
-export function makeWalkerMesh(shirt = 0xe83a2e, pants = 0x2a2a3a) {
-  const g = new THREE.Group();
-  const skin = new THREE.MeshLambertMaterial({ color: 0xd9a075 });
-  const shirtMat = new THREE.MeshLambertMaterial({ color: shirt });
-  const pantsMat = new THREE.MeshLambertMaterial({ color: pants });
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), skin);
-  head.position.y = 1.62;
-  g.add(head);
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.34), shirtMat);
-  torso.position.y = 1.08;
-  g.add(torso);
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.72, 0.26), pantsMat);
-  legL.position.set(-0.16, 0.36, 0);
-  g.add(legL);
-  const legR = legL.clone();
-  legR.position.x = 0.16;
-  g.add(legR);
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.62, 0.2), shirtMat);
-  armL.position.set(-0.42, 1.08, 0);
-  g.add(armL);
-  const armR = armL.clone();
-  armR.position.x = 0.42;
-  g.add(armR);
-  g.userData.legL = legL;
-  g.userData.legR = legR;
-  g.userData.armL = armL;
-  g.userData.armR = armR;
-  return g;
-}
-
-export function createWalker(G) {
-  const mesh = makeWalkerMesh(0xe83a2e, 0x22304a);
-  mesh.position.set(-200, 0, 20);
-  G.scene.add(mesh);
-  G.player.footMesh = mesh;
-  G.player.pos.set(-200, 0, 20);
-  G.player.heading = 0;
-  G.player.speed = 0;
-  G.player.mode = 'foot';
-  return mesh;
-}
-
-export function updateOnFoot(G, dt) {
-  if (G.player.mode !== 'foot') return;
-  const k = G.keys;
-  const mesh = G.player.footMesh;
-  let ix = 0;
-  let iz = 0;
-  if (k['KeyW'] || k['ArrowUp']) iz += 1;
-  if (k['KeyS'] || k['ArrowDown']) iz -= 1;
-  if (k['KeyA'] || k['ArrowLeft']) ix -= 1;
-  if (k['KeyD'] || k['ArrowRight']) ix += 1;
-  const sprint = k['ShiftLeft'] ? 1.7 : 1;
-  const speed = 5.2 * sprint;
-  // camera-relative movement: forward is away from the camera
-  const camFwd = new THREE.Vector3();
-  G.camera.getWorldDirection(camFwd);
-  camFwd.y = 0;
-  camFwd.normalize();
-  const camRight = new THREE.Vector3().crossVectors(camFwd, new THREE.Vector3(0, 1, 0)).negate();
-  const move = new THREE.Vector3()
-    .addScaledVector(camFwd, iz)
-    .addScaledVector(camRight, ix);
-  if (move.lengthSq() > 0) {
-    move.normalize();
-    G.player.pos.addScaledVector(move, speed * dt);
-    const targetHeading = Math.atan2(move.x, move.z);
-    let d = targetHeading - G.player.heading;
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
-    G.player.heading += d * Math.min(1, dt * 10);
-    G.player.speed = speed;
-    const swing = Math.sin(G.time * 11) * 0.55;
-    mesh.userData.legL.rotation.x = swing;
-    mesh.userData.legR.rotation.x = -swing;
-    mesh.userData.armL.rotation.x = -swing * 0.8;
-    mesh.userData.armR.rotation.x = swing * 0.8;
-  } else {
-    G.player.speed = 0;
-    mesh.userData.legL.rotation.x *= 0.8;
-    mesh.userData.legR.rotation.x *= 0.8;
-    mesh.userData.armL.rotation.x *= 0.8;
-    mesh.userData.armR.rotation.x *= 0.8;
+  function makePersonMesh(shirt, pants, skin) {
+    const g = new THREE.Group();
+    const mat = (c) => new THREE.MeshLambertMaterial({ color: c });
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.75, 0.3), mat(pants));
+    legs.position.y = 0.38; g.add(legs);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.36), mat(shirt));
+    torso.position.y = 1.15; g.add(torso);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), mat(skin));
+    head.position.y = 1.8; g.add(head);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.5), mat(0x22304a));
+    cap.position.y = 2.0; g.add(cap);
+    g.userData = { legs, torso, head };
+    return g;
   }
-  G.player.pos.x = clamp(G.player.pos.x, -250, 300);
-  G.player.pos.z = clamp(G.player.pos.z, -300, 300);
-  // keep out of the water on foot
-  if (G.player.pos.x < -248) G.player.pos.x = -248;
-  mesh.position.copy(G.player.pos);
-  mesh.rotation.y = G.player.heading;
-}
 
-export function enterNearestCar(G) {
-  const t = nearestTrafficCar(G, 8);
-  if (t) {
-    stealTrafficCar(G, t);
-    G.player.footMesh.visible = false;
-    if (G.hud) G.hud.toast('Car taken — enjoy the ride');
-    return true;
+  function makePlayer() {
+    const mesh = makePersonMesh(0xff5a3c, 0x2a3550, 0xe8b98a);
+    // A coral-red jacket so the player is findable in a crowd.
+    mesh.userData.torso.material = new THREE.MeshLambertMaterial({ color: 0xff5a3c });
+    return mesh;
   }
-  const car = G.player.car;
-  if (car) {
-    const d = Math.hypot(car.pos.x - G.player.pos.x, car.pos.z - G.player.pos.z);
-    if (d < 8) {
-      G.player.mode = 'car';
-      G.player.footMesh.visible = false;
-      return true;
+
+  function update(dt) {
+    const S = CH.S, p = S.player;
+    if (!p || p.inCar || p.inBoat) return;
+    const k = S.input.keys;
+    let fx = 0, fz = 0;
+    if (k.KeyW) fz += 1;
+    if (k.KeyS) fz -= 1;
+    if (k.KeyA) fx -= 1;
+    if (k.KeyD) fx += 1;
+    // Mouse steers the heading; WASD moves relative to it.
+    p.heading += (S.input.mouseDX || 0) * 0.0032;
+    S.input.mouseDX = 0;
+    const moving = fx !== 0 || fz !== 0;
+    const run = k.ShiftLeft || k.ShiftRight;
+    const speed = moving ? (run ? 7.5 : 4.2) : 0;
+    const sin = Math.sin(p.heading), cos = Math.cos(p.heading);
+    const mx = (sin * fz + cos * fx) * speed * dt;
+    const mz = (cos * fz - sin * fx) * speed * dt;
+    const hit = CH.city.collide(p.x + mx, p.z + mz, 0.7);
+    p.x = U.clamp(hit.x, CH.CFG.cityMin, CH.CFG.cityMax);
+    p.z = U.clamp(hit.z, CH.CFG.cityMin, CH.CFG.waterZ - 1);
+    p.speed = speed;
+    p.moving = moving;
+    // Walk bob + facing.
+    const m = p.mesh;
+    if (m) {
+      m.visible = true;
+      m.position.set(p.x, Math.abs(Math.sin(S.clock * 11)) * 0.06, p.z);
+      m.rotation.y = p.heading;
+      m.userData.legs.rotation.x = moving ? Math.sin(S.clock * 11) * 0.55 : 0;
+      m.userData.torso.rotation.x = moving ? 0.08 : 0;
     }
   }
-  return false;
-}
 
-export function exitCar(G) {
-  const car = G.player.car;
-  if (!car) return;
-  G.player.mode = 'foot';
-  G.player.pos.set(car.pos.x + 2.5, 0, car.pos.z + 1.5);
-  G.player.speed = 0;
-  G.player.footMesh.visible = true;
-  G.player.footMesh.position.copy(G.player.pos);
-}
-
-// F: yank the driver out of a nearby traffic car and take it. Wanted +1.
-export function carjack(G) {
-  const t = nearestTrafficCar(G, 7);
-  if (!t) return false;
-  // the pulled-out driver stumbles away on foot
-  const driver = makeWalkerMesh(pick(PED_SHIRTS), 0x2a2a3a);
-  driver.position.set(t.pos.x + 2, 0, t.pos.z);
-  G.scene.add(driver);
-  G.peds.push({
-    mesh: driver, pos: driver.position, heading: Math.random() * Math.PI * 2,
-    speed: 3.2, flee: true, panic: 6, wander: 0,
-  });
-  stealTrafficCar(G, t);
-  G.player.footMesh.visible = false;
-  G.player.wanted = Math.min(5, G.player.wanted + 1);
-  if (G.hud) {
-    G.hud.toast('CARJACKED — driver pulled out! Wanted level up');
-    G.hud.banner('CARJACKED', 'You stole a ride in broad daylight');
-  }
-  if (G.sfx) G.sfx('carjack');
-  return true;
-}
-
-export function spawnPedestrians(G, count = 26) {
-  for (let i = 0; i < count; i++) {
-    const mesh = makeWalkerMesh(pick(PED_SHIRTS), pick([0x2a2a3a, 0x3a2a1a, 0x1a2a3a]));
-    let x = rand(-240, 290);
-    let z = rand(-290, 290);
-    // pedestrians walk on sidewalks, near roads
-    if (Math.random() < 0.6) {
-      const roads = [-180, -120, -60, 0, 60, 120, 180, 240];
-      x = pick(roads) + rand(-11, 11);
+  function spawnPeds(scene, count) {
+    const S = CH.S;
+    const shirts = [0x3a7bd5, 0xe8b13c, 0x7a3cd5, 0x3cd5a0, 0xd53c5a, 0xdddddd, 0x2a2a2a];
+    for (let i = 0; i < count; i++) {
+      const x = U.rand(-280, 280), z = U.rand(-280, 280);
+      const mesh = makePersonMesh(U.pick(shirts), 0x2a2f3a, U.pick([0xe8b98a, 0xc98a5a, 0x8a5a3a, 0xf0c8a0]));
+      mesh.position.set(x, 0, z);
+      scene.add(mesh);
+      S.traffic.peds.push({
+        x, z, heading: U.rand(0, Math.PI * 2), speed: U.rand(0.8, 1.6),
+        mesh, turnAt: 0, dead: false, scared: false,
+      });
     }
-    mesh.position.set(x, 0, z);
-    G.scene.add(mesh);
-    G.peds.push({
-      mesh, pos: mesh.position, heading: rand(0, Math.PI * 2),
-      speed: rand(1.2, 2.4), flee: false, panic: 0, wander: rand(0, 4),
-    });
   }
-}
 
-export function updatePedestrians(G, dt) {
-  for (const p of G.peds) {
-    p.wander -= dt;
-    if (p.panic > 0) {
-      p.panic -= dt;
-      p.speed = 4.5;
-    } else if (p.wander <= 0) {
-      p.wander = rand(2, 5);
-      p.heading = rand(0, Math.PI * 2);
-      p.speed = p.flee ? 3.4 : rand(1.2, 2.4);
+  function updatePeds(dt) {
+    const S = CH.S;
+    for (const ped of S.traffic.peds) {
+      if (ped.dead) continue;
+      // Flee from gunfire or a speeding car nearby.
+      const pd = U.dist2(ped.x, ped.z, S.player.x, S.player.z);
+      if (S.player.inCar && S.player.speed > 8 && pd < 9) ped.scared = true;
+      if (ped.scared) {
+        ped.heading = Math.atan2(ped.x - S.player.x, ped.z - S.player.z);
+        ped.speed = 3.4;
+        if (pd > 30) ped.scared = false;
+      } else if (S.clock > ped.turnAt) {
+        ped.heading += U.rand(-1.2, 1.2);
+        ped.turnAt = S.clock + U.rand(2, 6);
+      }
+      const nx = ped.x + Math.sin(ped.heading) * ped.speed * dt;
+      const nz = ped.z + Math.cos(ped.heading) * ped.speed * dt;
+      const hit = CH.city.collide(nx, nz, 0.6);
+      ped.x = U.clamp(hit.x, CH.CFG.cityMin, CH.CFG.cityMax);
+      ped.z = U.clamp(hit.z, CH.CFG.cityMin, CH.CFG.waterZ - 1);
+      ped.mesh.position.set(ped.x, Math.abs(Math.sin(S.clock * 9 + ped.heading * 7)) * 0.05, ped.z);
+      ped.mesh.rotation.y = ped.heading;
+      ped.mesh.userData.legs.rotation.x = Math.sin(S.clock * 9 + ped.heading * 7) * 0.5;
     }
-    // flee from the player car / gunfire
-    const dx = p.pos.x - G.player.pos.x;
-    const dz = p.pos.z - G.player.pos.z;
-    const d = Math.hypot(dx, dz);
-    if (d < 12 && (G.player.mode === 'car' || G.player.firing)) {
-      p.heading = Math.atan2(dx, dz);
-      p.panic = 2.5;
-    }
-    p.pos.x += Math.sin(p.heading) * p.speed * dt;
-    p.pos.z += Math.cos(p.heading) * p.speed * dt;
-    p.pos.x = clamp(p.pos.x, -248, 298);
-    p.pos.z = clamp(p.pos.z, -298, 298);
-    p.mesh.position.copy(p.pos);
-    p.mesh.rotation.y = p.heading;
-    const swing = Math.sin(G.time * 9 + p.pos.x) * 0.5;
-    p.mesh.userData.legL.rotation.x = swing;
-    p.mesh.userData.legR.rotation.x = -swing;
   }
-}
+
+  return { makePlayer, makePersonMesh, update, spawnPeds, updatePeds };
+})();

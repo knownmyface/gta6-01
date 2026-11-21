@@ -1,41 +1,68 @@
-// CORAL HEAT — local dev server: serves game/ on http://localhost:8080
-// so the game can be played and screenshot in a desktop browser.
-// Run: node serve.ts
+// CORAL HEAT v2.12 — a tiny static server for local playtesting only.
+// `node serve.ts` serves game/ on http://localhost:8080 (or --port N).
+// It sends the MIME types a browser game needs, refuses any path outside
+// game/, and does nothing else: this is a development convenience, not a
+// web server for the internet.
+import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const gameDir = join(here, 'game');
-const types = {
-  '.html': 'text/html',
-  '.js': 'text/javascript',
-  '.mjs': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
+const gameRoot = resolve(fileURLToPath(new URL('./game', import.meta.url)));
+const argv = process.argv.slice(2);
+const portFlag = argv.indexOf('--port');
+const wanted = portFlag === -1 ? 8080 : Number(argv[portFlag + 1]);
+const port = Number.isInteger(wanted) && wanted > 0 && wanted < 65536 ? wanted : 8080;
+
+const TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.glb': 'model/gltf-binary',
+  '.gltf': 'model/gltf+json',
+  '.bin': 'application/octet-stream',
+  '.wasm': 'application/wasm',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
-const server = createServer(async (req, res) => {
-  try {
-    const path = req.url === '/' ? '/index.html' : decodeURIComponent(req.url.split('?')[0]);
-    const file = join(gameDir, path);
-    if (!file.startsWith(gameDir)) {
-      res.writeHead(403);
-      res.end('forbidden');
-      return;
-    }
-    const data = await readFile(file);
-    res.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream' });
-    res.end(data);
-  } catch {
-    res.writeHead(404);
-    res.end('not found');
+createServer((req, res) => {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  let path = url.pathname;
+  try { path = decodeURIComponent(path); } catch { res.writeHead(400).end('bad request'); return; }
+  if (path.endsWith('/')) path += 'index.html';
+  const file = resolve(join(gameRoot, normalize(path)));
+  if (file !== gameRoot && !file.startsWith(gameRoot + sep)) {
+    res.writeHead(403).end('forbidden');
+    return;
   }
-});
-
-server.listen(8080, () => {
-  console.log('CORAL HEAT at http://localhost:8080');
+  let size: number;
+  try {
+    const st = statSync(file);
+    if (!st.isFile()) throw new Error('not a file');
+    size = st.size;
+  } catch {
+    res.writeHead(404).end('not found');
+    return;
+  }
+  res.writeHead(200, {
+    'content-type': TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': size,
+    'cache-control': 'no-store',
+  });
+  createReadStream(file).pipe(res);
+}).listen(port, '127.0.0.1', () => {
+  console.log(`game/ is on http://localhost:${port}`);
 });
