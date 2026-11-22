@@ -1,8 +1,8 @@
 # CORAL HEAT
 
-[![make.fun bounty](https://img.shields.io/badge/make.fun-bounty%20gta6--01-ff5c8a?style=for-the-badge)](https://make.fun/bounty/gta6-01)
-[![make.fun status](https://img.shields.io/badge/make.fun-status%20live-22c55e?style=for-the-badge)](https://make.fun/bounty/gta6-01)
-[![make.fun rank](https://img.shields.io/badge/make.fun-rank%20push%20v2.12-f59e0b?style=for-the-badge)](https://make.fun/bounty/gta6-01)
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/knownmyface/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/knownmyface/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
 > A 3D WebGL open-world crime game set in a sunset coastal marina city.
 > Built with three.js. No Rockstar names, art, music, or maps — every city,
