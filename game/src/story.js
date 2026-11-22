@@ -1,111 +1,242 @@
-// story.js — story missions 1-16: the rise of Marina "Reef" Solano in Coral
-// Bay. Each mission: title, briefing, objective, a target point, a reward,
-// and a simple completion rule (reach the beacon, survive, or deliver).
-// All characters and crews are original inventions.
-import { dist2d, formatCash } from "./util.js";
+// CORAL HEAT — story missions 1–11: the rise of "Rin Marlowe", a courier
+// who gets pulled into Port Coral's underworld. Each mission has a title, a
+// briefing, a chain of objectives (go-to, deliver, steal, chase, survive),
+// a payout and a completion line. The manager tracks the active objective
+// and paints it on the HUD.
+Coral.story = (function () {
+  'use strict';
+  var U = Coral.util;
 
-export const MISSIONS_1_16 = [
-  { id: 1, title: "Welcome to Coral Bay", brief: "Reef lands in Coral Bay with $2,500 and a borrowed Sunset GT. Meet Dale at the marina loft.", objective: "Drive to the Marina Loft", target: { x: -150, z: -150 }, reward: 500, wanted: 0 },
-  { id: 2, title: "First Wheels", brief: "Dale's coupe is parked by the boulevard. Take it for a spin — it is not stealing if he said so.", objective: "Get in the Coral Coupe at Sunset Motors", target: { x: 120, z: 60 }, reward: 400, wanted: 0 },
-  { id: 3, title: "Hot Wheels", brief: "The crew needs a fast car and the owner is arguing with a meter maid. Take it.", objective: "Carjack a car on the boulevard (F near a car)", target: { x: 0, z: -168 }, reward: 800, wanted: 1, needsJack: true },
-  { id: 4, title: "Outrun the Blues", brief: "Bay PD noticed the jack. Lose them or outrun them — 5 stars is not an option yet.", objective: "Drop your wanted level to 0", target: { x: 0, z: 120 }, reward: 1000, wanted: 2, needsCool: true },
-  { id: 5, title: "Marina Pickup", brief: "Pick up a package from the pier. The harbour master asks no questions if you tip him.", objective: "Reach the pier", target: { x: -60, z: -205 }, reward: 900, wanted: 0 },
-  { id: 6, title: "Boulevard Sprint", brief: "Tessa bets you cannot win the Boulevard Sprint. Two laps. No excuses.", objective: "Win the Boulevard Sprint (race menu, M)", target: { x: -240, z: -168 }, reward: 2500, wanted: 0, race: "boulevard-sprint" },
-  { id: 7, title: "The Mechanic", brief: "Grease runs Sunset Motors. He will tune your ride if you bring him a Tide Sedan.", objective: "Deliver a Tide Sedan to Sunset Motors", target: { x: 120, z: 60 }, reward: 1500, wanted: 0 },
-  { id: 8, title: "Night Shift", brief: "Drive a nervous courier across town while the PD runs a checkpoint. Keep it under the limit — or do not.", objective: "Drive to the Beach Bungalow", target: { x: 210, z: -150 }, reward: 1400, wanted: 1 },
-  { id: 9, title: "Arms Dealer", brief: "Harbor Arms has a P9 with your name on it. Buy it, then show the range what it does.", objective: "Buy a weapon at Harbor Arms", target: { x: -60, z: -60 }, reward: 600, wanted: 0, needsBuy: true },
-  { id: 10, title: "Payback at the Docks", brief: "Rival crew took Dale's bike. Take it back — and make sure they remember the name Reef.", objective: "Reach the docks and clear the ambush", target: { x: -240, z: -168 }, reward: 2200, wanted: 3 },
-  { id: 11, title: "Casino Loop", brief: "The Coral Crown runs a street circuit at dusk. Three laps, high rollers watching.", objective: "Win the Casino Loop", target: { x: 30, z: -60 }, reward: 3000, wanted: 0, race: "casino-loop" },
-  { id: 12, title: "The Informant", brief: "A pit boss at the Crown owes Dale a favour. Walk in on foot and hear him out.", objective: "Enter the Coral Crown casino on foot", target: { x: 30, z: -96 }, reward: 1200, wanted: 0, needsFoot: true },
-  { id: 13, title: "Marina Mile", brief: "Two laps along the waterfront. The cops love this one — it gives them somewhere to set up.", objective: "Win the Marina Mile", target: { x: -300, z: -168 }, reward: 3200, wanted: 1, race: "marina-mile" },
-  { id: 14, title: "Bike Life", brief: "Tessa's Neon 600 is waiting at Neon Cycles. Ride it across town before the crew meeting.", objective: "Ride a bike to the Crown Penthouse", target: { x: 86, z: -120 }, reward: 1800, wanted: 0, needsBike: true },
-  { id: 15, title: "Heat Wave", brief: "Five stars. The whole Bay PD is awake. Survive the chase to the beach bungalow.", objective: "Reach the Beach Bungalow at 4+ stars", target: { x: 210, z: -150 }, reward: 4000, wanted: 4 },
-  { id: 16, title: "The Big Score — Part 1", brief: "Dale lays it out: the Coral Crown vault. First you need the layout, the driver, and a boat. Start with the layout.", objective: "Scout the Coral Crown casino", target: { x: 30, z: -96 }, reward: 2500, wanted: 0 },
-];
+  function at(x, z) { return { x: x, z: z }; }
 
-export function missionById(id) {
-  return MISSIONS_1_16.find((m) => m.id === id);
-}
+  var MISSIONS = [
+    {
+      id: 1, title: 'First Delivery', giver: 'Mara Voss',
+      brief: 'Mara runs the marina courier desk. Take her sealed package across town to the Sunset Motel. Drive careful — the package is worth more than your car.',
+      objectives: [
+        { type: 'goto', label: 'Pick up the package at the marina desk', pos: at(-40, 235) },
+        { type: 'goto', label: 'Deliver it to the Sunset Motel', pos: at(-186, -124) },
+      ],
+      pay: 400, xp: 100,
+    },
+    {
+      id: 2, title: 'Hot Wheels', giver: 'Mara Voss',
+      brief: 'A client wants a Marina GT, any colour, no questions. Steal one from the boulevard and bring it to the lockup.',
+      objectives: [
+        { type: 'steal', label: 'Steal a Marina GT from the boulevard', pos: at(62, 62) },
+        { type: 'goto', label: 'Deliver the car to the lockup', pos: at(186, -62) },
+      ],
+      pay: 800, xp: 120,
+    },
+    {
+      id: 3, title: 'Shakedown', giver: 'Deke Rallo',
+      brief: 'Deke owns the arcade on Coral Row. A rival crew is leaning on his tenants. Go and convince them to leave — fists or otherwise.',
+      objectives: [
+        { type: 'goto', label: 'Reach the arcade on Coral Row', pos: at(124, 0) },
+        { type: 'fight', label: 'Clear out the rival crew (3)', pos: at(124, 0), count: 3 },
+      ],
+      pay: 900, xp: 150,
+    },
+    {
+      id: 4, title: 'The Getaway', giver: 'Mara Voss',
+      brief: 'A courier job went loud. Lose a 2-star wanted level, then meet Mara at the pier. The cops have your plate — do not stop for them.',
+      objectives: [
+        { type: 'loseheat', label: 'Lose the 2-star wanted level', pos: at(0, 0) },
+        { type: 'goto', label: 'Meet Mara at the pier', pos: at(-40, 235) },
+      ],
+      pay: 1100, xp: 180,
+    },
+    {
+      id: 5, title: 'Midnight Run', giver: 'Deke Rallo',
+      brief: 'Race the midnight circuit before the sun comes up: three gates, one rival, no brakes. Win and the crew respects you.',
+      objectives: [
+        { type: 'race', label: 'Win the midnight circuit (race 1)', pos: at(0, -186), race: 0 },
+      ],
+      pay: 1500, xp: 220,
+    },
+    {
+      id: 6, title: 'Guns for Hire', giver: 'Ilsa Kane',
+      brief: 'Ilsa needs a package moved through a roadblock district. Buy a P9 at Marina Arms first — you will not get through unarmed.',
+      objectives: [
+        { type: 'goto', label: 'Buy a weapon at Marina Arms', pos: at(-124, 124) },
+        { type: 'goto', label: 'Move the package through the checkpoint', pos: at(248, 62) },
+      ],
+      pay: 1600, xp: 240,
+    },
+    {
+      id: 7, title: 'Repo Man', giver: 'Deke Rallo',
+      brief: 'Three cars, three debtors, one night. Tow them back to the garage. The third debtor keeps a shotgun by the door.',
+      objectives: [
+        { type: 'steal', label: 'Recover car 1 of 3', pos: at(-62, 186) },
+        { type: 'steal', label: 'Recover car 2 of 3', pos: at(124, -124) },
+        { type: 'goto', label: 'Return the cars to the garage', pos: at(-186, 62) },
+      ],
+      pay: 2200, xp: 300,
+    },
+    {
+      id: 8, title: 'Harbor Lights', giver: 'Ilsa Kane',
+      brief: 'A smuggler is landing at the marina at dusk. Photograph the meet — get close enough to see faces, far enough to stay alive.',
+      objectives: [
+        { type: 'goto', label: 'Reach the marina overlook', pos: at(-102, 210) },
+        { type: 'survive', label: 'Hold the overlook for 30 seconds', pos: at(-102, 210), secs: 30 },
+      ],
+      pay: 2400, xp: 320,
+    },
+    {
+      id: 9, title: 'The Informant', giver: 'Mara Voss',
+      brief: 'A cop named Ferran is selling case files. Meet him in the plaza, pay him, and get out before his own unit spots you.',
+      objectives: [
+        { type: 'goto', label: 'Meet Ferran in the plaza', pos: at(0, 0) },
+        { type: 'goto', label: 'Escape to the safehouse', pos: at(-248, -62) },
+      ],
+      pay: 3000, xp: 380,
+    },
+    {
+      id: 10, title: 'Burn Notice', giver: 'Deke Rallo',
+      brief: 'The arcade is wired to blow and the crew that did it is still inside. Get in, get Deke\u2019s ledger, get out before the fire catches you.',
+      objectives: [
+        { type: 'goto', label: 'Enter the arcade', pos: at(124, 0) },
+        { type: 'fight', label: 'Take the ledger from the crew (4)', pos: at(124, 0), count: 4 },
+        { type: 'goto', label: 'Escape the burning arcade', pos: at(186, 62) },
+      ],
+      pay: 3800, xp: 450,
+    },
+    {
+      id: 11, title: 'The Long Con', giver: 'Ilsa Kane',
+      brief: 'Ilsa has been playing the Golden Coral Casino for months. Tonight you drive the scout car past the casino and map every camera on the strip.',
+      objectives: [
+        { type: 'goto', label: 'Scout the casino front', pos: at(205, 115) },
+        { type: 'goto', label: 'Scout the casino rear', pos: at(205, 150) },
+        { type: 'goto', label: 'Report back to Ilsa', pos: at(-124, 124) },
+      ],
+      pay: 4200, xp: 500,
+    },
+  ];
 
-export function initStory(G) {
-  G.missions = MISSIONS_1_16;
-  G.missionIndex = 0;
-  const saved = (G.save && G.save.mission) || 1;
-  G.missionIndex = Math.max(0, Math.min(MISSIONS_1_16.length - 1, saved - 1));
-  G.missionState = { stage: "go", timer: 0 };
-  setMission(G, G.missionIndex);
-  return G.missions;
-}
-
-export function currentMission(G) {
-  return G.missions[G.missionIndex] || null;
-}
-
-export function setMission(G, index) {
-  G.missionIndex = index;
-  const m = currentMission(G);
-  if (!m) {
-    if (G.hud) G.hud.setMission(null);
+  function missionById(id) {
+    for (var i = 0; i < MISSIONS.length; i++) {
+      if (MISSIONS[i].id === id) return MISSIONS[i];
+    }
     return null;
   }
-  G.missionState = { stage: "go", timer: 0 };
-  resetMissionFlags(G);
-  if (G.city && G.city.beacon) {
-    G.city.beacon.position.set(m.target.x, 13, m.target.z);
-  }
-  if (G.hud) G.hud.setMission(m);
-  if (G.toast) G.toast("Mission " + m.id + ": " + m.title);
-  return m;
-}
 
-export function completeMission(G) {
-  const m = currentMission(G);
-  if (!m) return;
-  if (G.save) {
-    G.save.cash += m.reward;
-    G.save.totalEarned += m.reward;
-    if (!G.save.missionsDone.includes(m.id)) G.save.missionsDone.push(m.id);
-    G.save.mission = Math.min(22, m.id + 1);
-    if (G.hud) G.hud.setCash(G.save.cash);
-    if (G.saveGame) G.saveGame();
+  function startMission(state, id) {
+    var m = missionById(id);
+    if (!m) return false;
+    state.mission = {
+      def: m, objIdx: 0, startedAt: state.time || 0,
+      surviveT: 0, fightLeft: 0, done: false,
+    };
+    var obj = m.objectives[0];
+    if (obj.type === 'fight') state.mission.fightLeft = obj.count;
+    if (state.hud) {
+      state.hud.showToast('MISSION — ' + m.title + ' · ' + m.giver);
+      state.hud.setMission(m, obj);
+    }
+    if (state.sound) state.sound.mission();
+    return true;
   }
-  if (G.sound) G.sound.missionSting();
-  if (G.toast) G.toast("Mission complete: " + m.title + " — +" + formatCash(m.reward));
-  if (G.setWanted) G.setWanted(Math.max(0, (G.wanted || 0) - 1));
-  // Advance into story2 (missions 17-22) when the first chain ends.
-  if (G.missionIndex + 1 < G.missions.length) {
-    setMission(G, G.missionIndex + 1);
-  } else if (G.advanceToStory2) {
-    G.advanceToStory2();
-  } else {
-    if (G.hud) G.hud.setMission(null);
-    if (G.toast) G.toast("All story missions complete — free roam, Reef!");
-  }
-}
 
-export function updateStory(G, dt) {
-  const m = currentMission(G);
-  if (!m) return;
-  const p = G.player.pos;
-  const d = dist2d(p.x, p.z, m.target.x, m.target.z);
-  if (m.needsJack && !G._jackedThisMission) return; // wait for a jack (drive.js flags it)
-  if (m.needsCool && (G.wanted || 0) > 0) return; // must cool off first
-  if (m.needsBuy && !G._boughtThisMission) return;
-  if (m.needsFoot && G.player.mode !== "foot") return;
-  if (m.needsBike && G.player.mode !== "bike") return;
-  if (m.race && !G._raceWon) return; // race completion flags via raceway
-  if (m.id === 15 && (G.wanted || 0) < 4) return; // need real heat
-  if (d < 12) {
-    completeMission(G);
+  function currentObjective(state) {
+    if (!state.mission) return null;
+    return state.mission.def.objectives[state.mission.objIdx] || null;
   }
-}
 
-// Flags set by other systems when a mission condition is met.
-export function flagJacked(G) { G._jackedThisMission = true; }
-export function flagBought(G) { G._boughtThisMission = true; }
-export function flagRaceWon(G) { G._raceWon = true; }
-export function resetMissionFlags(G) {
-  G._jackedThisMission = false;
-  G._boughtThisMission = false;
-  G._raceWon = false;
-}
+  function advance(state) {
+    var ms = state.mission;
+    if (!ms) return;
+    ms.objIdx++;
+    if (ms.objIdx >= ms.def.objectives.length) {
+      completeMission(state);
+      return;
+    }
+    var obj = ms.def.objectives[ms.objIdx];
+    if (obj.type === 'fight') ms.fightLeft = obj.count;
+    if (obj.type === 'survive') ms.surviveT = 0;
+    if (state.hud) state.hud.setMission(ms.def, obj);
+    if (state.hud) state.hud.showToast('Objective: ' + obj.label);
+  }
+
+  function completeMission(state) {
+    var ms = state.mission;
+    if (!ms) return;
+    ms.done = true;
+    var m = ms.def;
+    state.player.cash += m.pay;
+    state.player.xp = (state.player.xp || 0) + m.xp;
+    state.completedMissions = state.completedMissions || [];
+    state.completedMissions.push(m.id);
+    if (state.hud) {
+      state.hud.showToast('MISSION COMPLETE — ' + m.title + ' · +' + U.fmtMoney(m.pay));
+      state.hud.clearMission();
+      state.hud.updateCash();
+    }
+    if (state.sound) state.sound.win();
+    state.mission = null;
+    if (state.savegame) state.savegame.autosave(state);
+  }
+
+  function failMission(state, reason) {
+    var ms = state.mission;
+    if (!ms) return;
+    if (state.hud) state.hud.showToast('MISSION FAILED — ' + reason);
+    if (state.hud) state.hud.clearMission();
+    state.mission = null;
+  }
+
+  function update(state, dt) {
+    var ms = state.mission;
+    if (!ms || ms.done) return;
+    var obj = currentObjective(state);
+    if (!obj) return;
+    var p = state.player;
+    var d = U.dist2d(p.x, p.z, obj.pos.x, obj.pos.z);
+    if (obj.type === 'goto' || obj.type === 'steal') {
+      if (d < 9) {
+        if (obj.type === 'steal' && p.onFoot) {
+          if (state.hud) state.hud.showToast('Get in a car first — press E near one');
+          return;
+        }
+        if (obj.type === 'steal' && !p.car) return;
+        advance(state);
+      }
+    } else if (obj.type === 'fight') {
+      if (ms.fightLeft <= 0) advance(state);
+    } else if (obj.type === 'loseheat') {
+      if (p.wanted === 0) advance(state);
+    } else if (obj.type === 'survive') {
+      if (d < 16) {
+        ms.surviveT += dt;
+        if (ms.surviveT >= (obj.secs || 20)) advance(state);
+      } else {
+        ms.surviveT = Math.max(0, ms.surviveT - dt * 2);
+      }
+    } else if (obj.type === 'race') {
+      if (state.raceway && state.raceway.lastResult === 'win' && state.raceway.lastRace === obj.race) {
+        advance(state);
+      }
+    }
+    // Marker beacon update for the HUD minimap.
+    if (state.hud) state.hud.setObjectiveMarker(obj.pos.x, obj.pos.z, d);
+  }
+
+  function nextMissionId(state) {
+    var done = state.completedMissions || [];
+    for (var i = 0; i < MISSIONS.length; i++) {
+      if (done.indexOf(MISSIONS[i].id) === -1) return MISSIONS[i].id;
+    }
+    return null;
+  }
+
+  return {
+    MISSIONS: MISSIONS,
+    missionById: missionById,
+    startMission: startMission,
+    currentObjective: currentObjective,
+    advance: advance,
+    completeMission: completeMission,
+    failMission: failMission,
+    update: update,
+    nextMissionId: nextMissionId,
+  };
+})();

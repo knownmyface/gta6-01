@@ -1,175 +1,229 @@
-// fight.js — combat, weapon wheel UI, and the explosion / fire / smoke
-// particle system. Explosions are sized to read on camera without blinding.
-import * as THREE from "../vendor/three/three.module.min.js";
-import { clamp, rand, pick } from "./util.js";
+// CORAL HEAT — combat, weapon wheel, explosions, fire + smoke.
+// Particles are pooled meshes (no per-frame allocation in the hot loop):
+// a burst spawns, rises, fades and is reused.
+Coral.fight = (function () {
+  'use strict';
+  var U = Coral.util;
 
-export const WEAPONS = [
-  { id: "fists", name: "Fists", damage: 12, range: 2.2, rate: 0.45, price: 0 },
-  { id: "pistol", name: "P9 Pistol", damage: 26, range: 34, rate: 0.32, price: 1200 },
-  { id: "smg", name: "Sting SMG", damage: 17, range: 30, rate: 0.09, price: 4500 },
-  { id: "shotgun", name: "Harbor 12G", damage: 55, range: 16, rate: 0.85, price: 6800 },
-  { id: "rifle", name: "Longshore Rifle", damage: 48, range: 60, rate: 0.5, price: 12000 },
-];
+  var WEAPONS = [
+    { id: 'fists', name: 'Fists', damage: 12, range: 2.4, rate: 0.45, ammo: Infinity, icon: '✊' },
+    { id: 'pistol', name: 'P9 Pistol', damage: 26, range: 55, rate: 0.28, ammo: 120, icon: '🔫' },
+    { id: 'smg', name: 'Coral SMG', damage: 16, range: 48, rate: 0.09, ammo: 240, icon: '🔫' },
+    { id: 'shotgun', name: 'Harbor 12', damage: 70, range: 22, rate: 0.9, ammo: 48, icon: '💥' },
+    { id: 'rifle', name: 'Sunset Rifle', damage: 46, range: 90, rate: 0.14, ammo: 150, icon: '🎯' },
+    { id: 'molotov', name: 'Molotov', damage: 60, range: 26, rate: 1.1, ammo: 12, icon: '🔥' },
+  ];
 
-class ParticlePool {
-  constructor(scene, max) {
-    this.scene = scene;
-    this.max = max || 420;
-    this.items = [];
-    const geo = new THREE.SphereGeometry(0.32, 6, 5);
-    this.geo = geo;
-    this.mats = {
-      fire: new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.9 }),
-      smoke: new THREE.MeshBasicMaterial({ color: 0x555560, transparent: true, opacity: 0.55 }),
-      spark: new THREE.MeshBasicMaterial({ color: 0xffd23c, transparent: true, opacity: 1 }),
-    };
-  }
+  var particles = [];
+  var tracers = [];
 
-  burst(x, y, z, kind, count, power) {
-    const n = count || 26;
-    for (let i = 0; i < n; i++) {
-      if (this.items.length >= this.max) {
-        const old = this.items.shift();
-        this.scene.remove(old.mesh);
-      }
-      const mat = this.mats[kind] || this.mats.fire;
-      const mesh = new THREE.Mesh(this.geo, mat);
-      const a = rand(0, Math.PI * 2);
-      const up = rand(0.2, 1);
-      const sp = (power || 9) * rand(0.4, 1);
-      mesh.position.set(x, y, z);
-      mesh.scale.setScalar(rand(0.6, 1.6));
-      this.scene.add(mesh);
-      this.items.push({
-        mesh, kind,
-        vx: Math.sin(a) * sp, vy: up * sp, vz: Math.cos(a) * sp,
-        life: rand(0.5, 1.4), maxLife: 1.4,
-        grow: kind === "smoke" ? 2.4 : 0.4,
-      });
+  function ensurePool(state) {
+    if (particles.length) return;
+    for (var i = 0; i < 260; i++) {
+      var m = new THREE.Mesh(
+        new THREE.SphereGeometry(0.32, 6, 5),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })
+      );
+      m.visible = false;
+      state.scene.add(m);
+      particles.push({ mesh: m, life: 0, max: 1, vx: 0, vy: 0, vz: 0, grow: 1 });
     }
   }
 
-  update(dt) {
-    for (let i = this.items.length - 1; i >= 0; i--) {
-      const p = this.items[i];
+  function burst(state, x, y, z, color, count, speed, up, life, size) {
+    ensurePool(state);
+    var spawned = 0;
+    for (var i = 0; i < particles.length && spawned < count; i++) {
+      var p = particles[i];
+      if (p.life > 0) continue;
+      p.life = life * U.rand(0.6, 1.3);
+      p.max = p.life;
+      var a = U.rand(0, Math.PI * 2);
+      var r = U.rand(0.3, 1) * speed;
+      p.vx = Math.cos(a) * r;
+      p.vz = Math.sin(a) * r;
+      p.vy = U.rand(0.2, 1) * up;
+      p.grow = size * U.rand(0.7, 1.5);
+      p.mesh.visible = true;
+      p.mesh.position.set(x, y, z);
+      p.mesh.material.color.setHex(color);
+      p.mesh.material.opacity = 0.95;
+      p.mesh.scale.setScalar(p.grow);
+      spawned++;
+    }
+  }
+
+  function updateParticles(state, dt) {
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      if (p.life <= 0) continue;
       p.life -= dt;
       if (p.life <= 0) {
-        this.scene.remove(p.mesh);
-        this.items.splice(i, 1);
+        p.mesh.visible = false;
+        p.mesh.material.opacity = 0;
         continue;
       }
-      p.vy -= (p.kind === "smoke" ? -1.2 : 6) * dt;
+      p.vy -= 3.5 * dt;
       p.mesh.position.x += p.vx * dt;
-      p.mesh.position.y = Math.max(0.15, p.mesh.position.y + p.vy * dt);
+      p.mesh.position.y += p.vy * dt;
       p.mesh.position.z += p.vz * dt;
-      const s = p.mesh.scale.x + p.grow * dt;
-      p.mesh.scale.setScalar(Math.min(s, 4.2));
-      p.mesh.material.opacity = clamp(p.life / p.maxLife, 0, 1) * (p.kind === "fire" ? 0.9 : 0.55);
+      if (p.mesh.position.y < 0.1) { p.mesh.position.y = 0.1; p.vy = 0; }
+      var f = p.life / p.max;
+      p.mesh.material.opacity = f * 0.9;
+      p.mesh.scale.setScalar(p.grow * (1.6 - f * 0.6));
+    }
+    // Tracer lines fade fast.
+    for (var j = tracers.length - 1; j >= 0; j--) {
+      var tr = tracers[j];
+      tr.life -= dt;
+      tr.mesh.material.opacity = Math.max(0, tr.life * 4);
+      if (tr.life <= 0) {
+        state.scene.remove(tr.mesh);
+        tracers.splice(j, 1);
+      }
     }
   }
-}
 
-export function initFight(G) {
-  G.fxPool = new ParticlePool(G.scene, 420);
-  G.fx = {
-    burst(x, y, z, kind, count, power) {
-      G.fxPool.burst(x, y, z, kind, count, power);
-    },
-    explosion(x, y, z) {
-      G.fxPool.burst(x, y + 0.5, z, "fire", 34, 11);
-      G.fxPool.burst(x, y + 1.2, z, "smoke", 22, 6);
-      G.fxPool.burst(x, y + 0.5, z, "spark", 18, 16);
-      const light = new THREE.PointLight(0xff7a2a, 260, 55, 1.6);
-      light.position.set(x, 4, z);
-      G.scene.add(light);
-      G.explosionLights = G.explosionLights || [];
-      G.explosionLights.push({ light, t: 0 });
-      if (G.sound) G.sound.explosion();
-      if (G.shake) G.shake(0.6);
-    },
+  function explode(state, x, z, scale) {
+    scale = scale || 1;
+    burst(state, x, 1.2, z, 0xff7a2f, 46, 9 * scale, 7, 1.1, 1.6 * scale);
+    burst(state, x, 1.6, z, 0xffd23d, 30, 6 * scale, 9, 0.8, 1.2 * scale);
+    burst(state, x, 2.2, z, 0x555555, 26, 4 * scale, 5, 2.4, 2.2 * scale);
+    burst(state, x, 0.6, z, 0xff2a2a, 20, 12 * scale, 4, 0.6, 1.0 * scale);
+    // A brief ground flash so the blast reads on the screenshot.
+    var flash = new THREE.PointLight(0xff8a3d, 320, 42, 1.7);
+    flash.position.set(x, 3, z);
+    state.scene.add(flash);
+    setTimeout(function () { state.scene.remove(flash); }, 450);
+    if (state.sound) state.sound.boom();
+    if (state.shake) state.shake(0.55 * scale);
+  }
+
+  function spark(state, x, z, count) {
+    burst(state, x, 1.0, z, 0xffd23d, count || 8, 5, 3, 0.5, 0.7);
+  }
+
+  function smoke(state, x, y, z, count) {
+    burst(state, x, y, z, 0x777777, count || 10, 1.6, 2.2, 2.8, 2.4);
+  }
+
+  function muzzle(state, x, y, z) {
+    burst(state, x, y, z, 0xfff2b0, 5, 3, 1, 0.16, 0.6);
+  }
+
+  function punch(state) {
+    var p = state.player;
+    var fx = p.x + Math.sin(p.heading) * 1.8;
+    var fz = p.z + Math.cos(p.heading) * 1.8;
+    // Hit a nearby pedestrian: they fall and the heat rises.
+    var peds = state.peds || [];
+    for (var i = 0; i < peds.length; i++) {
+      if (U.dist2d(peds[i].x, peds[i].z, fx, fz) < 2.2) {
+        peds[i].mesh.rotation.x = -Math.PI / 2;
+        peds[i].mesh.position.y = 0.3;
+        peds[i].pauseT = 6;
+        Coral.cops.addHeat(state, 1, 'assault');
+        if (state.hud) state.hud.showToast('You knocked a pedestrian down — the cops saw that');
+        break;
+      }
+    }
+    if (state.sound) state.sound.swing();
+  }
+
+  function currentWeapon(state) {
+    return WEAPONS[state.weaponIdx || 0];
+  }
+
+  function cycleWeapon(state, dir) {
+    var n = WEAPONS.length;
+    state.weaponIdx = ((state.weaponIdx || 0) + dir + n) % n;
+    var w = currentWeapon(state);
+    if (state.hud) state.hud.showToast(w.name + ' equipped');
+    if (state.hud) state.hud.updateWeapon(w);
+  }
+
+  function fire(state) {
+    var p = state.player;
+    var w = currentWeapon(state);
+    var now = state.time || 0;
+    if (state.lastShot && now - state.lastShot < w.rate) return;
+    if (w.ammo !== Infinity) {
+      state.ammo = state.ammo || {};
+      if ((state.ammo[w.id] === undefined ? w.ammo : state.ammo[w.id]) <= 0) {
+        if (state.hud) state.hud.showToast(w.name + ' — out of ammo, visit Marina Arms');
+        return;
+      }
+      state.ammo[w.id] = (state.ammo[w.id] === undefined ? w.ammo : state.ammo[w.id]) - 1;
+    }
+    state.lastShot = now;
+    var ox = p.x, oy = p.y + 1.5, oz = p.z;
+    var dirX = Math.sin(p.heading), dirZ = Math.cos(p.heading);
+    if (p.car) { oy = 1.4; }
+    muzzle(state, ox + dirX * 1.2, oy, oz + dirZ * 1.2);
+    if (w.id === 'molotov') {
+      var tx = ox + dirX * 18, tz = oz + dirZ * 18;
+      setTimeout(function () { explode(state, tx, tz, 1.1); }, 650);
+      Coral.cops.addHeat(state, 1, 'arson');
+    } else {
+      // Tracer to the hit point.
+      var hitX = ox + dirX * w.range, hitZ = oz + dirZ * w.range;
+      var geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(ox + dirX, oy, oz + dirZ),
+        new THREE.Vector3(hitX, oy, hitZ),
+      ]);
+      var line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+        color: 0xfff2b0, transparent: true, opacity: 0.9,
+      }));
+      state.scene.add(line);
+      tracers.push({ mesh: line, life: 0.14 });
+      // Cops and cars near the line take damage.
+      var cops = state.cops || [];
+      for (var i = 0; i < cops.length; i++) {
+        if (U.dist2d(cops[i].x, cops[i].z, ox + dirX * 12, oz + dirZ * 12) < 4) {
+          cops[i].health = (cops[i].health || 100) - w.damage;
+          spark(state, cops[i].x, 1, cops[i].z, 8);
+          if (cops[i].health <= 0) {
+            explode(state, cops[i].x, cops[i].z, 1.2);
+            state.scene.remove(cops[i].mesh);
+            cops.splice(i, 1);
+            state.player.cash += 50;
+          }
+          break;
+        }
+      }
+    }
+    if (state.sound) state.sound.shot(w.id);
+    if (state.hud) state.hud.updateWeapon(w);
+    if (p.onFoot && !p.car) Coral.cops.addHeat(state, 0, '');
+  }
+
+  function openWeaponWheel(state) {
+    state.wheelOpen = true;
+    if (state.hud) state.hud.showWheel(WEAPONS, state.weaponIdx || 0);
+  }
+
+  function closeWeaponWheel(state, pickIdx) {
+    state.wheelOpen = false;
+    if (typeof pickIdx === 'number') {
+      state.weaponIdx = pickIdx;
+      if (state.hud) state.hud.updateWeapon(currentWeapon(state));
+    }
+    if (state.hud) state.hud.hideWheel();
+  }
+
+  return {
+    WEAPONS: WEAPONS,
+    burst: burst,
+    updateParticles: updateParticles,
+    explode: explode,
+    spark: spark,
+    smoke: smoke,
+    muzzle: muzzle,
+    punch: punch,
+    currentWeapon: currentWeapon,
+    cycleWeapon: cycleWeapon,
+    fire: fire,
+    openWeaponWheel: openWeaponWheel,
+    closeWeaponWheel: closeWeaponWheel,
   };
-  G.weapons = WEAPONS;
-  G.weaponIndex = 0;
-  G.lastShotAt = 0;
-  return G.fx;
-}
-
-export function updateExplosions(G, dt) {
-  if (G.fxPool) G.fxPool.update(dt);
-  if (G.explosionLights) {
-    for (let i = G.explosionLights.length - 1; i >= 0; i--) {
-      const e = G.explosionLights[i];
-      e.t += dt;
-      e.light.intensity = 260 * Math.max(0, 1 - e.t / 1.1);
-      if (e.t > 1.1) {
-        G.scene.remove(e.light);
-        G.explosionLights.splice(i, 1);
-      }
-    }
-  }
-}
-
-export function currentWeapon(G) {
-  return WEAPONS[G.weaponIndex % WEAPONS.length];
-}
-
-export function cycleWeapon(G, dir) {
-  const owned = (G.save && G.save.weapons) || ["fists"];
-  const avail = WEAPONS.filter((w) => owned.includes(w.id));
-  if (avail.length === 0) return currentWeapon(G);
-  const cur = currentWeapon(G);
-  let i = avail.findIndex((w) => w.id === cur.id);
-  i = (i + dir + avail.length) % avail.length;
-  G.weaponIndex = WEAPONS.findIndex((w) => w.id === avail[i].id);
-  if (G.hud) G.hud.setWeapon(avail[i]);
-  return avail[i];
-}
-
-// Fire the current weapon. On foot only; from a car it is a drive-by burst.
-export function shoot(G) {
-  const now = performance.now() / 1000;
-  const w = currentWeapon(G);
-  if (now - G.lastShotAt < w.rate) return false;
-  G.lastShotAt = now;
-  const p = G.player;
-  const ox = p.pos.x + Math.sin(p.heading) * 1.2;
-  const oz = p.pos.z + Math.cos(p.heading) * 1.2;
-  if (w.id !== "fists" && G.sound) G.sound.gunshot();
-  if (G.fx) G.fxPool.burst(ox, 1.3, oz, "spark", w.id === "shotgun" ? 10 : 5, 14);
-  // Hit check: nearest police car inside range + a forward cone.
-  let hit = null;
-  let bestD = w.range;
-  for (const cop of G.police || []) {
-    const dx = cop.x - p.pos.x;
-    const dz = cop.z - p.pos.z;
-    const d = Math.sqrt(dx * dx + dz * dz);
-    if (d > w.range) continue;
-    const dot = (Math.sin(p.heading) * dx + Math.cos(p.heading) * dz) / (d || 1);
-    if (dot > 0.55 && d < bestD) { bestD = d; hit = cop; }
-  }
-  if (hit) {
-    hit.hp = (hit.hp || 60) - w.damage;
-    if (G.toast) G.toast("Hit Bay PD unit — " + Math.max(0, Math.round(hit.hp)) + " HP left");
-    if (hit.hp <= 0) {
-      if (G.fx) G.fx.explosion(hit.x, 1, hit.z);
-      G.scene.remove(hit.mesh);
-      G.police.splice(G.police.indexOf(hit), 1);
-      if (G.save) {
-        G.save.cash += 150;
-        if (G.hud) G.hud.setCash(G.save.cash);
-      }
-      if (G.wanted < 5 && G.setWanted) G.setWanted(G.wanted + 1);
-    }
-  } else if (w.id !== "fists") {
-    // Missed shot still raises heat a touch when cops are near.
-    if ((G.police || []).length > 0 && Math.random() < 0.3 && G.setWanted) {
-      G.setWanted(Math.min(5, G.wanted + 0));
-    }
-  }
-  return true;
-}
-
-// Weapon wheel: DOM ring built by hudkit; this just toggles it.
-export function toggleWeaponWheel(G, show) {
-  if (G.hud) G.hud.showWeaponWheel(show);
-}
+})();

@@ -1,93 +1,201 @@
-// story2.js — story missions 17-22: the casino-heist finale chain and the
+// CORAL HEAT — story missions 12–22: the casino-heist finale chain and the
 // boat missions. Recon, getaway driver, vault, escape by boat, then a
-// waterfront pursuit with police boats. Same crew, same city, higher heat.
-import { dist2d, formatCash } from "./util.js";
+// waterfront pursuit with police boats. Shares the mission manager shape
+// from story.js; the two files together are the full 22-mission story.
+Coral.story2 = (function () {
+  'use strict';
+  var U = Coral.util;
 
-export const MISSIONS_17_22 = [
-  { id: 17, title: "The Big Score — Recon", brief: "Case the Coral Crown. Count the cameras, the guards, the vault door. Walk the floor like a tourist.", objective: "Recon the casino floor on foot", target: { x: 30, z: -96 }, reward: 3000, wanted: 0, needsFoot: true },
-  { id: 18, title: "The Big Score — Getaway Driver", brief: "Tessa needs a getaway car that can outrun Air One. Win the Palm Grand Prix to prove the Sunset GT is ready.", objective: "Win the Palm Grand Prix", target: { x: -180, z: 60 }, reward: 5000, wanted: 0, race: "palm-grand-prix" },
-  { id: 19, title: "The Big Score — The Vault", brief: "Inside the Crown. Crack the vault, grab the take, and do not stop for the slots.", objective: "Reach the casino vault", target: { x: 30, z: -120 }, reward: 8000, wanted: 3, needsFoot: true },
-  { id: 20, title: "The Big Score — Escape", brief: "Five stars. Roadblocks on every boulevard. Get to the marina — the boat is the only way out.", objective: "Escape to the marina at 5 stars", target: { x: -120, z: -185 }, reward: 12000, wanted: 5 },
-  { id: 21, title: "Boat Getaway", brief: "The Coral Speedster is fuelled and waiting at the pier. Outrun the harbour patrol to open water.", objective: "Take the boat to open water (z < -300)", target: { x: -60, z: -320 }, reward: 6000, wanted: 3, needsBoat: true },
-  { id: 22, title: "Waterfront Pursuit", brief: "Police boats are in your wake and the helicopter is overhead. Lose them along the coast.", objective: "Outrun the police boats to the east buoy", target: { x: 280, z: -320 }, reward: 10000, wanted: 4, needsBoat: true },
-];
+  function at(x, z) { return { x: x, z: z }; }
 
-export function initStory2(G) {
-  G.missions2 = MISSIONS_17_22;
-  return MISSIONS_17_22;
-}
+  var MISSIONS = [
+    {
+      id: 12, title: 'Casing the Coral', giver: 'Ilsa Kane',
+      brief: 'The heist starts with eyes, not guns. Photograph the vault door, the guard rotation and the boat dock behind the casino — all in one night.',
+      objectives: [
+        { type: 'goto', label: 'Photograph the casino vault door', pos: at(205, 100) },
+        { type: 'goto', label: 'Photograph the guard post', pos: at(180, 130) },
+        { type: 'goto', label: 'Photograph the boat dock', pos: at(120, 210) },
+      ],
+      pay: 4500, xp: 520,
+    },
+    {
+      id: 13, title: 'Getaway Driver', giver: 'Deke Rallo',
+      brief: 'Deke is lending you his best car for the job — but it is impounded. Break it out of the lot and bring it to the garage without a scratch.',
+      objectives: [
+        { type: 'steal', label: 'Steal the getaway car from the impound', pos: at(-124, -186) },
+        { type: 'goto', label: 'Deliver it to the garage', pos: at(-186, 62) },
+      ],
+      pay: 5000, xp: 560,
+    },
+    {
+      id: 14, title: 'The Inside Man', giver: 'Mara Voss',
+      brief: 'A dealer named Sol owes Mara money and works the vault floor. Meet him at the casino bar, pay his debt, and he will leave the service door open.',
+      objectives: [
+        { type: 'goto', label: 'Meet Sol at the casino bar', pos: at(205, 115) },
+        { type: 'goto', label: 'Check the service door', pos: at(225, 135) },
+      ],
+      pay: 5500, xp: 600,
+    },
+    {
+      id: 15, title: 'Cut the Lights', giver: 'Ilsa Kane',
+      brief: 'The casino runs on a substation two blocks over. Cut the power at midnight and the cameras go blind for exactly four minutes.',
+      objectives: [
+        { type: 'goto', label: 'Reach the substation', pos: at(248, 0) },
+        { type: 'fight', label: 'Deal with the substation guards (2)', pos: at(248, 0), count: 2 },
+        { type: 'survive', label: 'Hold the substation while Ilsa cuts in (20s)', pos: at(248, 0), secs: 20 },
+      ],
+      pay: 6500, xp: 680,
+    },
+    {
+      id: 16, title: 'The Vault', giver: 'Ilsa Kane',
+      brief: 'This is it. Walk into the Golden Coral through the service door, crack the vault, and take what the house owes this city.',
+      objectives: [
+        { type: 'goto', label: 'Enter the casino service door', pos: at(225, 135) },
+        { type: 'goto', label: 'Reach the vault', pos: at(205, 100) },
+        { type: 'survive', label: 'Crack the vault (30s)', pos: at(205, 100), secs: 30 },
+      ],
+      pay: 20000, xp: 900,
+    },
+    {
+      id: 17, title: 'Silent Alarm', giver: 'Mara Voss',
+      brief: 'The vault job tripped a silent alarm. The whole district is waking up — get to the getaway car before the roadblocks close the strip.',
+      objectives: [
+        { type: 'goto', label: 'Reach the getaway car', pos: at(180, 90) },
+        { type: 'loseheat', label: 'Lose the 3-star wanted level', pos: at(0, 0) },
+      ],
+      pay: 8000, xp: 750,
+    },
+    {
+      id: 18, title: 'The Chase', giver: 'Deke Rallo',
+      brief: 'Five stars. Helicopter overhead, roadblocks ahead, spike strips on the road. Drive the strip and survive — the boat is waiting at the marina.',
+      objectives: [
+        { type: 'survive', label: 'Survive the 5-star chase (45s)', pos: at(0, 0), secs: 45 },
+        { type: 'goto', label: 'Reach the marina dock', pos: at(-40, 235) },
+      ],
+      pay: 12000, xp: 1000,
+    },
+    {
+      id: 19, title: 'Clean Hands', giver: 'Mara Voss',
+      brief: 'The money is dirty and the heat is on. Lay low at the safehouse, swap the plates, and let the wanted level cool to nothing.',
+      objectives: [
+        { type: 'goto', label: 'Reach the safehouse', pos: at(-248, -62) },
+        { type: 'loseheat', label: 'Wait out the wanted level', pos: at(0, 0) },
+      ],
+      pay: 6000, xp: 650,
+    },
+    {
+      id: 20, title: 'The Split', giver: 'Ilsa Kane',
+      brief: 'The crew meets at the pier to split the take. Someone talked — the meet is a setup. Get Ilsa out alive.',
+      objectives: [
+        { type: 'goto', label: 'Reach the pier meet', pos: at(-40, 235) },
+        { type: 'fight', label: 'Fight off the ambush (5)', pos: at(-40, 235), count: 5 },
+      ],
+      pay: 15000, xp: 1100,
+    },
+    {
+      id: 21, title: 'Boat Getaway', giver: 'Mara Voss',
+      brief: 'The heist money is on a speedboat at the marina. Take the wheel, open the throttle and run the coast — the road is closed to you now.',
+      objectives: [
+        { type: 'boat', label: 'Board the speedboat at the pier', pos: at(-40, 235) },
+        { type: 'boatgoto', label: 'Run the coast to the south buoy', pos: at(-260, 330) },
+      ],
+      pay: 18000, xp: 1200,
+    },
+    {
+      id: 22, title: 'Waterfront Pursuit', giver: 'Deke Rallo',
+      brief: 'Police boats are on the water and the helicopter is back. Outrun them down the coast, weave the buoys, and disappear into the fog.',
+      objectives: [
+        { type: 'boat', label: 'Take the speedboat out', pos: at(-40, 235) },
+        { type: 'boatgoto', label: 'Outrun the police boats to the fog line', pos: at(260, 330) },
+        { type: 'loseheat', label: 'Lose the wanted level on the water', pos: at(0, 0) },
+      ],
+      pay: 25000, xp: 1500,
+    },
+  ];
 
-// Switch the active mission list from 1-16 to 17-22.
-export function advanceToStory2(G) {
-  G.missions = MISSIONS_17_22;
-  G.missionIndex = 0;
-  G.story2Active = true;
-  const m = G.missions[0];
-  if (G.city && G.city.beacon) G.city.beacon.position.set(m.target.x, 13, m.target.z);
-  if (G.hud) G.hud.setMission(m);
-  if (G.toast) G.toast("Heist finale: " + m.title);
-  return m;
-}
-
-export function updateStory2(G, dt) {
-  if (!G.story2Active) return;
-  const m = G.missions[G.missionIndex];
-  if (!m) return;
-  const p = G.player.pos;
-  if (m.needsFoot && G.player.mode !== "foot") return;
-  if (m.needsBoat && G.player.mode !== "boat") return;
-  if (m.race && !G._raceWon) return;
-  if (m.id === 20) {
-    if ((G.wanted || 0) < 5) {
-      if (G.setWanted) G.setWanted(5);
+  function missionById(id) {
+    for (var i = 0; i < MISSIONS.length; i++) {
+      if (MISSIONS[i].id === id) return MISSIONS[i];
     }
-    if (!G.roadblock && Math.random() < dt * 0.25) {
-      if (G.deployRoadblock) G.deployRoadblock(G, 55);
-    }
+    return null;
   }
-  if (m.id === 21 && G.player.mode === "boat" && (G.policeBoats || []).length === 0) {
-    if (G.spawnPoliceBoat) {
-      G.spawnPoliceBoat(G, p.x - 30, p.z + 20);
-      G.spawnPoliceBoat(G, p.x + 30, p.z + 25);
-    }
-  }
-  if (m.id === 22 && G.player.mode === "boat" && (G.policeBoats || []).length === 0) {
-    if (G.spawnPoliceBoat) {
-      G.spawnPoliceBoat(G, p.x - 40, p.z + 15);
-      G.spawnPoliceBoat(G, p.x + 40, p.z + 30);
-      G.spawnPoliceBoat(G, p.x, p.z + 45);
-    }
-  }
-  const d = dist2d(p.x, p.z, m.target.x, m.target.z);
-  if (d < 14) {
-    completeStory2Mission(G, m);
-  }
-}
 
-function completeStory2Mission(G, m) {
-  if (G.save) {
-    G.save.cash += m.reward;
-    G.save.totalEarned += m.reward;
-    if (!G.save.missionsDone.includes(m.id)) G.save.missionsDone.push(m.id);
-    G.save.mission = Math.min(22, m.id + 1);
-    if (G.hud) G.hud.setCash(G.save.cash);
-    if (G.saveGame) G.saveGame();
+  function startMission(state, id) {
+    var m = missionById(id);
+    if (!m) return false;
+    // Boat missions stage the boat at the pier before they begin.
+    if (m.id === 21 || m.id === 22) {
+      if (state.boats) state.boats.stageGetawayBoat(state);
+      Coral.cops.setWanted(state, m.id === 22 ? 4 : 2, 'boat job');
+    }
+    if (m.id === 18) Coral.cops.setWanted(state, 5, 'the chase');
+    if (m.id === 16) Coral.cops.setWanted(state, 3, 'silent alarm');
+    state.mission = {
+      def: m, objIdx: 0, startedAt: state.time || 0,
+      surviveT: 0, fightLeft: 0, done: false,
+    };
+    var obj = m.objectives[0];
+    if (obj.type === 'fight') state.mission.fightLeft = obj.count;
+    if (state.hud) {
+      state.hud.showToast('MISSION — ' + m.title + ' · ' + m.giver);
+      state.hud.setMission(m, obj);
+    }
+    if (state.sound) state.sound.mission();
+    return true;
   }
-  if (G.sound) G.sound.missionSting();
-  if (G.toast) G.toast("Mission complete: " + m.title + " — +" + formatCash(m.reward));
-  if (G.setWanted) G.setWanted(Math.max(0, (G.wanted || 0) - 2));
-  if (m.id === 21 || m.id === 22) {
-    if (G.clearPoliceBoats) G.clearPoliceBoats(G);
+
+  function update(state, dt) {
+    var ms = state.mission;
+    if (!ms || ms.done) return;
+    if (ms.def.id < 12) return; // story.js owns missions 1-11
+    var obj = ms.def.objectives[ms.objIdx];
+    if (!obj) return;
+    var p = state.player;
+    var d = U.dist2d(p.x, p.z, obj.pos.x, obj.pos.z);
+    if (obj.type === 'goto' || obj.type === 'steal') {
+      if (d < 9) Coral.story.advance(state);
+    } else if (obj.type === 'fight') {
+      if (ms.fightLeft <= 0) Coral.story.advance(state);
+    } else if (obj.type === 'loseheat') {
+      if (p.wanted === 0) Coral.story.advance(state);
+    } else if (obj.type === 'survive') {
+      // The chase mission counts survival anywhere; others need proximity.
+      var anywhere = ms.def.id === 18 && ms.objIdx === 0;
+      if (anywhere || d < 16) {
+        ms.surviveT += dt;
+        if (ms.surviveT >= (obj.secs || 20)) Coral.story.advance(state);
+      } else {
+        ms.surviveT = Math.max(0, ms.surviveT - dt * 2);
+      }
+    } else if (obj.type === 'boat') {
+      if (state.boats && state.boats.playerInBoat(state)) Coral.story.advance(state);
+      else if (state.hud) state.hud.setObjectiveMarker(obj.pos.x, obj.pos.z, d);
+    } else if (obj.type === 'boatgoto') {
+      if (state.boats && state.boats.playerInBoat(state) && d < 18) Coral.story.advance(state);
+    }
+    if (state.hud) state.hud.setObjectiveMarker(obj.pos.x, obj.pos.z, d);
   }
-  if (G.missionIndex + 1 < G.missions.length) {
-    G.missionIndex++;
-    const next = G.missions[G.missionIndex];
-    if (G.city && G.city.beacon) G.city.beacon.position.set(next.target.x, 13, next.target.z);
-    if (G.hud) G.hud.setMission(next);
-    if (G.toast) G.toast("Mission " + next.id + ": " + next.title);
-  } else {
-    if (G.hud) G.hud.setMission(null);
-    if (G.toast) G.toast("CORAL HEAT complete — Reef owns Coral Bay. Free roam!");
-    if (G.fx) G.fx.explosion(G.player.pos.x + 10, 1, G.player.pos.z - 10);
+
+  function nextMissionId(state) {
+    var done = state.completedMissions || [];
+    for (var i = 0; i < MISSIONS.length; i++) {
+      if (done.indexOf(MISSIONS[i].id) === -1) return MISSIONS[i].id;
+    }
+    return null;
   }
-}
+
+  function finaleComplete(state) {
+    var done = state.completedMissions || [];
+    return done.indexOf(22) !== -1;
+  }
+
+  return {
+    MISSIONS: MISSIONS,
+    missionById: missionById,
+    startMission: startMission,
+    update: update,
+    nextMissionId: nextMissionId,
+    finaleComplete: finaleComplete,
+  };
+})();

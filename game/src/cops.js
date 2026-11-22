@@ -1,231 +1,322 @@
-// cops.js — wanted level, Bay PD pursuit cars, the Air One helicopter with
-// a visible searchlight beam, and roadblock units with spike strips that
-// deploy ahead of the player. Wanted level is synced to the player object.
-import * as THREE from "../vendor/three/three.module.min.js";
-import { clamp, lerp, lerpAngle, rand, pick, angleDiff, dist2d } from "./util.js";
-import { makeCarMesh } from "./drive.js";
+// CORAL HEAT — police: wanted level, patrol cars, helicopter, roadblocks.
+// Wanted is synced to the player object every tick (a fix learned from
+// earlier rounds). The helicopter orbits LOW and AHEAD of the player so its
+// searchlight beam is visible in frame, and roadblocks deploy spike strips
+// ahead of the player's direction of travel.
+Coral.cops = (function () {
+  'use strict';
+  var U = Coral.util;
 
-export function setWanted(G, level) {
-  G.wanted = clamp(Math.round(level), 0, 5);
-  G.player.wanted = G.wanted;
-  if (G.sound) G.sound.siren(G.wanted >= 2);
-  if (G.hud) G.hud.setWanted(G.wanted);
-  syncPoliceCount(G);
-}
+  var MAX_COPS = 6;
 
-function wantedTargetCount(level) {
-  return [0, 1, 2, 3, 4, 5][level] || 0;
-}
-
-function syncPoliceCount(G) {
-  const want = wantedTargetCount(G.wanted || 0);
-  const have = (G.police || []).length;
-  if (want > have) {
-    for (let i = have; i < want; i++) spawnPoliceCar(G);
-  } else if (want < have) {
-    const drop = (G.police || []).splice(want);
-    for (const p of drop) G.scene.remove(p.mesh);
-  }
-  if (G.wanted >= 3 && !G.heli) spawnHelicopter(G);
-  if (G.wanted < 3 && G.heli) {
-    G.scene.remove(G.heli.group);
-    G.heli = null;
-  }
-}
-
-export function spawnPoliceCar(G, nearX, nearZ) {
-  const px = nearX !== undefined ? nearX : G.player.pos.x;
-  const pz = nearZ !== undefined ? nearZ : G.player.pos.z;
-  const a = rand(0, Math.PI * 2);
-  const r = rand(28, 48);
-  const x = clamp(px + Math.sin(a) * r, -320, 320);
-  const z = clamp(pz + Math.cos(a) * r, -190, 320);
-  const mesh = makeCarMesh(0x1a2a44, { police: true });
-  mesh.position.set(x, 0, z);
-  G.scene.add(mesh);
-  const car = {
-    mesh, x, z, heading: rand(0, Math.PI * 2),
-    speed: 0, top: 52 + (G.wanted || 1) * 2.5,
-    sirenPhase: rand(0, 1),
-  };
-  G.police = G.police || [];
-  G.police.push(car);
-  return car;
-}
-
-export function spawnHelicopter(G) {
-  const group = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x223344, metalness: 0.5, roughness: 0.4 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.4, 5.2), bodyMat);
-  group.add(body);
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 4.6), bodyMat);
-  tail.position.set(0, 0.3, -4.2);
-  group.add(tail);
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.6, 1.2), bodyMat);
-  fin.position.set(0, 0.8, -6.2);
-  group.add(fin);
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.8, 1.6),
-    new THREE.MeshStandardMaterial({ color: 0x9fd8ff, metalness: 0.9, roughness: 0.1 }));
-  glass.position.set(0, 0.2, 2.0);
-  group.add(glass);
-  const rotorMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-  const rotor = new THREE.Mesh(new THREE.BoxGeometry(11, 0.08, 0.5), rotorMat);
-  rotor.position.y = 1.1;
-  group.add(rotor);
-  const rotor2 = rotor.clone();
-  rotor2.rotation.y = Math.PI / 2;
-  group.add(rotor2);
-  const skidMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-  for (const s of [-1, 1]) {
-    const skid = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 4.4), skidMat);
-    skid.position.set(s * 1.1, -0.95, 0);
-    group.add(skid);
-  }
-  // Searchlight: spotlight + a visible translucent cone beam.
-  const spot = new THREE.SpotLight(0xfff6c8, 350, 120, 0.32, 0.45, 1.2);
-  spot.position.set(0, -0.6, 1.2);
-  group.add(spot);
-  const beamGeo = new THREE.ConeGeometry(4.5, 30, 16, 1, true);
-  const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xfff2b0, transparent: true, opacity: 0.16,
-    side: THREE.DoubleSide, depthWrite: false,
-  });
-  const beam = new THREE.Mesh(beamGeo, beamMat);
-  beam.position.set(0, -15, 1.2);
-  beam.rotation.x = Math.PI;
-  group.add(beam);
-  const pool = new THREE.Mesh(new THREE.CircleGeometry(4.5, 20),
-    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.22, depthWrite: false }));
-  pool.rotation.x = -Math.PI / 2;
-  pool.position.y = 0.12;
-  G.scene.add(pool);
-  group.position.set(G.player.pos.x + 20, 42, G.player.pos.z + 30);
-  G.scene.add(group);
-  G.heli = {
-    group, rotor, rotor2, spot, beam, pool,
-    angle: rand(0, Math.PI * 2),
-    height: 26,
-    orbitR: 26,
-  };
-  // Aim the spotlight at the player; the target must be in the scene graph.
-  spot.target = pool;
-  return G.heli;
-}
-
-export function updatePolice(G, dt) {
-  const px = G.player.pos.x;
-  const pz = G.player.pos.z;
-  for (const p of G.police || []) {
-    const d = dist2d(p.x, p.z, px, pz);
-    const want = Math.atan2(px - p.x, pz - p.z);
-    // Chase, but wobble so they do not stack perfectly on the player.
-    const wobble = Math.sin(performance.now() / 700 + p.sirenPhase * 9) * 0.35;
-    p.heading = lerpAngle(p.heading, want + wobble, clamp(dt * 2.2, 0, 1));
-    const cruise = d > 60 ? p.top : d > 18 ? p.top * 0.75 : p.top * 0.35;
-    p.speed = lerp(p.speed, cruise, clamp(dt * 1.4, 0, 1));
-    p.x += Math.sin(p.heading) * p.speed * dt;
-    p.z += Math.cos(p.heading) * p.speed * dt;
-    p.x = clamp(p.x, -330, 330);
-    p.z = clamp(p.z, -198, 330);
-    p.mesh.position.set(p.x, 0, p.z);
-    p.mesh.rotation.y = p.heading;
-    // Ramming: touching the player car hard bumps wanted heat + damage.
-    if (d < 4.2 && G.player.mode === "car" && G.playerCar) {
-      G.playerCar.damage = Math.min(100, (G.playerCar.damage || 0) + dt * 9);
-      if (G.playerCar.speed > 8) G.playerCar.speed *= 1 - dt * 0.35;
+  function setWanted(state, level, reason) {
+    level = U.clamp(Math.round(level), 0, 5);
+    var before = state.player.wanted;
+    state.player.wanted = level;
+    if (level > before && state.hud) {
+      state.hud.showToast('WANTED — ' + level + ' star' + (level > 1 ? 's' : '') +
+        (reason ? ' · ' + reason : ''));
+      if (state.sound) state.sound.siren(level);
     }
-    // Flashing light bar: alternate the two bar halves.
-    const bars = p.mesh.children.filter((c) => c.geometry && c.geometry.type === "BoxGeometry" && c.position.y > 1.4);
-    const phase = Math.floor(performance.now() / 280 + p.sirenPhase * 2) % 2;
-    for (let i = 0; i < bars.length; i++) {
-      bars[i].material.color.setHex(i % 2 === phase ? 0xffffff : (i % 2 === 0 ? 0x2244ff : 0xff2222));
+    if (level === 0 && before > 0 && state.hud) {
+      state.hud.showToast('You lost the heat — for now');
     }
   }
-  // Helicopter: low orbit, staying ahead of the player's heading.
-  const heli = G.heli;
-  if (heli) {
-    heli.angle += dt * 0.55;
-    const aheadX = px + Math.sin(G.player.heading) * 18;
-    const aheadZ = pz + Math.cos(G.player.heading) * 18;
-    const hx = aheadX + Math.sin(heli.angle) * heli.orbitR;
-    const hz = aheadZ + Math.cos(heli.angle) * heli.orbitR;
-    heli.group.position.set(hx, heli.height + Math.sin(performance.now() / 900) * 1.5, hz);
-    heli.group.rotation.y = Math.atan2(px - hx, pz - hz);
-    heli.rotor.rotation.y += dt * 22;
-    heli.rotor2.rotation.y += dt * 22;
-    // Searchlight pool tracks the player.
-    heli.pool.position.set(px, 0.12, pz);
-    heli.beam.lookAt(px, 0, pz);
-    heli.spot.target = heli.pool;
-  }
-}
 
-// Roadblock: two PD cars angled across the road + barrier + spike strip,
-// placed a fixed distance ahead of the player on their current heading.
-export function deployRoadblock(G, aheadDist) {
-  clearRoadblock(G);
-  const px = G.player.pos.x;
-  const pz = G.player.pos.z;
-  const h = G.player.heading;
-  const bx = px + Math.sin(h) * (aheadDist || 55);
-  const bz = pz + Math.cos(h) * (aheadDist || 55);
-  const group = new THREE.Group();
-  const cars = [];
-  for (const s of [-1, 1]) {
-    const mesh = makeCarMesh(0x1a2a44, { police: true });
-    const ox = Math.cos(h) * s * 3.4;
-    const oz = -Math.sin(h) * s * 3.4;
-    mesh.position.set(bx + ox, 0, bz + oz);
-    mesh.rotation.y = h + Math.PI / 2 + (s > 0 ? 0.35 : -0.35);
-    group.add(mesh);
-    cars.push(mesh);
+  function addHeat(state, amount, reason) {
+    setWanted(state, state.player.wanted + amount, reason);
   }
-  const barrierMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.6 });
-  for (const s of [-1, 1]) {
-    const barrier = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.0, 0.5), barrierMat);
-    const ox = Math.cos(h) * s * 1.1;
-    const oz = -Math.sin(h) * s * 1.1;
-    barrier.position.set(bx + ox, 0.5, bz + oz);
-    barrier.rotation.y = h + Math.PI / 2;
-    group.add(barrier);
-  }
-  // Spike strip: dark mat with bright spikes across the lane.
-  const strip = new THREE.Group();
-  const mat = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.08, 1.1),
-    new THREE.MeshStandardMaterial({ color: 0x151515 }));
-  mat.position.y = 0.06;
-  strip.add(mat);
-  const spikeMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d8, metalness: 0.9, roughness: 0.25 });
-  for (let i = 0; i < 9; i++) {
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.55, 5), spikeMat);
-    spike.position.set(-3.4 + i * 0.85, 0.3, 0);
-    strip.add(spike);
-  }
-  strip.position.set(bx - Math.sin(h) * 7, 0, bz - Math.cos(h) * 7);
-  strip.rotation.y = h;
-  group.add(strip);
-  G.scene.add(group);
-  G.roadblock = { group, cars, x: bx, z: bz, strip };
-  return G.roadblock;
-}
 
-export function clearRoadblock(G) {
-  if (G.roadblock) {
-    G.scene.remove(G.roadblock.group);
-    G.roadblock = null;
+  function decayWanted(state, dt) {
+    var p = state.player;
+    if (p.wanted <= 0) return;
+    var nearCop = false;
+    var cops = state.cops || [];
+    for (var i = 0; i < cops.length; i++) {
+      if (U.dist2d(cops[i].x, cops[i].z, p.x, p.z) < 45) { nearCop = true; break; }
+    }
+    if (state.heli && U.dist2d(state.heli.x, state.heli.z, p.x, p.z) < 60) nearCop = true;
+    if (!nearCop) {
+      state.heatTimer = (state.heatTimer || 0) + dt;
+      if (state.heatTimer > 14) {
+        setWanted(state, p.wanted - 1, '');
+        state.heatTimer = 0;
+      }
+    } else {
+      state.heatTimer = 0;
+    }
   }
-}
 
-// Driving over the strip at speed pops tires: hard slow + damage.
-export function checkSpikes(G) {
-  const rb = G.roadblock;
-  if (!rb || G.player.mode !== "car" || !G.playerCar) return;
-  const d = dist2d(G.player.pos.x, G.player.pos.z, rb.strip.position.x, rb.strip.position.z);
-  if (d < 4.5 && Math.abs(G.playerCar.speed) > 6) {
-    G.playerCar.speed *= 0.35;
-    G.playerCar.damage = Math.min(100, (G.playerCar.damage || 0) + 22);
-    if (G.toast) G.toast("Spike strip! Tires blown — get clear");
-    if (G.fx) G.fx.burst(G.player.pos.x, 1, G.player.pos.z, "smoke");
-    clearRoadblock(G);
+  function buildCopCar(state) {
+    var car = Coral.drive.makeCar(state, 0, 0, 0, 5, 'cop');
+    car.driver = 'cop';
+    car.cruise = 30;
+    // Light bar strobes.
+    var strobe = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.2, 0.45),
+      new THREE.MeshBasicMaterial({ color: 0x2f6aff }));
+    strobe.position.set(0, 1.62, -0.25);
+    car.mesh.add(strobe);
+    car.strobe = strobe;
+    car.strobeT = 0;
+    return car;
   }
-}
+
+  function buildHeli(state) {
+    var g = new THREE.Group();
+    var bodyMat = new THREE.MeshStandardMaterial({ color: 0x1a2a44, roughness: 0.4, metalness: 0.5 });
+    var body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.6, 5.2), bodyMat);
+    g.add(body);
+    var glass = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.9, 1.6),
+      new THREE.MeshStandardMaterial({ color: 0x9ad8ff, roughness: 0.15, metalness: 0.7 }));
+    glass.position.set(0, 0.25, 2.0);
+    g.add(glass);
+    var tail = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 4.6), bodyMat);
+    tail.position.set(0, 0.35, -4.2);
+    g.add(tail);
+    var rotor = new THREE.Mesh(new THREE.BoxGeometry(9.5, 0.08, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x222226, roughness: 0.6 }));
+    rotor.position.y = 1.15;
+    g.add(rotor);
+    var rotor2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 9.5),
+      new THREE.MeshStandardMaterial({ color: 0x222226, roughness: 0.6 }));
+    rotor2.position.y = 1.15;
+    g.add(rotor2);
+    // Searchlight: a visible cone + a spotlight aimed at the player.
+    var beamGeo = new THREE.ConeGeometry(3.2, 26, 16, 1, true);
+    var beamMat = new THREE.MeshBasicMaterial({
+      color: 0xfff2b0, transparent: true, opacity: 0.32,
+      side: THREE.DoubleSide, depthWrite: false,
+    });
+    var beam = new THREE.Mesh(beamGeo, beamMat);
+    beam.position.y = -13;
+    beam.rotation.x = Math.PI;
+    g.add(beam);
+    var spot = new THREE.SpotLight(0xfff2b0, 220, 90, 0.32, 0.45, 1.2);
+    spot.position.set(0, -1, 0);
+    g.add(spot);
+    g.add(spot.target);
+    var pool = new THREE.Mesh(new THREE.CircleGeometry(5.5, 20),
+      new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.3, depthWrite: false }));
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.y = 0.15;
+    state.scene.add(pool);
+    state.scene.add(g);
+    var heli = {
+      mesh: g, rotor: rotor, rotor2: rotor2, beam: beam, spot: spot, pool: pool,
+      x: 0, z: 0, y: 34, orbitA: 0, orbitR: 19,
+    };
+    state.heli = heli;
+    return heli;
+  }
+
+  function buildRoadblock(state, x, z, heading) {
+    var g = new THREE.Group();
+    var stripeMat = new THREE.MeshStandardMaterial({ color: 0xff5a3d, roughness: 0.7 });
+    var whiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.7 });
+    for (var i = -1; i <= 1; i++) {
+      var bar = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.8, 0.5),
+        i % 2 === 0 ? stripeMat : whiteMat);
+      bar.position.set(i * 3.6, 0.6, 0);
+      g.add(bar);
+      var leg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.2, 0.3), whiteMat);
+      leg.position.set(i * 3.6, 0.6, 0.5);
+      g.add(leg);
+    }
+    // Spike strip on the road in front of the barrier.
+    var spikes = new THREE.Group();
+    var spikeMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9, roughness: 0.3 });
+    for (var s = -4; s <= 4; s++) {
+      var spike = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.6, 5), spikeMat);
+      spike.position.set(s * 0.8, 0.3, 0);
+      spikes.add(spike);
+    }
+    spikes.position.set(0, 0, 3.2);
+    g.add(spikes);
+    var blink = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xff2a2a }));
+    blink.position.set(0, 2.0, 0);
+    g.add(blink);
+    g.position.set(x, 0, z);
+    g.rotation.y = heading;
+    state.scene.add(g);
+    return { mesh: g, x: x, z: z, heading: heading, blink: blink, blinkT: 0, spikes: spikes };
+  }
+
+  function deployRoadblock(state) {
+    var p = state.player;
+    var dir = p.car ? p.car.heading : p.heading;
+    var ahead = 34;
+    var bx = p.x + Math.sin(dir) * ahead;
+    var bz = p.z + Math.cos(dir) * ahead;
+    // Snap the block onto the nearest road so it never sits inside a tower.
+    var near = Coral.city.nearestRoadPoint(bx, bz);
+    if (near.road) {
+      if (near.road.along === 'z') bx = near.road.x;
+      else bz = near.road.z;
+    }
+    bx = U.clamp(bx, -290, 290);
+    bz = U.clamp(bz, -290, 290);
+    var block = buildRoadblock(state, bx, bz, dir + Math.PI / 2);
+    state.roadblocks = state.roadblocks || [];
+    state.roadblocks.push(block);
+    // Two cop cars parked at the block.
+    for (var i = -1; i <= 1; i += 2) {
+      var cop = buildCopCar(state);
+      var ox = bx + Math.cos(dir + Math.PI / 2) * i * 7;
+      var oz = bz + Math.sin(dir + Math.PI / 2) * i * 7;
+      cop.x = ox; cop.z = oz;
+      cop.heading = dir + Math.PI;
+      cop.mesh.position.set(ox, 0, oz);
+      cop.mesh.rotation.y = cop.heading;
+      cop.parked = true;
+      state.cops = state.cops || [];
+      state.cops.push(cop);
+    }
+    if (state.hud) state.hud.showToast('ROADBLOCK AHEAD — spike strips deployed');
+    return block;
+  }
+
+  function ensureForce(state) {
+    var want = state.player.wanted;
+    state.cops = state.cops || [];
+    var target = want === 0 ? 0 : Math.min(MAX_COPS, 1 + want);
+    while (state.cops.length < target) {
+      var cop = buildCopCar(state);
+      var a = U.rand(0, Math.PI * 2);
+      var r = U.rand(38, 60);
+      cop.x = U.clamp(state.player.x + Math.sin(a) * r, -295, 295);
+      cop.z = U.clamp(state.player.z + Math.cos(a) * r, -295, 295);
+      cop.mesh.position.set(cop.x, 0, cop.z);
+      state.cops.push(cop);
+    }
+    if (want >= 3 && !state.heli) buildHeli(state);
+    if (want < 3 && state.heli) {
+      state.scene.remove(state.heli.mesh);
+      state.scene.remove(state.heli.pool);
+      state.heli = null;
+    }
+    if (want >= 4 && (!state.roadblocks || state.roadblocks.length === 0)) {
+      state.blockTimer = (state.blockTimer || 0) + 1;
+      if (state.blockTimer > 2) deployRoadblock(state);
+    }
+  }
+
+  function updateCops(state, dt, t) {
+    ensureForce(state);
+    var p = state.player;
+    var cops = state.cops || [];
+    var want = p.wanted;
+    for (var i = cops.length - 1; i >= 0; i--) {
+      var cop = cops[i];
+      cop.strobeT = (cop.strobeT || 0) + dt;
+      if (cop.strobe) {
+        cop.strobe.material.color.setHex(Math.floor(cop.strobeT * 6) % 2 === 0 ? 0xff2a2a : 0x2f6aff);
+      }
+      if (want === 0) {
+        // Heat gone: cops drive off and despawn.
+        cop.speed = U.damp(cop.speed || 0, 16, 1, dt);
+        cop.x += Math.sin(cop.heading) * cop.speed * dt;
+        cop.z += Math.cos(cop.heading) * cop.speed * dt;
+        if (U.dist2d(cop.x, cop.z, p.x, p.z) > 130) {
+          state.scene.remove(cop.mesh);
+          cops.splice(i, 1);
+        }
+        cop.mesh.position.set(cop.x, 0, cop.z);
+        cop.mesh.rotation.y = cop.heading;
+        continue;
+      }
+      if (cop.parked) continue;
+      // Chase: steer toward the player, faster at higher wanted levels.
+      var desired = Math.atan2(p.x - cop.x, p.z - cop.z);
+      cop.heading = U.angleLerp(cop.heading, desired, 1 - Math.exp(-2.4 * dt));
+      var top = 24 + want * 3.4;
+      cop.speed = U.damp(cop.speed || 0, top, 0.9, dt);
+      var nx = cop.x + Math.sin(cop.heading) * cop.speed * dt;
+      var nz = cop.z + Math.cos(cop.heading) * cop.speed * dt;
+      if (!Coral.city.hitsCollider(nx, nz, 2.2)) { cop.x = nx; cop.z = nz; }
+      else { cop.heading += 0.6 * dt * 8; cop.speed *= 0.6; }
+      cop.mesh.position.set(cop.x, 0, cop.z);
+      cop.mesh.rotation.y = cop.heading;
+      // Ram: touching the player car damages it and adds heat.
+      var d = U.dist2d(cop.x, cop.z, p.x, p.z);
+      if (d < 3.4 && p.car) {
+        p.car.health -= 14 * dt * 4;
+        p.car.speed *= 0.92;
+        if (state.fight) state.fight.spark(state, p.x, p.z, 4);
+      }
+      if (d < 2.2 && p.onFoot) {
+        // Busted when cornered on foot at low speed.
+        if (state.busted) state.busted(state);
+      }
+    }
+    // Helicopter: low orbit, biased AHEAD of the player so the beam leads.
+    if (state.heli) {
+      var h = state.heli;
+      h.orbitA += dt * 0.55;
+      var lead = p.car ? 12 : 4;
+      var cx = p.x + Math.sin(p.heading || 0) * lead;
+      var cz = p.z + Math.cos(p.heading || 0) * lead;
+      h.x = cx + Math.cos(h.orbitA) * h.orbitR;
+      h.z = cz + Math.sin(h.orbitA) * h.orbitR;
+      h.y = 18 + Math.sin(t * 0.5) * 1.5;
+      h.mesh.position.set(h.x, h.y, h.z);
+      h.mesh.rotation.y = Math.atan2(p.x - h.x, p.z - h.z);
+      h.rotor.rotation.y += dt * 22;
+      h.rotor2.rotation.y += dt * 22;
+      // Beam + spotlight track the player; the pool follows on the ground.
+      var dx = p.x - h.x, dy = 0 - h.y, dz = p.z - h.z;
+      var len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      h.beam.lookAt(p.x, 0, p.z);
+      h.beam.rotateX(Math.PI / 2);
+      h.spot.target.position.set(p.x, 0, p.z);
+      h.pool.position.set(p.x, 0.15, p.z);
+      var poolScale = 1 + 0.15 * Math.sin(t * 3);
+      h.pool.scale.setScalar(poolScale);
+      h.pool.material.opacity = 0.24 + 0.08 * Math.sin(t * 3);
+    }
+    // Roadblock blinkers.
+    var blocks = state.roadblocks || [];
+    for (var b = 0; b < blocks.length; b++) {
+      blocks[b].blinkT += dt;
+      blocks[b].blink.material.color.setHex(
+        Math.floor(blocks[b].blinkT * 4) % 2 === 0 ? 0xff2a2a : 0xffd23d);
+      // Spike strips pop the player's tyres.
+      if (p.car) {
+        var bd = U.dist2d(p.x, p.z, blocks[b].x, blocks[b].z);
+        if (bd < 5 && !blocks[b].tripped) {
+          blocks[b].tripped = true;
+          p.car.speed *= 0.35;
+          p.car.health -= 18;
+          if (state.hud) state.hud.showToast('SPIKE STRIP — tyres blown!');
+          if (state.sound) state.sound.thud();
+        }
+      }
+    }
+  }
+
+  function clearForce(state) {
+    var cops = state.cops || [];
+    for (var i = 0; i < cops.length; i++) state.scene.remove(cops[i].mesh);
+    state.cops = [];
+    if (state.heli) {
+      state.scene.remove(state.heli.mesh);
+      state.scene.remove(state.heli.pool);
+      state.heli = null;
+    }
+    var blocks = state.roadblocks || [];
+    for (var j = 0; j < blocks.length; j++) state.scene.remove(blocks[j].mesh);
+    state.roadblocks = [];
+  }
+
+  return {
+    setWanted: setWanted,
+    addHeat: addHeat,
+    decayWanted: decayWanted,
+    deployRoadblock: deployRoadblock,
+    buildHeli: buildHeli,
+    updateCops: updateCops,
+    clearForce: clearForce,
+    ensureForce: ensureForce,
+    MAX_COPS: MAX_COPS,
+  };
+})();

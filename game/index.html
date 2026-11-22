@@ -3,145 +3,120 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CORAL HEAT — Open-World Crime in Coral Bay</title>
+<link rel="icon" href="data:,">
+<title>CORAL HEAT — Port Coral | Open-World Crime Game</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #14101f; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #fff; }
-  #app, #app canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  #hud { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
-  .panel { background: rgba(10, 8, 22, 0.72); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 10px; backdrop-filter: blur(2px); }
-  /* Mission panel — top-left */
-  #mission-panel { position: absolute; top: 14px; left: 14px; padding: 10px 14px; max-width: 340px; }
-  #mission-title { font-size: 15px; font-weight: 800; letter-spacing: 0.5px; color: #ffd23c; }
-  #mission-objective { font-size: 13px; color: #f2f2f2; margin-top: 4px; line-height: 1.35; }
-  /* Wanted + cash — top-right */
-  #top-right { position: absolute; top: 14px; right: 14px; text-align: right; }
-  #wanted { font-size: 26px; letter-spacing: 3px; line-height: 1; text-shadow: 0 0 10px rgba(255, 60, 60, 0.8); }
-  #wanted .star { color: rgba(255, 255, 255, 0.25); }
-  #wanted .star.lit { color: #ffd23c; }
-  #wanted.hot .star.lit { color: #ff3b30; }
-  #cash { font-size: 24px; font-weight: 800; color: #7dff9a; margin-top: 4px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); }
-  #weapon-name { font-size: 12px; color: #cfe6ff; margin-top: 4px; letter-spacing: 1px; }
-  /* Minimap — bottom-left, circular */
-  #minimap-wrap { position: absolute; left: 14px; bottom: 14px; width: 168px; height: 168px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255, 255, 255, 0.85); box-shadow: 0 0 18px rgba(0, 0, 0, 0.6); background: #20242e; }
-  #minimap { width: 168px; height: 168px; display: block; }
-  #map-label { position: absolute; left: 14px; bottom: 186px; font-size: 11px; letter-spacing: 2px; color: #ffe9a8; text-shadow: 0 1px 4px #000; }
-  /* Speedometer — bottom-right */
-  #speedo-wrap { position: absolute; right: 16px; bottom: 16px; text-align: right; }
-  #speedo { font-size: 64px; font-weight: 900; line-height: 0.9; color: #fff; text-shadow: 0 0 16px rgba(255, 90, 42, 0.9), 0 2px 6px #000; }
-  #speed-unit { font-size: 15px; font-weight: 700; color: #ffd23c; letter-spacing: 2px; }
-  #damage-wrap { width: 170px; margin-top: 8px; margin-left: auto; }
-  #damage-label { font-size: 10px; letter-spacing: 2px; color: #ffb0a0; text-align: right; }
-  #damage-bar { height: 7px; background: rgba(255, 255, 255, 0.18); border-radius: 4px; overflow: hidden; margin-top: 2px; }
-  #damage-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffd23c, #ff3b30); }
-  /* Radio + banner — bottom-centre */
-  #bottom-centre { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); text-align: center; width: 460px; max-width: 46vw; }
-  #radio-label { display: inline-block; font-size: 13px; font-weight: 700; color: #9fd8ff; background: rgba(10, 8, 22, 0.72); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 20px; padding: 5px 14px; }
-  #banner { margin-top: 8px; font-size: 17px; font-weight: 900; letter-spacing: 1px; color: #ffd23c; background: rgba(10, 8, 22, 0.78); border: 1px solid rgba(255, 210, 60, 0.55); border-radius: 8px; padding: 8px 12px; opacity: 0; transition: opacity 0.3s; }
-  #banner.show { opacity: 1; }
-  /* Race panel — right side */
-  #race-panel { position: absolute; top: 120px; right: 14px; padding: 10px 14px; min-width: 190px; display: none; }
-  #race-name { font-size: 14px; font-weight: 800; color: #37e6ff; }
-  #race-pos { font-size: 26px; font-weight: 900; color: #fff; }
-  #race-lap, #race-time { font-size: 13px; color: #f2f2f2; margin-top: 2px; }
-  /* Toast */
-  #toast { position: absolute; top: 78px; left: 50%; transform: translateX(-50%); font-size: 14px; font-weight: 700; background: rgba(10, 8, 22, 0.85); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 8px; padding: 8px 16px; opacity: 0; transition: opacity 0.25s; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
-  #toast.show { opacity: 1; }
-  /* Weapon wheel */
-  #weapon-wheel { position: absolute; left: 50%; top: 50%; width: 300px; height: 300px; transform: translate(-50%, -50%); display: none; border-radius: 50%; background: rgba(10, 8, 22, 0.6); border: 2px solid rgba(255, 255, 255, 0.35); pointer-events: auto; }
-  .wheel-slot { position: absolute; transform: translate(-50%, -50%); font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 8px; padding: 6px 8px; cursor: pointer; white-space: nowrap; }
-  .wheel-slot.active { background: #ffd23c; color: #14101f; }
-  .wheel-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 12px; letter-spacing: 2px; color: #ffd23c; font-weight: 800; }
-  /* Shop / garage + race select panels */
-  #shop-panel, #race-select { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 420px; max-width: 92vw; padding: 18px; display: none; pointer-events: auto; z-index: 8; }
-  #shop-title, #race-select h2 { font-size: 18px; font-weight: 800; color: #ffd23c; margin-bottom: 10px; }
-  .shop-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.14); font-size: 14px; }
-  #shop-list button, #race-list button, .shop-close { pointer-events: auto; cursor: pointer; background: #ff5a2a; color: #fff; border: none; border-radius: 6px; padding: 7px 12px; font-weight: 700; font-size: 13px; }
-  #race-list button { display: block; width: 100%; margin: 6px 0; text-align: left; background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.3); }
-  #race-list button:hover { background: rgba(255, 90, 42, 0.8); }
-  .shop-close { margin-top: 12px; background: rgba(255, 255, 255, 0.15); }
-  /* Start + pause overlays */
-  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; z-index: 10; background: linear-gradient(180deg, rgba(28, 16, 54, 0.82), rgba(255, 90, 42, 0.35) 55%, rgba(20, 10, 40, 0.88)); }
-  #start-screen h1 { font-size: 72px; font-weight: 900; letter-spacing: 4px; color: #ffd23c; text-shadow: 0 0 30px rgba(255, 90, 42, 0.9), 0 4px 0 #a83a12; }
-  #start-screen h2 { font-size: 20px; font-weight: 700; color: #9fd8ff; letter-spacing: 6px; margin-top: 2px; }
-  #start-screen p { max-width: 560px; margin: 16px 20px 0; font-size: 15px; line-height: 1.55; color: #f2f2f2; }
-  #start-save { color: #7dff9a; font-weight: 700; }
-  #play-btn { pointer-events: auto; cursor: pointer; margin-top: 26px; font-size: 20px; font-weight: 900; letter-spacing: 2px; color: #14101f; background: #ffd23c; border: none; border-radius: 10px; padding: 14px 42px; box-shadow: 0 0 26px rgba(255, 210, 60, 0.7); }
-  #play-btn:hover { background: #ffe27a; }
-  .controls-grid { display: grid; grid-template-columns: auto auto; gap: 4px 18px; margin-top: 22px; font-size: 13px; color: #d8d8e8; text-align: left; }
-  .controls-grid b { color: #fff; }
-  #pause-screen { display: none; background: rgba(10, 8, 22, 0.78); }
-  #pause-screen h1 { font-size: 44px; font-weight: 900; letter-spacing: 6px; color: #fff; }
-  #pause-screen p { margin-top: 10px; color: #cfe6ff; }
-  #help-line { position: absolute; left: 14px; top: 118px; font-size: 11px; color: rgba(255, 255, 255, 0.75); text-shadow: 0 1px 3px #000; max-width: 200px; line-height: 1.5; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #160a24;
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #fff; }
+  #game-root, #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #mission-panel { position: absolute; top: 14px; left: 14px; background: rgba(10, 8, 28, 0.72);
+    border-left: 4px solid #ff2fd6; padding: 10px 14px; max-width: 380px; border-radius: 4px; }
+  #mission-title { font-weight: 800; letter-spacing: 1px; font-size: 15px; color: #ffd23d; }
+  #mission-obj { font-size: 13px; margin-top: 4px; color: #e8e8f2; }
+  #wanted-box { position: absolute; top: 14px; right: 16px; text-align: right; }
+  #stars .star { font-size: 26px; color: rgba(255,255,255,0.25); text-shadow: 0 0 6px #000; }
+  #stars .star.on { color: #ffd23d; text-shadow: 0 0 10px #ff8a3d; }
+  #cash { font-size: 24px; font-weight: 800; color: #39ff88; text-shadow: 0 1px 4px #000; margin-top: 2px; }
+  #health-bar { width: 170px; height: 9px; background: rgba(255,255,255,0.2); margin-top: 6px;
+    margin-left: auto; border-radius: 5px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #39ff88; }
+  #minimap-wrap { position: absolute; left: 16px; bottom: 16px; width: 190px; height: 190px; }
+  #minimap { width: 190px; height: 190px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.75);
+    box-shadow: 0 0 18px rgba(0,0,0,0.6); }
+  #mini-label { position: absolute; bottom: -2px; width: 100%; text-align: center; font-size: 11px;
+    letter-spacing: 2px; color: #fff; text-shadow: 0 1px 3px #000; }
+  #speed-box { position: absolute; right: 18px; bottom: 18px; text-align: right;
+    text-shadow: 0 2px 6px #000; }
+  #speed-num { font-size: 64px; font-weight: 900; line-height: 0.9; color: #fff; }
+  #speed-unit { font-size: 14px; letter-spacing: 4px; color: #ffd23d; }
+  #gear { font-size: 13px; letter-spacing: 2px; color: #2fe8ff; margin-top: 2px; }
+  #radio-box { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: rgba(10, 8, 28, 0.65); padding: 6px 14px; border-radius: 20px;
+    font-size: 13px; letter-spacing: 1px; color: #ffd98a; }
+  #objective-banner { position: absolute; top: 84px; left: 50%; transform: translateX(-50%);
+    background: rgba(255, 47, 214, 0.85); padding: 8px 18px; border-radius: 4px;
+    font-weight: 700; font-size: 15px; display: none; }
+  #weapon-box { position: absolute; right: 18px; bottom: 118px; background: rgba(10, 8, 28, 0.65);
+    padding: 7px 12px; border-radius: 4px; font-size: 14px; }
+  #race-box { position: absolute; top: 84px; left: 14px; background: rgba(10, 8, 28, 0.72);
+    border-left: 4px solid #2fe8ff; padding: 9px 13px; font-size: 14px; border-radius: 4px; }
+  #race-box .pos { color: #ffd23d; font-weight: 800; }
+  #toast { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7); padding: 9px 18px; border-radius: 4px; font-size: 15px;
+    opacity: 0; transition: opacity 0.3s; white-space: nowrap; }
+  #hint { position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); font-size: 11px;
+    color: rgba(255,255,255,0.55); text-shadow: 0 1px 2px #000; white-space: nowrap; }
+  .float-label { position: fixed; z-index: 9; color: #ffd23d; font-weight: 700;
+    text-shadow: 0 1px 3px #000; pointer-events: none; }
+  #weapon-wheel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    z-index: 20; background: rgba(10, 8, 28, 0.92); padding: 18px; border-radius: 10px;
+    border: 2px solid #ff2fd6; pointer-events: auto; }
+  #weapon-wheel .wheel-title { font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; color: #ffd23d; }
+  #weapon-wheel .wheel-item { display: block; width: 260px; margin: 5px 0; padding: 9px 12px;
+    background: #241a3a; color: #fff; border: 1px solid #555; border-radius: 5px;
+    font-size: 15px; text-align: left; cursor: pointer; }
+  #weapon-wheel .wheel-item.sel { border-color: #ffd23d; background: #3a2a5a; }
+  #shop-panel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 20;
+    background: rgba(10, 8, 28, 0.94); padding: 20px; border-radius: 10px; border: 2px solid #ffd23d;
+    display: none; width: 340px; }
+  #shop-panel h2 { margin: 0 0 6px; color: #ffd23d; }
+  #shop-panel p { margin: 0 0 12px; font-size: 14px; color: #ccc; }
+  #shop-panel button { display: block; width: 100%; margin: 5px 0; padding: 10px;
+    background: #241a3a; color: #fff; border: 1px solid #555; border-radius: 5px;
+    font-size: 15px; cursor: pointer; text-align: left; }
+  #start-screen { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center;
+    justify-content: center; background: linear-gradient(160deg, #1a0a2e 0%, #7a1e3d 55%, #ff7a2f 100%); }
+  .start-inner { max-width: 620px; text-align: center; padding: 30px; }
+  .start-inner h1 { font-size: 74px; margin: 0; letter-spacing: 6px; font-weight: 900;
+    text-shadow: 0 4px 24px rgba(0,0,0,0.6); }
+  .start-inner h1 span { color: #ffd23d; }
+  .tagline { font-size: 17px; color: #ffe9c9; }
+  .story { font-size: 15px; color: #e8d8f2; }
+  .start-inner button { display: block; width: 100%; margin: 10px 0; padding: 14px; font-size: 18px;
+    font-weight: 800; letter-spacing: 2px; cursor: pointer; border: none; border-radius: 6px;
+    background: #ffd23d; color: #1a0a2e; }
+  .start-inner button:hover { background: #ffe27a; }
+  .controls { margin-top: 18px; font-size: 13px; color: #ffd98a; line-height: 1.7; }
+  .fine { margin-top: 14px; font-size: 11px; color: rgba(255,255,255,0.6); }
+  #help-panel, #pause-panel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    z-index: 25; background: rgba(10, 8, 28, 0.95); padding: 22px; border-radius: 10px;
+    border: 2px solid #2fe8ff; display: none; width: 420px; line-height: 1.8; font-size: 14px; }
+  #help-panel h2, #pause-panel h2 { margin-top: 0; color: #2fe8ff; }
 </style>
 </head>
 <body>
-<div id="app"></div>
-<div id="hud">
-  <div id="mission-panel" class="panel">
-    <div id="mission-title">MISSION 1 — WELCOME TO CORAL BAY</div>
-    <div id="mission-objective">Drive to the Marina Loft</div>
-  </div>
-  <div id="top-right">
-    <div id="wanted"></div>
-    <div id="cash">$2,500</div>
-    <div id="weapon-name">Fists</div>
-  </div>
-  <div id="map-label">CORAL BAY</div>
-  <div id="minimap-wrap"><canvas id="minimap" width="168" height="168"></canvas></div>
-  <div id="help-line">WASD drive / walk • E enter, exit, shop • F carjack • Q weapon wheel • R radio • M races • Esc pause</div>
-  <div id="speedo-wrap">
-    <div id="speedo">0</div>
-    <div id="speed-unit">MPH</div>
-    <div id="damage-wrap">
-      <div id="damage-label">DAMAGE</div>
-      <div id="damage-bar"><div id="damage-fill"></div></div>
-    </div>
-  </div>
-  <div id="bottom-centre">
-    <div id="radio-label">♪ CORAL FM 88.1 — Sunset Drive</div>
-    <div id="banner"></div>
-  </div>
-  <div id="race-panel" class="panel">
-    <div id="race-name">BOULEVARD SPRINT</div>
-    <div id="race-pos">P4/4</div>
-    <div id="race-lap">LAP 1/2</div>
-    <div id="race-time">0:00</div>
-  </div>
-  <div id="toast"></div>
-  <div id="weapon-wheel"></div>
-  <div id="shop-panel" class="panel">
-    <div id="shop-title">Shop</div>
-    <div id="shop-list"></div>
-  </div>
-  <div id="race-select" class="panel">
-    <h2>Street Races — pick a circuit</h2>
-    <div id="race-list"></div>
-  </div>
+<div id="game-root"></div>
+<div id="hud"></div>
+<div id="shop-panel"></div>
+<div id="help-panel">
+  <h2>HOW TO PLAY</h2>
+  <b>Move / Drive:</b> WASD or arrows · <b>Look:</b> click the game, then move the mouse<br>
+  <b>E:</b> enter / exit car, bike, boat, shop, safehouse · <b>F:</b> punch<br>
+  <b>Click:</b> shoot · <b>Q:</b> weapon wheel · <b>1 / 2:</b> cycle weapon<br>
+  <b>R:</b> change radio station · <b>M:</b> start / abandon mission · <b>C:</b> save game<br>
+  <b>Shift:</b> sprint · <b>Space:</b> jump (on foot) / handbrake (in car) · <b>P:</b> pause<br>
+  <b>Goal:</b> 22 missions — courier jobs, races, and the Golden Coral casino heist, ending in a boat getaway.
 </div>
-<div id="start-screen" class="overlay">
-  <h1>CORAL HEAT</h1>
-  <h2>OPEN-WORLD CRIME IN CORAL BAY</h2>
-  <p>Reef Solano lands in a sunset marina city with $2,500 and a borrowed car. 22 story missions, a casino-heist finale, street races, garage and bikes, boats on the bay, 5-star police chases with a helicopter overhead — and a roadblock waiting on every fast escape.</p>
-  <p id="start-save">New game — Reef arrives in Coral Bay</p>
-  <button id="play-btn">▶ &nbsp;PLAY</button>
-  <div class="controls-grid">
-    <span><b>W A S D</b></span><span>drive / walk</span>
-    <span><b>Mouse drag</b></span><span>look around</span>
-    <span><b>E</b></span><span>enter / exit vehicle, shop, garage</span>
-    <span><b>F</b></span><span>carjack a nearby car</span>
-    <span><b>Click</b></span><span>shoot • <b>Q</b> weapon wheel • <b>1–4</b> weapons</span>
-    <span><b>R</b></span><span>next radio station • <b>M</b> street races</span>
-    <span><b>Space</b></span><span>brake / handbrake • <b>Shift</b> sprint</span>
-    <span><b>Esc</b></span><span>pause • <b>P</b> mute</span>
-  </div>
-</div>
-<div id="pause-screen" class="overlay">
-  <h1>PAUSED</h1>
-  <p>Press Esc to keep playing. Your progress saves automatically.</p>
-</div>
-<script type="module" src="./src/boot.js"></script>
+<div id="pause-panel"><h2>PAUSED</h2>Press P or Esc to resume. Press C to save your game.</div>
+<div id="start-screen"></div>
+<script src="vendor/three/three.min.js"></script>
+<script src="src/util.js"></script>
+<script src="src/coralcity.js"></script>
+<script src="src/drive.js"></script>
+<script src="src/walk.js"></script>
+<script src="src/cops.js"></script>
+<script src="src/fight.js"></script>
+<script src="src/story.js"></script>
+<script src="src/story2.js"></script>
+<script src="src/raceway.js"></script>
+<script src="src/bikes.js"></script>
+<script src="src/boats.js"></script>
+<script src="src/garage.js"></script>
+<script src="src/savegame.js"></script>
+<script src="src/sound.js"></script>
+<script src="src/hudkit.js"></script>
+<script src="src/shots.js"></script>
+<script src="src/boot.js"></script>
 </body>
 </html>

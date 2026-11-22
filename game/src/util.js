@@ -1,86 +1,127 @@
-// util.js — small pure helpers shared by every Coral Heat system.
-// No three.js import here on purpose: plain math + DOM helpers only.
-export const TAU = Math.PI * 2;
+// CORAL HEAT — shared helpers.
+// Every module hangs its API off the single Coral namespace so the page can
+// load plain classic scripts in order with no build step and no network.
+window.Coral = window.Coral || {};
 
-export function clamp(v, a, b) {
-  return v < a ? a : v > b ? b : v;
-}
+Coral.util = (function () {
+  'use strict';
 
-export function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-
-export function rand(a = 1, b) {
-  if (b === undefined) return Math.random() * a;
-  return a + Math.random() * (b - a);
-}
-
-export function randInt(a, b) {
-  return Math.floor(rand(a, b + 1));
-}
-
-export function pick(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-export function choiceWeighted(pairs) {
-  let total = 0;
-  for (const p of pairs) total += p[1];
-  let roll = Math.random() * total;
-  for (const p of pairs) {
-    roll -= p[1];
-    if (roll <= 0) return p[0];
+  function clamp(value, low, high) {
+    if (value < low) return low;
+    if (value > high) return high;
+    return value;
   }
-  return pairs[pairs.length - 1][0];
-}
 
-// Shortest signed difference between two headings (radians).
-export function angleDiff(a, b) {
-  let d = (b - a) % TAU;
-  if (d > Math.PI) d -= TAU;
-  if (d < -Math.PI) d += TAU;
-  return d;
-}
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
 
-export function lerpAngle(a, b, t) {
-  return a + angleDiff(a, b) * t;
-}
+  function damp(current, target, lambda, dt) {
+    return lerp(current, target, 1 - Math.exp(-lambda * dt));
+  }
 
-export function dist2d(ax, az, bx, bz) {
-  const dx = ax - bx;
-  const dz = az - bz;
-  return Math.sqrt(dx * dx + dz * dz);
-}
+  function rand(low, high) {
+    return low + Math.random() * (high - low);
+  }
 
-export function formatCash(n) {
-  return "$" + Math.round(n).toLocaleString("en-US");
-}
+  function randi(low, high) {
+    return Math.floor(rand(low, high + 1));
+  }
 
-export function formatTime(sec) {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return m + ":" + String(s).padStart(2, "0");
-}
+  function pick(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
 
-export function $(id) {
-  return document.getElementById(id);
-}
+  function chance(p) {
+    return Math.random() < p;
+  }
 
-export function el(tag, cls, text) {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text !== undefined) n.textContent = text;
-  return n;
-}
+  function dist2d(ax, az, bx, bz) {
+    var dx = ax - bx;
+    var dz = az - bz;
+    return Math.sqrt(dx * dx + dz * dz);
+  }
 
-// Seeded pseudo-random (mulberry32) so staged screenshots are stable.
-export function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  function angleDiff(a, b) {
+    var d = (a - b) % (Math.PI * 2);
+    if (d > Math.PI) d -= Math.PI * 2;
+    if (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  function angleLerp(a, b, t) {
+    return a + angleDiff(b, a) * t;
+  }
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function fmtMoney(n) {
+    var s = String(Math.round(n));
+    var out = '';
+    while (s.length > 3) {
+      out = ',' + s.slice(-3) + out;
+      s = s.slice(0, -3);
+    }
+    return '$' + s + out;
+  }
+
+  function fmtTime(totalSeconds) {
+    var m = Math.floor(totalSeconds / 60);
+    var s = Math.floor(totalSeconds % 60);
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function mph(ms) {
+    return Math.abs(ms) * 2.23694;
+  }
+
+  function pad2(n) {
+    return (n < 10 ? '0' : '') + n;
+  }
+
+  function makeRng(seed) {
+    var s = seed >>> 0;
+    return function () {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+  }
+
+  function hexColor(h) {
+    return new THREE.Color(h);
+  }
+
+  function onScreenLabel(text, x, y) {
+    var d = document.createElement('div');
+    d.className = 'float-label';
+    d.textContent = text;
+    d.style.left = x + 'px';
+    d.style.top = y + 'px';
+    document.body.appendChild(d);
+    setTimeout(function () { d.remove(); }, 1600);
+    return d;
+  }
+
+  return {
+    clamp: clamp,
+    lerp: lerp,
+    damp: damp,
+    rand: rand,
+    randi: randi,
+    pick: pick,
+    chance: chance,
+    dist2d: dist2d,
+    angleDiff: angleDiff,
+    angleLerp: angleLerp,
+    el: el,
+    fmtMoney: fmtMoney,
+    fmtTime: fmtTime,
+    mph: mph,
+    pad2: pad2,
+    makeRng: makeRng,
+    hexColor: hexColor,
+    onScreenLabel: onScreenLabel,
   };
-}
+})();

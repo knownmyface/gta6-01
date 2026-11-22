@@ -1,52 +1,40 @@
-// main.ts — entrypoint for the CORAL HEAT make.fun entry (Node 22, stdlib
-// only). Copies game/ and screenshots/ from this repository into the output
-// directory and writes /output/dossier.json with buildDossier from the kit's
-// vendor/makefun-game.ts. Paths resolve from this file's own location, never
-// from the working directory, so it exits 0 from the repo dir and from /tmp.
-// The dossier text is capped at 163,840 UTF-8 bytes, as the kit requires.
-import { cpSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import * as kit from "./vendor/makefun-game.ts";
+// CORAL HEAT — the entry program for make.fun gta6-01 (Node 22, stdlib only).
+// It hands the game in: copies this repo's game/ and screenshots/ next to
+// this file into /output and writes /output/dossier.json with the vendored
+// make.fun library, exactly as the kit starter does. Paths resolve from this
+// file's own location, never from the working directory, so it exits 0 from
+// the repo dir and from anywhere else. Outside the grader, MAKEFUN_OUTPUT_DIR
+// stands in for /output:
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-async function main(): Promise<void> {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const gameDir = join(here, "game");
-  const shotsDir = join(here, "screenshots");
-  const outDir = process.env.MAKEFUN_OUTPUT_DIR
-    ? resolve(process.env.MAKEFUN_OUTPUT_DIR)
-    : "/output";
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildDossier } from './vendor/makefun-game.ts';
 
-  mkdirSync(outDir, { recursive: true });
-  mkdirSync(join(outDir, "game"), { recursive: true });
-  mkdirSync(join(outDir, "screenshots"), { recursive: true });
-  cpSync(gameDir, join(outDir, "game"), { recursive: true });
-  cpSync(shotsDir, join(outDir, "screenshots"), { recursive: true });
+const here = fileURLToPath(new URL('.', import.meta.url));
+const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-  const buildDossier = (kit as { buildDossier?: unknown }).buildDossier as
-    | ((root: string, opts: { text_max_bytes: number }) => unknown)
-    | undefined;
-  if (typeof buildDossier !== "function") {
-    throw new Error("vendor/makefun-game.ts does not export buildDossier");
-  }
-
-  let dossier: unknown;
-  try {
-    dossier = await buildDossier(here, { text_max_bytes: 163840 });
-  } catch {
-    // Fall back to building the dossier from the copied output tree.
-    dossier = await buildDossier(outDir, { text_max_bytes: 163840 });
-  }
-  const bytes = dossier instanceof Uint8Array
-    ? dossier
-    : typeof dossier === "string"
-      ? dossier
-      : JSON.stringify(dossier);
-  writeFileSync(join(outDir, "dossier.json"), bytes);
-  console.log("wrote " + join(outDir, "dossier.json"));
+mkdirSync(out, { recursive: true });
+cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
+mkdirSync(join(out, 'screenshots'), { recursive: true });
+if (existsSync(join(here, 'screenshots'))) {
+  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// The scorer's caps, mirrored from the kit's gate: the dossier text cap
+// shapes the bytes, the rest refuse an entry the scorer would refuse — more
+// than 4 screenshots or one over 256 KiB, more than 993 files in game/ or
+// 48 MiB of game files in all, or a game/ path over 1000 bytes. game/ counts
+// beside /output's own 1000-entry cap, together with screenshots/ and
+// dossier.json, so the game is kept well inside those limits.
+writeFileSync(
+  join(out, 'dossier.json'),
+  buildDossier(out, {
+    text_max_bytes: 163840,
+    screenshots: { max: 4, max_bytes: 262144 },
+    game_max_files: 993,
+    game_max_bytes: 50331648,
+    game_path_max_bytes: 1000,
+  }),
+);
